@@ -49,10 +49,32 @@
   letter-spacing: -0.05em;
 }
 
+.scoreValueMuted {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  letter-spacing: -0.03em;
+}
+
 .scoreLabel,
 .scoreRating {
   color: var(--text-secondary);
   font-weight: 700;
+}
+
+.scoreHelpText,
+.scoreDisclaimer,
+.analysisDisclaimer {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.scoreHelpText,
+.analysisDisclaimer {
+  font-size: 0.92rem;
+}
+
+.scoreDisclaimer {
+  font-size: 0.84rem;
+  color: var(--text-tertiary);
 }
 
 .grid {

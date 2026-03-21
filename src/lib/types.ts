@@ -69,6 +69,16 @@ export type IpoAnalysisRecord = {
   summary: string;
   keyPoints: string[];
   warnings: string[];
+  scoreDisplay: {
+    isVisible: boolean;
+    evidenceLabels: string[];
+    evidenceCount: number;
+    demandSupplyEvidenceCount: number;
+    financialEvidenceCount: number;
+    helpText: string;
+    policyNote: string;
+    disclaimer: string;
+  };
   generatedAt: Date;
 };
 

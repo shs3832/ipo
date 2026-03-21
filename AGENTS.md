@@ -92,7 +92,8 @@ Scoring logic lives in:
 Important:
 
 - Base score starts at `50`
-- Many live records still stay near neutral if data is missing
+- Missing data가 많으면 숫자 점수를 숨기고 `평가 보류`로 처리한다
+- 현재 공개 노출 기준은 `총 4개 이상 지표`, `수급 2개 이상`, `재무 1개 이상`
 - Financial enrichment now affects:
   - revenue growth
   - operating income
@@ -181,7 +182,7 @@ Notes:
 
 - Data quality is still uneven
 - Some IPOs have financial data, some do not
-- Many score inputs are missing and should not be overinterpreted
+- 점수 노출 gating은 들어갔지만 threshold와 문구는 계속 다듬어야 한다
 - No public multi-recipient UI yet
 - Telegram adapter data model exists, but sending is not implemented
 
@@ -192,8 +193,8 @@ If continuing feature work, highest-impact next tasks are:
 1. add demand competition / lockup / float data source
 2. add minimum subscription shares and deposit rate source
 3. split score into sub-scores
-4. add confidence/data-completeness indicator
-5. improve detail page to explain score basis more explicitly
+4. expose data-completeness indicator more explicitly in UI
+5. tune score visibility thresholds and evidence messaging based on live data
 
 ## Safe Working Rules
 

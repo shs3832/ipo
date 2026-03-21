@@ -18,7 +18,7 @@ import {
   type SourceIpoRecord,
   type SyncResult,
 } from "@/lib/types";
-import { buildAnalysis } from "@/lib/analysis";
+import { buildAnalysis, buildAnalysisScoreDisplay } from "@/lib/analysis";
 import {
   atKstTime,
   formatDate,
@@ -380,11 +380,24 @@ const getDetailUrl = (slug: string) => {
   return `${baseUrl}/ipos/${encodeURIComponent(slug)}`;
 };
 
+const getScoreSummaryLine = (ipo: IpoRecord) =>
+  ipo.latestAnalysis.scoreDisplay.isVisible
+    ? `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`
+    : "점수 평가 보류 (핵심 데이터 부족)";
+
+const getAnalysisSummaryLine = (ipo: IpoRecord) =>
+  ipo.latestAnalysis.scoreDisplay.isVisible
+    ? ipo.latestAnalysis.summary
+    : `평가 보류. ${ipo.latestAnalysis.scoreDisplay.helpText}`;
+
 const buildDecisionTags = (ipo: IpoRecord) => {
   const minimumDeposit = getMinimumDepositAmount(ipo);
   const tags: string[] = [];
 
-  if (ipo.latestAnalysis.score >= 75) {
+  if (!ipo.latestAnalysis.scoreDisplay.isVisible) {
+    tags.push("#평가보류");
+    tags.push("#데이터보완대기");
+  } else if (ipo.latestAnalysis.score >= 75) {
     tags.push("#청약추천");
   } else if (ipo.latestAnalysis.score >= 55) {
     tags.push("#선별청약");
@@ -392,14 +405,24 @@ const buildDecisionTags = (ipo: IpoRecord) => {
     tags.push("#청약신중");
   }
 
-  if (minimumDeposit != null && minimumDeposit <= 100_000 && ipo.latestAnalysis.score >= 60) {
+  if (
+    ipo.latestAnalysis.scoreDisplay.isVisible
+    && minimumDeposit != null
+    && minimumDeposit <= 100_000
+    && ipo.latestAnalysis.score >= 60
+  ) {
     tags.push("#균등추천");
     tags.push("#소액참여적합");
   } else {
     tags.push("#균등비추천");
   }
 
-  if (minimumDeposit != null && minimumDeposit <= 150_000 && ipo.latestAnalysis.score >= 75) {
+  if (
+    ipo.latestAnalysis.scoreDisplay.isVisible
+    && minimumDeposit != null
+    && minimumDeposit <= 150_000
+    && ipo.latestAnalysis.score >= 75
+  ) {
     tags.push("#레버리지검토가능");
   } else {
     tags.push("#레버리지신중");
@@ -423,7 +446,8 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
       lines: [
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
         `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
-        `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`,
+        getScoreSummaryLine(ipo),
+        ipo.latestAnalysis.scoreDisplay.helpText,
       ],
     },
     {
@@ -432,7 +456,7 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
         `시장 ${ipo.market}`,
         `주관사 ${ipo.leadManager}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
         `청약 마감 ${formatDate(ipo.subscriptionEnd)} 16:00`,
-        ipo.latestAnalysis.summary,
+        getAnalysisSummaryLine(ipo),
       ],
     },
     {
@@ -458,7 +482,10 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
         : ["특별한 경고 신호는 없지만 최종 판단은 공시와 증권사 안내를 함께 확인하세요."],
     },
   ],
-  footer: ["투자 참고용 요약이며 확정 수익을 보장하지 않습니다."],
+  footer: [
+    ipo.latestAnalysis.scoreDisplay.policyNote,
+    ipo.latestAnalysis.scoreDisplay.disclaimer,
+  ],
 });
 
 const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
@@ -473,7 +500,8 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
         `청약 마감 오늘 16:00`,
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
         `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
-        `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`,
+        getScoreSummaryLine(ipo),
+        ipo.latestAnalysis.scoreDisplay.helpText,
       ],
     },
     {
@@ -488,7 +516,7 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
     {
       label: "빠른 리마인드",
       lines: [
-        ipo.latestAnalysis.summary,
+        getAnalysisSummaryLine(ipo),
         ...ipo.latestAnalysis.keyPoints.slice(0, 2),
       ],
     },
@@ -501,7 +529,8 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
   ],
   footer: [
     "마감 직전에는 증권사별 주문 마감이 조금 다를 수 있으니 최종 화면을 다시 확인해 주세요.",
-    "투자 참고용 요약이며 확정 수익을 보장하지 않습니다.",
+    ipo.latestAnalysis.scoreDisplay.policyNote,
+    ipo.latestAnalysis.scoreDisplay.disclaimer,
   ],
 });
 
@@ -606,6 +635,15 @@ const getLatestSnapshotFields = (payload: unknown) => {
       demandForecastEnd: null,
       tradableShares: null,
       floatRatio: null,
+      demandCompetitionRate: null,
+      lockupRate: null,
+      insiderSalesRatio: null,
+      marketMoodScore: null,
+      revenueGrowthRate: null,
+      operatingIncome: null,
+      netIncome: null,
+      debtRatio: null,
+      totalEquity: null,
     };
   }
 
@@ -620,6 +658,15 @@ const getLatestSnapshotFields = (payload: unknown) => {
     demandForecastEnd: parseSnapshotDate(record.demandForecastEnd),
     tradableShares: parseSnapshotNumber(record.tradableShares),
     floatRatio: parseSnapshotNumber(record.floatRatio),
+    demandCompetitionRate: parseSnapshotNumber(record.demandCompetitionRate),
+    lockupRate: parseSnapshotNumber(record.lockupRate),
+    insiderSalesRatio: parseSnapshotNumber(record.insiderSalesRatio),
+    marketMoodScore: parseSnapshotNumber(record.marketMoodScore),
+    revenueGrowthRate: parseSnapshotNumber(record.revenueGrowthRate),
+    operatingIncome: parseSnapshotNumber(record.operatingIncome),
+    netIncome: parseSnapshotNumber(record.netIncome),
+    debtRatio: parseSnapshotNumber(record.debtRatio),
+    totalEquity: parseSnapshotNumber(record.totalEquity),
   };
 };
 
@@ -935,42 +982,80 @@ const toIpoRecord = (ipo: {
     payload: unknown;
   }>;
 }): IpoRecord => ({
-  ...getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload),
-  id: ipo.id,
-  slug: ipo.slug,
-  name: ipo.name,
-  market: ipo.market,
-  leadManager: ipo.leadManager ?? "-",
-  coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
-  kindIssueCode: ipo.kindIssueCode,
-  priceBandLow: ipo.priceBandLow,
-  priceBandHigh: ipo.priceBandHigh,
-  offerPrice: ipo.offerPrice,
-  listingOpenPrice: ipo.listingOpenPrice,
-  listingOpenReturnRate: ipo.listingOpenReturnRate,
-  minimumSubscriptionShares: ipo.minimumSubscriptionShares,
-  depositRate: ipo.depositRate,
-  subscriptionStart: ipo.subscriptionStart ?? new Date(),
-  subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
-  refundDate: ipo.refundDate,
-  listingDate: ipo.listingDate,
-  status: ipo.status,
-  events: ipo.events.map((event) => ({
-    id: event.id,
-    type: event.type,
-    title: event.title,
-    eventDate: event.eventDate,
-  })),
-  latestAnalysis: {
-    score: ipo.analyses[0].score,
-    ratingLabel: ipo.analyses[0].ratingLabel,
-    summary: ipo.analyses[0].summary,
-    keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
-    warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
-    generatedAt: ipo.analyses[0].generatedAt,
-  },
-  latestSourceKey: ipo.sourceSnapshots[0].sourceKey,
-  sourceFetchedAt: ipo.sourceSnapshots[0].fetchedAt,
+  ...(() => {
+    const snapshotFields = getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload);
+    const {
+      kindBizProcessNo,
+      generalSubscriptionCompetitionRate,
+      irStart,
+      irEnd,
+      demandForecastStart,
+      demandForecastEnd,
+      tradableShares,
+      floatRatio,
+    } = snapshotFields;
+
+    return {
+      id: ipo.id,
+      slug: ipo.slug,
+      name: ipo.name,
+      market: ipo.market,
+      leadManager: ipo.leadManager ?? "-",
+      coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
+      kindIssueCode: ipo.kindIssueCode,
+      kindBizProcessNo,
+      priceBandLow: ipo.priceBandLow,
+      priceBandHigh: ipo.priceBandHigh,
+      offerPrice: ipo.offerPrice,
+      listingOpenPrice: ipo.listingOpenPrice,
+      listingOpenReturnRate: ipo.listingOpenReturnRate,
+      minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+      depositRate: ipo.depositRate,
+      generalSubscriptionCompetitionRate,
+      irStart,
+      irEnd,
+      demandForecastStart,
+      demandForecastEnd,
+      tradableShares,
+      floatRatio,
+      subscriptionStart: ipo.subscriptionStart ?? new Date(),
+      subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
+      refundDate: ipo.refundDate,
+      listingDate: ipo.listingDate,
+      status: ipo.status,
+      events: ipo.events.map((event) => ({
+        id: event.id,
+        type: event.type,
+        title: event.title,
+        eventDate: event.eventDate,
+      })),
+      latestAnalysis: {
+        score: ipo.analyses[0].score,
+        ratingLabel: ipo.analyses[0].ratingLabel,
+        summary: ipo.analyses[0].summary,
+        keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
+        warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
+        scoreDisplay: buildAnalysisScoreDisplay({
+          offerPrice: ipo.offerPrice,
+          priceBandLow: ipo.priceBandLow,
+          priceBandHigh: ipo.priceBandHigh,
+          demandCompetitionRate: snapshotFields.demandCompetitionRate,
+          lockupRate: snapshotFields.lockupRate,
+          floatRatio: snapshotFields.floatRatio,
+          insiderSalesRatio: snapshotFields.insiderSalesRatio,
+          marketMoodScore: snapshotFields.marketMoodScore,
+          revenueGrowthRate: snapshotFields.revenueGrowthRate,
+          operatingIncome: snapshotFields.operatingIncome,
+          netIncome: snapshotFields.netIncome,
+          debtRatio: snapshotFields.debtRatio,
+          totalEquity: snapshotFields.totalEquity,
+        }),
+        generatedAt: ipo.analyses[0].generatedAt,
+      },
+      latestSourceKey: ipo.sourceSnapshots[0].sourceKey,
+      sourceFetchedAt: ipo.sourceSnapshots[0].fetchedAt,
+    };
+  })(),
 });
 
 const toPublicIpoDetailRecord = (ipo: {
@@ -1011,40 +1096,78 @@ const toPublicIpoDetailRecord = (ipo: {
     payload: unknown;
   }>;
 }): PublicIpoDetailRecord => ({
-  ...getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload),
-  id: ipo.id,
-  slug: ipo.slug,
-  name: ipo.name,
-  market: ipo.market,
-  leadManager: ipo.leadManager ?? "-",
-  coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
-  kindIssueCode: ipo.kindIssueCode,
-  priceBandLow: ipo.priceBandLow,
-  priceBandHigh: ipo.priceBandHigh,
-  offerPrice: ipo.offerPrice,
-  listingOpenPrice: ipo.listingOpenPrice,
-  listingOpenReturnRate: ipo.listingOpenReturnRate,
-  minimumSubscriptionShares: ipo.minimumSubscriptionShares,
-  depositRate: ipo.depositRate,
-  subscriptionStart: ipo.subscriptionStart ?? new Date(),
-  subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
-  refundDate: ipo.refundDate,
-  listingDate: ipo.listingDate,
-  status: ipo.status,
-  events: ipo.events.map((event) => ({
-    id: event.id,
-    type: event.type,
-    title: event.title,
-    eventDate: event.eventDate,
-  })),
-  latestAnalysis: {
-    score: ipo.analyses[0].score,
-    ratingLabel: ipo.analyses[0].ratingLabel,
-    summary: ipo.analyses[0].summary,
-    keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
-    warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
-    generatedAt: ipo.analyses[0].generatedAt,
-  },
+  ...(() => {
+    const snapshotFields = getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload);
+    const {
+      kindBizProcessNo,
+      generalSubscriptionCompetitionRate,
+      irStart,
+      irEnd,
+      demandForecastStart,
+      demandForecastEnd,
+      tradableShares,
+      floatRatio,
+    } = snapshotFields;
+
+    return {
+      id: ipo.id,
+      slug: ipo.slug,
+      name: ipo.name,
+      market: ipo.market,
+      leadManager: ipo.leadManager ?? "-",
+      coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
+      kindIssueCode: ipo.kindIssueCode,
+      kindBizProcessNo,
+      priceBandLow: ipo.priceBandLow,
+      priceBandHigh: ipo.priceBandHigh,
+      offerPrice: ipo.offerPrice,
+      listingOpenPrice: ipo.listingOpenPrice,
+      listingOpenReturnRate: ipo.listingOpenReturnRate,
+      minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+      depositRate: ipo.depositRate,
+      generalSubscriptionCompetitionRate,
+      irStart,
+      irEnd,
+      demandForecastStart,
+      demandForecastEnd,
+      tradableShares,
+      floatRatio,
+      subscriptionStart: ipo.subscriptionStart ?? new Date(),
+      subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
+      refundDate: ipo.refundDate,
+      listingDate: ipo.listingDate,
+      status: ipo.status,
+      events: ipo.events.map((event) => ({
+        id: event.id,
+        type: event.type,
+        title: event.title,
+        eventDate: event.eventDate,
+      })),
+      latestAnalysis: {
+        score: ipo.analyses[0].score,
+        ratingLabel: ipo.analyses[0].ratingLabel,
+        summary: ipo.analyses[0].summary,
+        keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
+        warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
+        scoreDisplay: buildAnalysisScoreDisplay({
+          offerPrice: ipo.offerPrice,
+          priceBandLow: ipo.priceBandLow,
+          priceBandHigh: ipo.priceBandHigh,
+          demandCompetitionRate: snapshotFields.demandCompetitionRate,
+          lockupRate: snapshotFields.lockupRate,
+          floatRatio: snapshotFields.floatRatio,
+          insiderSalesRatio: snapshotFields.insiderSalesRatio,
+          marketMoodScore: snapshotFields.marketMoodScore,
+          revenueGrowthRate: snapshotFields.revenueGrowthRate,
+          operatingIncome: snapshotFields.operatingIncome,
+          netIncome: snapshotFields.netIncome,
+          debtRatio: snapshotFields.debtRatio,
+          totalEquity: snapshotFields.totalEquity,
+        }),
+        generatedAt: ipo.analyses[0].generatedAt,
+      },
+    };
+  })(),
 });
 
 const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {

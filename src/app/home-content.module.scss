@@ -366,6 +366,13 @@
   margin-top: 8px;
 }
 
+.scoreArea {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .ipoStats {
   display: grid;
   gap: 10px;
@@ -395,6 +402,24 @@
   color: var(--primary-strong);
   background: var(--primary-soft);
   font-weight: 800;
+}
+
+.scoreBadgeMuted {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface) 70%, var(--line) 30%);
+}
+
+.scoreCaption {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.scoreNote {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
 @include tablet {
@@ -507,6 +532,10 @@
   .ipoCardHead {
     flex-direction: column;
     gap: 10px;
+  }
+
+  .scoreArea {
+    align-items: flex-start;
   }
 
   .scoreBadge {

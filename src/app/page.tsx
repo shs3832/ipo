@@ -105,6 +105,7 @@ export default async function Home() {
             listingOpenPrice: ipo.listingOpenPrice,
             listingOpenReturnRate: ipo.listingOpenReturnRate,
             ratingLabel: ipo.latestAnalysis.ratingLabel,
+            scoreDisplay: ipo.latestAnalysis.scoreDisplay,
           }))}
           monthDays={monthDays.map((day) => day.toISOString())}
         />

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { BrokerChipList } from "@/components/broker-chip";
 import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, kstDateKey } from "@/lib/date";
+import type { IpoAnalysisRecord } from "@/lib/types";
 import styles from "@/app/home-content.module.scss";
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
@@ -27,6 +28,7 @@ type HomeIpoSummary = {
   listingOpenPrice: number | null;
   listingOpenReturnRate: number | null;
   ratingLabel: string;
+  scoreDisplay: IpoAnalysisRecord["scoreDisplay"];
 };
 
 type Props = {
@@ -259,7 +261,7 @@ export function HomeContent({
           <div>
             <p className="page-eyebrow">Tracked IPOs</p>
             <h2 className="section-title">종목 개요</h2>
-            <p className="section-copy">청약 마감일 기준으로 공모가와 현재 판단 점수를 빠르게 훑는 영역입니다.</p>
+            <p className="section-copy">청약 마감일 기준으로 공모가와 근거가 충분한 참고 점수만 빠르게 훑는 영역입니다.</p>
           </div>
           <span className="status-pill status-pill-soft">{ipos.length}개 종목</span>
         </div>
@@ -272,7 +274,16 @@ export function HomeContent({
                   <p>{ipo.market}</p>
                   <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
                 </div>
-                <span className={styles.scoreBadge}>{ipo.score}점</span>
+                <div className={styles.scoreArea}>
+                  <span
+                    className={`${styles.scoreBadge} ${ipo.scoreDisplay.isVisible ? "" : styles.scoreBadgeMuted}`.trim()}
+                  >
+                    {ipo.scoreDisplay.isVisible ? `${ipo.score}점` : "평가 보류"}
+                  </span>
+                  <span className={styles.scoreCaption}>
+                    {ipo.scoreDisplay.isVisible ? "참고용 점수" : "핵심 지표 부족"}
+                  </span>
+                </div>
               </div>
               <dl className={styles.ipoStats}>
                 <div>
@@ -297,10 +308,11 @@ export function HomeContent({
                 ) : (
                   <div>
                     <dt>판단</dt>
-                    <dd>{ipo.ratingLabel}</dd>
+                    <dd>{ipo.scoreDisplay.isVisible ? ipo.ratingLabel : "평가 보류"}</dd>
                   </div>
                 )}
               </dl>
+              <p className={styles.scoreNote}>{ipo.scoreDisplay.helpText}</p>
             </Link>
           ))}
         </div>

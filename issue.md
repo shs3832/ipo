@@ -435,3 +435,47 @@
 - `WITHDRAWN` 복구는 checksum이 같아도 반드시 DB `status`를 라이브 상태로 맞춘 뒤 반환해야 한다.
 - 30분 전 리마인더는 “prepare 결과만” 믿지 말고, 지연 실행 시 DB에 남아 있던 당일 `READY` job도 함께 정리해야 한다.
 - `delivery_failed` 같은 운영 로그는 공통 함수 안에서도 실제 호출 source를 유지해야 관리자 화면에서 원인 추적이 가능하다.
+
+## 2026-03-22
+
+### Follow-up: Score Visibility Gating / Evidence Messaging
+
+점수 자체보다 신뢰 가능한 노출 기준이 더 중요하다는 판단에 따라, 데이터가 부족한 종목은 숫자 점수를 숨기고 `평가 보류`로 처리하도록 바꿨다. 동시에 홈/상세/메일에서 점수의 근거와 참고용 안내 문구를 함께 보여주도록 정리했다.
+
+### What Changed In This Follow-up
+
+1. 점수 계산 결과에 `scoreDisplay` 메타데이터를 추가해 점수 노출 가능 여부, 반영 지표 수, 수급/재무 근거 개수, 안내 문구를 함께 만들도록 확장했다.
+2. 현재 기준은 `총 4개 이상 지표`, `수급 2개 이상`, `재무 1개 이상`이 확보돼야만 점수를 공개 화면에 표시하도록 잡았다.
+3. 기준을 충족하지 못하는 경우 숫자 점수 대신 `평가 보류`와 `핵심 데이터 부족` 상태를 홈 카드와 상세 히어로에서 표시하도록 변경했다.
+4. 점수가 보일 때는 `참고용 점수`라는 성격과 반영 지표 요약을 함께 보여주고, 점수가 숨겨질 때는 왜 숨겨졌는지 사유를 문구로 설명하도록 바꿨다.
+5. 상세 페이지 분석 요약에는 점수 노출 정책 문구와 참고용 disclaimer를 추가했다.
+6. 10시 분석 메일과 마감 30분 전 리마인더 메일도 같은 기준을 따르도록 맞춰, 데이터가 부족한 종목은 메일에서도 `점수 평가 보류`로 안내하게 했다.
+7. 메일 태그 생성도 점수 노출 가능 여부를 반영해 `#평가보류`, `#데이터보완대기` 상태를 구분하도록 조정했다.
+
+### Main Code Changes In This Follow-up
+
+- 점수 노출 기준 / 근거 메타데이터
+  - `src/lib/analysis.ts`
+  - `src/lib/types.ts`
+- read model / 메일 payload 반영
+  - `src/lib/jobs.ts`
+  - `src/app/page.tsx`
+- 홈 UI
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+- 상세 UI
+  - `src/app/ipos/[slug]/page.tsx`
+  - `src/app/ipos/[slug]/page.module.scss`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm run lint -- src/lib/analysis.ts src/lib/types.ts src/lib/jobs.ts src/app/page.tsx src/app/home-content.tsx src/app/home-content.module.scss src/app/ipos/[slug]/page.tsx src/app/ipos/[slug]/page.module.scss`
+  - SCSS 2개는 현재 ESLint 설정 대상이 아니라 warning만 발생
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 점수는 “항상 보여주는 값”이 아니라 “근거가 충분할 때만 보여주는 참고 정보”다.
+- 근거가 부족한 경우에는 애매한 `50점대 보통`보다 `평가 보류`가 더 신뢰를 높인다.
+- 공개 화면과 메일의 점수 정책은 반드시 동일하게 유지한다.

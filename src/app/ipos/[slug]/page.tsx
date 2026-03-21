@@ -119,6 +119,17 @@ export default async function IpoDetailPage({
           {isListedYet ? unavailableLabel : pendingListingLabel}
         </span>
       );
+  const scoreDisplay = ipo.latestAnalysis.scoreDisplay;
+  const visibleScore = scoreDisplay.isVisible;
+  const analysisSummary = visibleScore
+    ? ipo.latestAnalysis.summary
+    : `평가 보류. ${scoreDisplay.helpText}`;
+  const keyPoints = ipo.latestAnalysis.keyPoints.length
+    ? ipo.latestAnalysis.keyPoints
+    : [visibleScore ? "세부 근거 데이터가 추가되면 분석 요약이 더 구체화됩니다." : scoreDisplay.policyNote];
+  const warnings = ipo.latestAnalysis.warnings.length
+    ? ipo.latestAnalysis.warnings
+    : ["최종 청약 결정 전 증권신고서와 주관사 공고를 함께 확인해 주세요."];
 
   return (
     <main className="page-shell">
@@ -135,15 +146,19 @@ export default async function IpoDetailPage({
             <div className={styles.metaRow}>
               <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
               <span className="status-pill status-pill-soft">
-                이벤트 {ipo.events.length}건 · 기준 점수 {ipo.latestAnalysis.score}점
+                이벤트 {ipo.events.length}건 · {visibleScore ? `참고 점수 ${ipo.latestAnalysis.score}점` : "평가 보류"}
               </span>
             </div>
           </div>
 
           <div className={styles.scoreCard}>
-            <span className={styles.scoreLabel}>현재 점수</span>
-            <strong>{ipo.latestAnalysis.score}</strong>
-            <span className={styles.scoreRating}>{ipo.latestAnalysis.ratingLabel}</span>
+            <span className={styles.scoreLabel}>{visibleScore ? "현재 점수" : "평가 상태"}</span>
+            <strong className={visibleScore ? "" : styles.scoreValueMuted}>
+              {visibleScore ? ipo.latestAnalysis.score : "평가 보류"}
+            </strong>
+            <span className={styles.scoreRating}>{visibleScore ? ipo.latestAnalysis.ratingLabel : "데이터 보강 대기"}</span>
+            <p className={styles.scoreHelpText}>{scoreDisplay.helpText}</p>
+            <p className={styles.scoreDisclaimer}>{scoreDisplay.disclaimer}</p>
           </div>
         </section>
 
@@ -266,14 +281,15 @@ export default async function IpoDetailPage({
           <article className={`${styles.card} ${styles.cardWide}`}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">분석 요약</h2>
-              <p className="section-copy">현재 스코어가 어떤 근거와 주의사항 위에 놓여 있는지 분리해 보여줍니다.</p>
+              <p className="section-copy">점수는 근거가 충분할 때만 노출하고, 현재 확보된 근거와 주의사항을 분리해 보여줍니다.</p>
             </div>
-            <p className={styles.analysisSummary}>{ipo.latestAnalysis.summary}</p>
+            <p className={styles.analysisSummary}>{analysisSummary}</p>
+            <p className={styles.analysisDisclaimer}>{scoreDisplay.policyNote}</p>
             <div className={styles.analysisColumns}>
               <div className={styles.analysisBlock}>
                 <h3>핵심 근거</h3>
                 <ul className={styles.bulletList}>
-                  {ipo.latestAnalysis.keyPoints.map((point) => (
+                  {keyPoints.map((point) => (
                     <li key={point}>{point}</li>
                   ))}
                 </ul>
@@ -281,7 +297,7 @@ export default async function IpoDetailPage({
               <div className={styles.analysisBlock}>
                 <h3>주의 포인트</h3>
                 <ul className={styles.bulletList}>
-                  {ipo.latestAnalysis.warnings.map((warning) => (
+                  {warnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>

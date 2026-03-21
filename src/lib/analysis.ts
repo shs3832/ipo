@@ -3,6 +3,156 @@ import type { IpoAnalysisRecord, SourceIpoRecord } from "@/lib/types";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const formatSignedRate = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+const SCORE_VISIBILITY_POLICY_NOTE = "핵심 수급 지표와 재무 지표가 충분히 확보된 종목만 점수를 표시합니다.";
+const SCORE_REFERENCE_DISCLAIMER =
+  "점수는 투자 판단을 돕기 위한 참고용 정보이며, 최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.";
+const MIN_TOTAL_EVIDENCE = 4;
+const MIN_SUPPLY_DEMAND_EVIDENCE = 2;
+const MIN_FINANCIAL_EVIDENCE = 1;
+
+type ScoreEvidenceCategory = "SUPPLY_DEMAND" | "FINANCIAL";
+
+type ScoreEvidenceSource = Pick<
+  SourceIpoRecord,
+  | "offerPrice"
+  | "priceBandLow"
+  | "priceBandHigh"
+  | "demandCompetitionRate"
+  | "lockupRate"
+  | "floatRatio"
+  | "insiderSalesRatio"
+  | "marketMoodScore"
+  | "revenueGrowthRate"
+  | "operatingIncome"
+  | "netIncome"
+  | "debtRatio"
+  | "totalEquity"
+>;
+
+type ScoreEvidence = {
+  label: string;
+  category: ScoreEvidenceCategory;
+};
+
+const getScoreEvidence = (record: ScoreEvidenceSource): ScoreEvidence[] => {
+  const evidence: ScoreEvidence[] = [];
+
+  if (record.offerPrice != null && record.priceBandLow != null && record.priceBandHigh != null) {
+    evidence.push({ label: "확정 공모가 위치", category: "SUPPLY_DEMAND" });
+  }
+
+  if (record.demandCompetitionRate != null) {
+    evidence.push({ label: "기관 수요예측 경쟁률", category: "SUPPLY_DEMAND" });
+  }
+
+  if (record.lockupRate != null) {
+    evidence.push({ label: "의무보유확약 비율", category: "SUPPLY_DEMAND" });
+  }
+
+  if (record.floatRatio != null) {
+    evidence.push({ label: "유통가능물량", category: "SUPPLY_DEMAND" });
+  }
+
+  if (record.insiderSalesRatio != null) {
+    evidence.push({ label: "구주매출 비중", category: "SUPPLY_DEMAND" });
+  }
+
+  if (record.marketMoodScore != null) {
+    evidence.push({ label: "최근 신규상장 분위기", category: "SUPPLY_DEMAND" });
+  }
+
+  if (record.revenueGrowthRate != null) {
+    evidence.push({ label: "매출 성장률", category: "FINANCIAL" });
+  }
+
+  if (record.operatingIncome != null) {
+    evidence.push({ label: "영업이익", category: "FINANCIAL" });
+  }
+
+  if (record.netIncome != null) {
+    evidence.push({ label: "순이익", category: "FINANCIAL" });
+  }
+
+  if (record.debtRatio != null) {
+    evidence.push({ label: "부채비율", category: "FINANCIAL" });
+  }
+
+  if (record.totalEquity != null) {
+    evidence.push({ label: "자본총계", category: "FINANCIAL" });
+  }
+
+  return evidence;
+};
+
+const formatEvidenceSummary = (labels: string[]) => {
+  if (labels.length === 0) {
+    return "반영 가능한 평가 지표가 아직 없습니다.";
+  }
+
+  const preview = labels.slice(0, 3).join(", ");
+  return labels.length > 3
+    ? `반영 지표: ${preview} 등 ${labels.length}개.`
+    : `반영 지표: ${preview}.`;
+};
+
+const getHiddenReason = ({
+  evidenceCount,
+  demandSupplyEvidenceCount,
+  financialEvidenceCount,
+}: {
+  evidenceCount: number;
+  demandSupplyEvidenceCount: number;
+  financialEvidenceCount: number;
+}) => {
+  if (evidenceCount === 0) {
+    return "점수를 계산할 핵심 수급·재무 데이터가 아직 없어 평가를 보류합니다.";
+  }
+
+  const missingGroups: string[] = [];
+
+  if (demandSupplyEvidenceCount < MIN_SUPPLY_DEMAND_EVIDENCE) {
+    missingGroups.push("수급");
+  }
+
+  if (financialEvidenceCount < MIN_FINANCIAL_EVIDENCE) {
+    missingGroups.push("재무");
+  }
+
+  const target =
+    missingGroups.length === 2
+      ? "핵심 수급·재무 데이터"
+      : `${missingGroups[0] ?? "평가 근거"} 데이터`;
+
+  return `${target}가 부족해 점수를 표시하지 않습니다. 현재 반영 가능한 지표 ${evidenceCount}개입니다.`;
+};
+
+export const buildAnalysisScoreDisplay = (record: ScoreEvidenceSource): IpoAnalysisRecord["scoreDisplay"] => {
+  const evidence = getScoreEvidence(record);
+  const evidenceLabels = evidence.map((item) => item.label);
+  const demandSupplyEvidenceCount = evidence.filter((item) => item.category === "SUPPLY_DEMAND").length;
+  const financialEvidenceCount = evidence.filter((item) => item.category === "FINANCIAL").length;
+  const isVisible =
+    evidence.length >= MIN_TOTAL_EVIDENCE
+    && demandSupplyEvidenceCount >= MIN_SUPPLY_DEMAND_EVIDENCE
+    && financialEvidenceCount >= MIN_FINANCIAL_EVIDENCE;
+
+  return {
+    isVisible,
+    evidenceLabels,
+    evidenceCount: evidence.length,
+    demandSupplyEvidenceCount,
+    financialEvidenceCount,
+    helpText: isVisible
+      ? `참고용 점수입니다. ${formatEvidenceSummary(evidenceLabels)}`
+      : getHiddenReason({
+          evidenceCount: evidence.length,
+          demandSupplyEvidenceCount,
+          financialEvidenceCount,
+        }),
+    policyNote: SCORE_VISIBILITY_POLICY_NOTE,
+    disclaimer: SCORE_REFERENCE_DISCLAIMER,
+  };
+};
 
 export const buildAnalysis = (record: SourceIpoRecord): IpoAnalysisRecord => {
   let score = 50;
@@ -146,6 +296,7 @@ export const buildAnalysis = (record: SourceIpoRecord): IpoAnalysisRecord => {
     summary: `${ratingLabel} 의견. ${summaryParts.join(" / ")}`,
     keyPoints: keyPoints.slice(0, 3),
     warnings: warnings.slice(0, 3),
+    scoreDisplay: buildAnalysisScoreDisplay(record),
     generatedAt: new Date(),
   };
 };
