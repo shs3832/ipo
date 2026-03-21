@@ -46,6 +46,9 @@ const filterItems: Array<{ type: EventType; label: string }> = [
   { type: "LISTING", label: "상장" },
 ];
 
+// Keep the source data intact so weekend columns can be restored later by toggling this flag.
+const SHOW_WEEKEND_COLUMNS = false;
+
 const badgeClassNames: Record<EventType, string> = {
   SUBSCRIPTION: styles.eventBadgeSubscription,
   REFUND: styles.eventBadgeRefund,
@@ -98,6 +101,19 @@ export function HomeContent({
     }));
   };
 
+  const visibleWeekdayLabels = ["일", "월", "화", "수", "목", "금", "토"].filter((_, index) =>
+    SHOW_WEEKEND_COLUMNS ? true : index !== 0 && index !== 6,
+  );
+
+  const visibleMonthDays = monthDays.filter((dayValue) => {
+    if (SHOW_WEEKEND_COLUMNS) {
+      return true;
+    }
+
+    const dayOfWeek = new Date(dayValue).getDay();
+    return dayOfWeek !== 0 && dayOfWeek !== 6;
+  });
+
   return (
     <section className={styles.layout}>
       <article className={styles.calendarPanel} id="calendar-panel">
@@ -127,10 +143,10 @@ export function HomeContent({
           ))}
         </div>
 
-        <div className={styles.weekdayRow}>
-          {["일", "월", "화", "수", "목", "금", "토"].map((label, index) => (
+        <div className={`${styles.weekdayRow} ${SHOW_WEEKEND_COLUMNS ? "" : styles.weekdaysOnly}`}>
+          {visibleWeekdayLabels.map((label) => (
             <span
-              className={`${styles.weekdayLabel} ${index === 0 ? styles.weekdaySunday : ""} ${index === 6 ? styles.weekdaySaturday : ""}`}
+              className={styles.weekdayLabel}
               key={label}
             >
               {label}
@@ -138,8 +154,8 @@ export function HomeContent({
           ))}
         </div>
 
-        <div className={styles.calendarGrid}>
-          {monthDays.map((dayValue) => {
+        <div className={`${styles.calendarGrid} ${SHOW_WEEKEND_COLUMNS ? "" : styles.weekdaysOnly}`}>
+          {visibleMonthDays.map((dayValue) => {
             const day = new Date(dayValue);
             const entries = (eventsByDate[kstDateKey(day)] ?? []).filter((entry) => filters[entry.type]);
             const dayOfWeek = day.getDay();

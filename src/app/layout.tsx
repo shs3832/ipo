@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.scss";
 
@@ -15,6 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "IPO Calendar Alerts",
   description: "공모주 일정 캘린더와 10시 분석 알림 대시보드",
+};
+
+export const viewport: Viewport = {
+  width: 1024,
+  initialScale: 1,
+  themeColor: "#f4f7fb",
 };
 
 export default function RootLayout({

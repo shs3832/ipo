@@ -36,7 +36,7 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 2. source priority:
    - `IPO_SOURCE_URL`
    - `OPENDART_API_KEY`
-   - sample data
+   - empty fallback
 3. `daily-sync` normalizes records and upserts DB
 4. `prepare-daily-alerts` creates payloads for closing-day emails
 5. `dispatch-alerts` sends deliveries and logs status
@@ -98,13 +98,16 @@ Treat it as a structured heuristic.
 ## UI / Product Decisions Already Made
 
 - Calendar is above, IPO overview is below
-- Weekend colors are subtle, not dominant
+- Mobile hides the calendar and shows IPO overview first
+- Responsive mobile breakpoint is currently `1024px`
+- Calendar currently hides Saturday/Sunday columns, but this is implemented as a render toggle so it can be restored later
 - Subscription events are shown by `closing date`, not start date
 - Event labels use badges:
   - `청약마감`
   - `환불`
   - `상장`
 - Calendar has checkbox filters for those event types
+- Calendar event titles are clamped to 2 lines with ellipsis
 - Detail page hides source metadata unless admin
 - Admin page is protected by login
 
@@ -147,11 +150,16 @@ When debugging:
 - Message payload includes tags, quick summary, schedule, analysis, and `웹에서 보기`
 - `APP_BASE_URL` controls the link target
 - If `APP_BASE_URL` is localhost, emails will include localhost links
-- Sample email command:
+- Preview email command:
 
 ```bash
 npm run mail:sample
 ```
+
+Notes:
+
+- The script name remains `mail:sample`, but sample IPO data has been removed.
+- It now works as a preview sender for whatever prepared alert payload currently exists.
 
 ## Known Product Gaps
 
@@ -174,7 +182,7 @@ If continuing feature work, highest-impact next tasks are:
 ## Safe Working Rules
 
 - Prefer additive changes over rewrites
-- Do not remove sample mode fallback unless replacing it with another safe fallback
+- Do not replace the current empty fallback with fake/sample IPO data unless explicitly requested
 - Keep admin-only metadata hidden from general users
 - Preserve idempotency in notification jobs
 - Be careful with schedules: timezone is `Asia/Seoul`
