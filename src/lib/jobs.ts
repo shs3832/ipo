@@ -60,6 +60,7 @@ type SchedulerDefinition = {
 };
 
 type PreparedJobSeed = {
+  id: string;
   ipoId: string;
   ipoSlug: string;
   alertType: NotificationJobRecord["alertType"];
@@ -1794,6 +1795,7 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
     const closingIpos = getTodayClosingIpos(dashboard, today);
 
     const jobs: PreparedJobSeed[] = closingIpos.map((ipo) => ({
+      id: `prepared-${ipo.id}-closing-day-analysis`,
       ipoId: ipo.id,
       ipoSlug: ipo.slug,
       alertType: "CLOSING_DAY_ANALYSIS" as const,
@@ -1867,6 +1869,7 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
     const closingIpos = now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [];
 
     const jobs: PreparedJobSeed[] = closingIpos.map((ipo) => ({
+      id: `prepared-${ipo.id}-closing-soon-reminder`,
       ipoId: ipo.id,
       ipoSlug: ipo.slug,
       alertType: "CLOSING_DAY_ANALYSIS" as const,

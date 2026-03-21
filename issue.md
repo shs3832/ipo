@@ -265,3 +265,93 @@
 - `희망 공모가`, `최소청약주수`, `증거금률`은 OpenDART 원문 파싱 결과를 우선 사용한다.
 - `확정 공모가`, `일반청약 경쟁률`, `유통가능주식수/비율`, `IR/수요예측 일정`은 KIND 상세를 우선 사용한다.
 - 여전히 `기관 수요예측 경쟁률`, `의무보유확약률`은 안정적으로 채우지 못하는 종목이 있을 수 있다.
+
+## 2026-03-22
+
+### Thread Summary
+
+이번 스레드에서는 서비스 핵심 운영 흐름인 `매일 공모주 데이터 업데이트`, `마감 당일 10시 분석 메일`, `마감 30분 전 리마인더 메일`을 중심으로 점검하고, 관리자 수동 동기화 버튼과 운영 검증 UI를 추가했으며, 수동 최신화 후 상세 캐시 반영 문제까지 후속 수정했다.
+
+### What Happened
+
+1. `vercel.json`, 잡 API, 운영 로그 흐름을 다시 읽어 현재 배치가 언제 실행되고 무엇으로 검증되는지 확인했다.
+2. 관리자 화면에서 `06:00 daily-sync`, `09:00 prepare-daily-alerts`, `10:00 dispatch-alerts` 기준 실행 여부를 `정상 / 대기 / 지연 / 미실행 / 실패`로 보여주는 스케줄 검증 패널을 추가했다.
+3. 관리자 화면에 `최신 데이터 가져오기` 버튼을 추가해 강제 새로고침 기반 `daily-sync`를 수동 실행할 수 있게 했다.
+4. 수동 동기화 결과는 운영 로그 `admin:daily-sync`로 남기고, 성공/실패 배너를 관리자 화면에 표시하도록 연결했다.
+5. `마감 당일 10시 분석 메일` 흐름을 코드/DB/운영 로그 기준으로 다시 검증했다.
+6. `마감 30분 전 메일`은 기존에 구현돼 있지 않음을 확인하고, 기존 10시 메일과 분리된 별도 준비/발송 경로로 추가했다.
+7. `15:25 prepare-closing-alerts`, `15:30 dispatch-closing-alerts` 크론과 전용 API route, 로컬 실행 스크립트를 추가했다.
+8. 마감 30분 전 메일은 제목/본문을 별도 구성으로 만들고, `closing-soon-reminder` idempotency key를 사용하게 했다.
+9. 리마인더 메일은 `16:00` 이후 늦게 발송되지 않도록 차단 로직을 넣었다.
+10. 전체 코드리뷰를 통해 핵심 기능 관련 운영 리스크를 다시 점검했고, 그 과정에서 수동 최신화 후 상세 페이지 캐시가 남는 문제를 확인했다.
+11. 후속으로 `page-data` 캐시를 tag 기반으로 정리하고, 관리자 수동 동기화 시 홈/상세 캐시를 즉시 무효화하도록 `updateTag`를 추가했다.
+12. `마감 30분 전 메일에 주관사별 경쟁률, 5사 6입 고려 청약금액을 넣을지`는 다음 스레드 개선 항목으로 남겼다. 현재 구현에는 포함되지 않는다.
+
+### Main Code Changes
+
+- 관리자 운영 / 수동 동기화
+  - `src/app/admin/page.tsx`
+  - `src/app/admin/page.module.scss`
+  - `src/app/admin/actions.ts` 추가
+- 잡 / 메일 / 운영 검증
+  - `src/lib/jobs.ts`
+  - `src/lib/types.ts`
+  - `src/lib/fallback-data.ts`
+  - `src/lib/page-data.ts`
+- 신규 잡 API
+  - `src/app/api/jobs/prepare-closing-alerts/route.ts` 추가
+  - `src/app/api/jobs/dispatch-closing-alerts/route.ts` 추가
+- 로컬 실행 스크립트 / 설정
+  - `scripts/prepare-closing-alerts.ts` 추가
+  - `scripts/dispatch-closing-alerts.ts` 추가
+  - `package.json`
+  - `vercel.json`
+
+### Verification In This Thread
+
+- `npm run lint`
+- DB / 운영 로그 조회로 확인:
+  - `CLOSING_DAY_ANALYSIS` 구독과 관리자 이메일 채널 존재 확인
+  - `prepare-daily-alerts`, `dispatch-alerts` 최근 운영 로그 확인
+  - `notificationJob`, `notificationDelivery`, `operationLog` 비교 점검
+- 수동 최신화 후 캐시 반영 로직은 `updateTag(public-home-snapshot/public-ipo-detail)` 기준으로 연결 상태를 확인했다.
+
+### Review Findings To Remember
+
+1. Vercel Hobby 플랜에서는 `15:25`/`15:30` 크론의 분 단위 정확도가 보장되지 않을 수 있다.
+2. `prepareClosingSoonAlerts()`는 `16:00` 이후 빈 배열을 반환하므로, 지연 실행 시 기존 `READY` 리마인더 잡 정리 정책이 별도로 필요하다.
+3. `delivery_failed` 로그 source가 아직 `job:dispatch-alerts`로 남아 있어 리마인더 실패와 10시 메일 실패가 구분되지 않는다.
+
+### Current Decisions To Remember In This Thread
+
+- `마감 30분 전 메일`은 기존 10시 분석 메일을 덮어쓰지 않고 별도 크론/별도 API/별도 idempotency key로 분리한다.
+- 수동 최신화는 관리자 인증 후에만 실행되며, 홈과 상세 캐시를 함께 무효화해야 한다.
+- 현재 30분 전 메일에는 `주관사별 경쟁률`과 `5사 6입 고려 청약금액`이 들어가지 않는다.
+- 위 두 항목은 다음 스레드에서 데이터 구조 설계와 함께 개선한다.
+
+### Follow-up: Deployment Type Error Fix
+
+배포 중 `next build` 타입 체크에서 `PreparedJobSeed[]`를 `NotificationJobRecord[]`로 반환하던 fallback 경로 때문에 실패한 문제를 후속으로 수정했다.
+
+### What Changed In This Follow-up
+
+1. `prepare-daily-alerts` fallback 반환값이 `NotificationJobRecord[]` 타입을 만족하도록 임시 job에도 `id`를 부여했다.
+2. `prepare-closing-alerts` fallback 반환값도 동일하게 `id`를 포함하도록 맞췄다.
+3. 두 준비 함수 모두 fallback / database 경로에서 반환 타입이 일관되도록 정리했다.
+
+### Main Code Changes In This Follow-up
+
+- 잡 fallback 타입 정합성
+  - `src/lib/jobs.ts`
+
+### Verification In This Follow-up
+
+- `npm run lint`
+- `npm run build`
+
+### Verified Error In This Follow-up
+
+- 배포 에러 로그:
+  - `Type 'PreparedJobSeed[]' is not assignable to type 'NotificationJobRecord[]'`
+  - 원인: fallback 경로 `jobs` 배열에 `id`가 없어 `NotificationJobRecord` 타입을 만족하지 못함
+  - 수정 후 build 통과 확인
