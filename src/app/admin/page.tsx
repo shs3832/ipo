@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/date";
 import { buildAdminStatusSummary, getDashboardSnapshot } from "@/lib/jobs";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { triggerManualSyncAction } from "@/app/admin/actions";
+import { AdminManualSyncForm } from "@/app/admin/manual-sync-form";
 import { logoutAction } from "@/app/login/actions";
 import { AdminLogPanel } from "@/app/admin-log-panel";
 import styles from "@/app/admin/page.module.scss";
@@ -70,11 +71,7 @@ export default async function AdminPage({
               <p className={styles.cardCopy}>운영 로그 기준으로 즉시 확인이 필요한 신호를 요약했습니다.</p>
             </article>
             <div className={styles.actionGroup}>
-              <form action={triggerManualSyncAction} className={styles.syncForm}>
-                <button className="button-primary" type="submit">
-                  최신 데이터 가져오기
-                </button>
-              </form>
+              <AdminManualSyncForm action={triggerManualSyncAction} />
               <Link className="button-primary" href="/">
                 캘린더 보기
               </Link>

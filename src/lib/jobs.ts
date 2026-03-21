@@ -83,6 +83,7 @@ type DispatchPreparedAlertsOptions = {
   failureMessage: string;
   prepare: () => Promise<PreparedAlertsResult>;
   isDispatchable?: (job: NotificationJobRecord, now: Date) => boolean;
+  loadPersistedReadyJobs?: (now: Date) => Promise<NotificationJobRecord[]>;
 };
 
 const SCHEDULER_EARLY_GRACE_MS = 5 * 60 * 1000;
@@ -125,6 +126,7 @@ const schedulerDefinitions: SchedulerDefinition[] = [
 const CLOSING_TIME_HOUR = 16;
 const CLOSING_SOON_ALERT_HOUR = 15;
 const CLOSING_SOON_ALERT_MINUTE = 30;
+const hasLiveIpoSource = () => Boolean(env.ipoSourceUrl || env.opendartApiKey);
 
 const getDisplayRange = (date = new Date()) => {
   const currentMonth = getKstMonthRange(date, 0);
@@ -550,6 +552,38 @@ const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
   return storedJobs;
 };
 
+const getPersistedReadyJobsByIdempotencySuffix = async (
+  suffix: string,
+  {
+    scheduledFrom,
+    scheduledTo,
+  }: {
+    scheduledFrom: Date;
+    scheduledTo: Date;
+  },
+) => {
+  const jobs = await prisma.notificationJob.findMany({
+    where: {
+      status: "READY",
+      idempotencyKey: {
+        endsWith: suffix,
+      },
+      scheduledFor: {
+        gte: scheduledFrom,
+        lt: scheduledTo,
+      },
+    },
+    orderBy: {
+      scheduledFor: "asc",
+    },
+    include: {
+      ipo: true,
+    },
+  });
+
+  return jobs.map(toNotificationJobRecord);
+};
+
 const parseSnapshotNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
@@ -631,6 +665,10 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
 };
 
 const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SourceIpoRecord[]> => {
+  if (!hasLiveIpoSource()) {
+    throw new Error("No live IPO source is configured. Set IPO_SOURCE_URL or OPENDART_API_KEY.");
+  }
+
   let sourceRecords: SourceIpoRecord[];
 
   if (env.ipoSourceUrl) {
@@ -655,12 +693,20 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
   } else if (env.opendartApiKey) {
     sourceRecords = await fetchOpendartCurrentMonthIpos({ forceRefresh });
   } else {
-    return [];
+    throw new Error("No live IPO source is configured. Set IPO_SOURCE_URL or OPENDART_API_KEY.");
   }
 
   const recordsWithListingMetadata = await mergeKindListingMetadata(sourceRecords, { forceRefresh });
   const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(recordsWithListingMetadata, { forceRefresh });
   return enrichListingOpenMetrics(recordsWithKindOfferMetadata, { forceRefresh });
+};
+
+const countActiveDisplayRangeIpos = async () => {
+  const result = await prisma.ipo.count({
+    where: getDisplayRangeWhere(),
+  });
+
+  return result;
 };
 
 const isSameAnalysis = (
@@ -1371,6 +1417,17 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
     latestSnapshot?.sourceSnapshots[0]?.sourceKey === persistedRecord.sourceKey &&
     latestSnapshot.sourceSnapshots[0]?.checksum === checksum
   ) {
+    const targetStatus = persistedRecord.status ?? "UPCOMING";
+
+    if (latestSnapshot.id && latestSnapshot.status !== targetStatus) {
+      await prisma.ipo.update({
+        where: { id: latestSnapshot.id },
+        data: {
+          status: targetStatus,
+        },
+      });
+    }
+
     const latestAnalysis = latestSnapshot.analyses[0];
     const analysisChanged = !latestAnalysis
       || !isSameAnalysis(
@@ -1746,6 +1803,24 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
 
     await ensureAdminRecipient();
 
+    const activeDisplayRangeCount = await countActiveDisplayRangeIpos();
+
+    if (sourceRecords.length === 0 && activeDisplayRangeCount > 0) {
+      await logOperation({
+        level: "WARN",
+        source: "job:daily-sync",
+        action: "empty_source_protected",
+        message: "라이브 소스 응답이 0건이라 기존 표시 범위 공모주 데이터를 보존하고 동기화를 중단했습니다.",
+        context: {
+          forceRefresh,
+          activeDisplayRangeCount,
+          hasIpoSourceUrl: Boolean(env.ipoSourceUrl),
+          hasOpendartApiKey: Boolean(env.opendartApiKey),
+        },
+      });
+      throw new Error("Live IPO source returned 0 records while existing display-range IPOs are present.");
+    }
+
     const ipos = await Promise.all(sourceRecords.map((record) => upsertDatabaseIpo(record)));
     const synced = ipos.filter(Boolean).length;
     const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords);
@@ -1979,6 +2054,7 @@ const dispatchPreparedAlerts = async ({
   failureMessage,
   prepare,
   isDispatchable = () => true,
+  loadPersistedReadyJobs,
 }: DispatchPreparedAlertsOptions): Promise<DispatchResult> => {
   await logOperation({
     level: "INFO",
@@ -1992,10 +2068,39 @@ const dispatchPreparedAlerts = async ({
     const recipients = await resolveRecipients();
     const now = new Date();
     const prepared = await prepare();
-    const dueJobs = prepared.jobs.filter((job) => job.scheduledFor <= now);
+    const persistedReadyJobs =
+      useDatabase && loadPersistedReadyJobs
+        ? await loadPersistedReadyJobs(now)
+        : [];
+    const jobsById = new Map<string, NotificationJobRecord>();
+
+    for (const job of prepared.jobs) {
+      jobsById.set(job.id, job);
+    }
+
+    for (const job of persistedReadyJobs) {
+      jobsById.set(job.id, job);
+    }
+
+    const dueJobs = Array.from(jobsById.values()).filter((job) => job.scheduledFor <= now);
     const readyJobs = dueJobs.filter((job) => isDispatchable(job, now));
-    const staleSkippedCount = dueJobs.length - readyJobs.length;
+    const staleJobs = dueJobs.filter((job) => !isDispatchable(job, now));
+    const staleSkippedCount = staleJobs.length;
     const deliveries: NotificationDeliveryRecord[] = [];
+
+    if (useDatabase && staleJobs.length > 0) {
+      await prisma.notificationJob.updateMany({
+        where: {
+          id: {
+            in: staleJobs.map((job) => job.id),
+          },
+          status: "READY",
+        },
+        data: {
+          status: "PARTIAL_FAILURE",
+        },
+      });
+    }
 
     for (const job of readyJobs) {
       const jobDeliveries: Array<"SENT" | "FAILED" | "PENDING" | "SKIPPED"> = [];
@@ -2089,7 +2194,7 @@ const dispatchPreparedAlerts = async ({
 
             await logOperation({
               level: "ERROR",
-              source: "job:dispatch-alerts",
+              source,
               action: "delivery_failed",
               message: "메일 발송에 실패했습니다.",
               context: toErrorContext(error, {
@@ -2201,6 +2306,16 @@ export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
       `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
     failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
     prepare: prepareClosingSoonAlerts,
+    loadPersistedReadyJobs: async (now) => {
+      const todayKey = getKstTodayKey(now);
+      const dayStart = atKstTime(todayKey, 0);
+      const nextDayStart = atKstTime(shiftKstDateKey(todayKey, 1), 0);
+
+      return getPersistedReadyJobsByIdempotencySuffix(":closing-soon-reminder", {
+        scheduledFrom: dayStart,
+        scheduledTo: nextDayStart,
+      });
+    },
     isDispatchable: (job, now) => {
       const todayKey = kstDateKey(job.scheduledFor);
       return now < atKstTime(todayKey, CLOSING_TIME_HOUR);

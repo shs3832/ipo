@@ -389,3 +389,49 @@
 - 다만 반드시 `Production` 적용 여부와 redeploy 여부를 함께 확인해야 한다.
 - `JOB_SECRET`는 최소 32자 이상 랜덤 문자열, `ADMIN_SESSION_SECRET`는 최소 32자 이상이며 가능하면 64자 수준의 랜덤 문자열을 권장한다.
 - `ADMIN_ACCESS_PASSWORD`는 사람이 입력하는 값이므로 길고 예측 어려운 passphrase 형태를 권장한다.
+
+### Follow-up: Core Flow Code Review Fixes and QA
+
+2026-03-22 08:33 KST 기준으로, 앞선 코드리뷰에서 남아 있던 핵심 이슈 3건을 후속 수정하고 실제 동기화/공개 조회/리마인더 지연 시나리오까지 QA를 다시 진행했다.
+
+### What Changed In This Follow-up
+
+1. `daily-sync`가 `sourceRecords`를 정상 조회해도 기존에 `WITHDRAWN` 처리된 IPO가 checksum 동일 분기에서 그대로 `WITHDRAWN`으로 남던 문제를 수정했다.
+2. 이 문제로 인해 `runDailySync({ forceRefresh: true })`는 `synced=16`으로 성공하지만 공개 홈/관리자 대시보드에서는 `status != WITHDRAWN` 필터에 막혀 `ipoCount=0`이 되던 회귀를 복구했다.
+3. 공통 메일 발송 함수의 `delivery_failed` 로그 source를 고정값 `job:dispatch-alerts`가 아니라 호출 source를 따르도록 수정했다.
+4. `dispatchClosingSoonAlerts()`가 `prepareClosingSoonAlerts()`만 다시 호출하던 구조를 보완해, DB에 남아 있는 당일 `READY` 리마인더 잡도 함께 읽도록 했다.
+5. 16시 이후 지연 실행으로 인해 발송할 수 없는 `READY` 리마인더 잡은 더 이상 방치하지 않고 `PARTIAL_FAILURE`로 정리되도록 했다.
+
+### Main Code Changes In This Follow-up
+
+- 핵심 잡 로직
+  - `src/lib/jobs.ts`
+
+### Verified Root Cause In This Follow-up
+
+- `upsertDatabaseIpo()`의 checksum 동일 분기에서 실제 DB `status`를 갱신하지 않고 바로 `toIpoRecordFromDb()`를 반환하고 있었다.
+- 이 때문에 한 번 `WITHDRAWN` 된 IPO는 동일 소스 데이터가 다시 들어와도 라이브 상태로 복구되지 않았다.
+- 공개 홈과 관리자 대시보드는 `getDisplayRangeWhere()`에서 `status != WITHDRAWN`만 조회하므로, 동기화 성공 이후에도 화면상 데이터가 사라질 수 있었다.
+
+### Verification In This Follow-up
+
+- `npm run lint`
+- `npm run build`
+- `npm run job:daily-sync -- --force-refresh`
+  - 결과: `synced=16`, `sourceRecords=16`, `markedWithdrawn=0`
+  - 수정 전: 반환된 IPO 상태가 전부 `WITHDRAWN`
+  - 수정 후: `UPCOMING` / `CLOSED` 등 정상 상태로 복구 확인
+- `npx tsx`로 `getPublicHomeSnapshot()` 재검증
+  - 수정 전: `ipoCount=0`
+  - 수정 후: `ipoCount=16`
+- `npx tsx`로 `getDashboardSnapshot()` 재검증
+  - 수정 후: `ipoCount=16`, `withdrawn=0`
+- 지연 리마인더 시뮬레이션
+  - 테스트용 `READY` closing-soon job을 넣고 16:05 KST 상황으로 `dispatchClosingSoonAlerts()` 실행
+  - 결과: `attempted=0`, `staleSkippedCount=1`, 테스트 job status `PARTIAL_FAILURE`
+
+### Current Decisions To Remember In This Follow-up
+
+- `WITHDRAWN` 복구는 checksum이 같아도 반드시 DB `status`를 라이브 상태로 맞춘 뒤 반환해야 한다.
+- 30분 전 리마인더는 “prepare 결과만” 믿지 말고, 지연 실행 시 DB에 남아 있던 당일 `READY` job도 함께 정리해야 한다.
+- `delivery_failed` 같은 운영 로그는 공통 함수 안에서도 실제 호출 source를 유지해야 관리자 화면에서 원인 추적이 가능하다.
