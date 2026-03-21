@@ -155,7 +155,7 @@ export type OperationLogRecord = {
 };
 
 export type DashboardSnapshot = {
-  mode: "database" | "sample";
+  mode: "database" | "fallback";
   generatedAt: Date;
   calendarMonth: Date;
   ipos: IpoRecord[];
@@ -167,20 +167,20 @@ export type DashboardSnapshot = {
 };
 
 export type SyncResult = {
-  mode: "database" | "sample";
+  mode: "database" | "fallback";
   synced: number;
   ipos: IpoRecord[];
   timestamp: Date;
 };
 
 export type PreparedAlertsResult = {
-  mode: "database" | "sample";
+  mode: "database" | "fallback";
   timestamp: Date;
   jobs: NotificationJobRecord[];
 };
 
 export type DispatchResult = {
-  mode: "database" | "sample";
+  mode: "database" | "fallback";
   timestamp: Date;
   attempted: number;
   deliveries: NotificationDeliveryRecord[];

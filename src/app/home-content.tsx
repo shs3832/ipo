@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { formatDate, formatMoney, kstDateKey } from "@/lib/date";
+import styles from "@/app/home-content.module.scss";
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
 
@@ -45,6 +46,18 @@ const filterItems: Array<{ type: EventType; label: string }> = [
   { type: "LISTING", label: "상장" },
 ];
 
+const badgeClassNames: Record<EventType, string> = {
+  SUBSCRIPTION: styles.eventBadgeSubscription,
+  REFUND: styles.eventBadgeRefund,
+  LISTING: styles.eventBadgeListing,
+};
+
+const chipClassNames: Record<EventType, string> = {
+  SUBSCRIPTION: styles.eventChipSubscription,
+  REFUND: styles.eventChipRefund,
+  LISTING: styles.eventChipListing,
+};
+
 export function HomeContent({
   calendarMonthLabel,
   currentMonthKey,
@@ -70,6 +83,14 @@ export function HomeContent({
     });
   });
 
+  const visibleEventCount = Object.entries(eventCounts).reduce((count, [type, value]) => {
+    if (!filters[type as EventType]) {
+      return count;
+    }
+
+    return count + value;
+  }, 0);
+
   const toggleFilter = (type: EventType) => {
     setFilters((current) => ({
       ...current,
@@ -78,34 +99,38 @@ export function HomeContent({
   };
 
   return (
-    <section className="content-grid">
-      <article className="calendar-panel">
-        <div className="panel-header">
+    <section className={styles.layout}>
+      <article className={styles.calendarPanel} id="calendar-panel">
+        <div className={styles.panelHeader}>
           <div>
-            <p className="eyebrow">Monthly View</p>
-            <h2>{calendarMonthLabel} 일정</h2>
-            <p className="panel-copy">이번 달과 다음 달에 실제 일정이 있는 종목만 묶어서 보여주고 있습니다.</p>
+            <p className="page-eyebrow">Monthly View</p>
+            <h2 className="section-title">{calendarMonthLabel} 일정</h2>
+            <p className="section-copy">이번 달과 다음 달에 실제 일정이 있는 종목만 묶어서 보여주고 있습니다.</p>
           </div>
+          <span className="status-pill">{visibleEventCount}개 이벤트</span>
         </div>
 
-        <div className="calendar-filter-row" aria-label="캘린더 일정 필터">
+        <div className={styles.filterRow} aria-label="캘린더 일정 필터">
           {filterItems.map((item) => (
-            <label className={`calendar-filter ${filters[item.type] ? "calendar-filter-active" : ""}`} key={item.type}>
+            <label
+              className={`${styles.filterChip} ${filters[item.type] ? styles.filterChipActive : ""}`}
+              key={item.type}
+            >
               <input
                 checked={filters[item.type]}
                 onChange={() => toggleFilter(item.type)}
                 type="checkbox"
               />
-              <span className={`event-badge event-badge-${item.type.toLowerCase()}`}>{item.label}</span>
+              <span className={`${styles.eventBadge} ${badgeClassNames[item.type]}`}>{item.label}</span>
               <strong>{eventCounts[item.type]}</strong>
             </label>
           ))}
         </div>
 
-        <div className="weekday-row">
+        <div className={styles.weekdayRow}>
           {["일", "월", "화", "수", "목", "금", "토"].map((label, index) => (
             <span
-              className={`weekday-label ${index === 0 ? "weekday-sunday" : ""} ${index === 6 ? "weekday-saturday" : ""}`}
+              className={`${styles.weekdayLabel} ${index === 0 ? styles.weekdaySunday : ""} ${index === 6 ? styles.weekdaySaturday : ""}`}
               key={label}
             >
               {label}
@@ -113,7 +138,7 @@ export function HomeContent({
           ))}
         </div>
 
-        <div className="calendar-grid">
+        <div className={styles.calendarGrid}>
           {monthDays.map((dayValue) => {
             const day = new Date(dayValue);
             const entries = (eventsByDate[kstDateKey(day)] ?? []).filter((entry) => filters[entry.type]);
@@ -124,22 +149,28 @@ export function HomeContent({
 
             return (
               <div
-                className={`calendar-cell ${isSunday ? "calendar-sunday" : ""} ${isSaturday ? "calendar-saturday" : ""} ${isCurrentMonth ? "" : "calendar-other-month"}`}
+                className={`${styles.calendarCell} ${isSunday ? styles.calendarSunday : ""} ${isSaturday ? styles.calendarSaturday : ""} ${isCurrentMonth ? "" : styles.calendarOtherMonth}`}
                 key={dayValue}
               >
-                <div className={`calendar-date ${isSunday ? "calendar-date-sunday" : ""} ${isSaturday ? "calendar-date-saturday" : ""}`}>
+                <div
+                  className={`${styles.calendarDate} ${isSunday ? styles.calendarDateSunday : ""} ${isSaturday ? styles.calendarDateSaturday : ""}`}
+                >
                   {formatDate(day, "d")}
                 </div>
-                <div className="calendar-events">
+                <div className={styles.calendarEvents}>
                   {entries.length ? (
                     entries.map((entry) => (
-                      <Link className={`event-chip event-${entry.type.toLowerCase()}`} href={`/ipos/${entry.slug}`} key={`${entry.slug}-${entry.type}`}>
-                        <span className={`event-badge event-badge-${entry.type.toLowerCase()}`}>{eventLabel[entry.type]}</span>
+                      <Link
+                        className={`${styles.eventChip} ${chipClassNames[entry.type]}`}
+                        href={`/ipos/${entry.slug}`}
+                        key={`${entry.slug}-${entry.type}`}
+                      >
+                        <span className={`${styles.eventBadge} ${badgeClassNames[entry.type]}`}>{eventLabel[entry.type]}</span>
                         <strong>{entry.title}</strong>
                       </Link>
                     ))
                   ) : (
-                    <span className="event-empty">일정 없음</span>
+                    <span className={styles.eventEmpty}>일정 없음</span>
                   )}
                 </div>
               </div>
@@ -148,27 +179,28 @@ export function HomeContent({
         </div>
       </article>
 
-      <article className="side-panel">
-        <div className="panel-header">
+      <article className={styles.sidePanel}>
+        <div className={styles.panelHeader}>
           <div>
-            <p className="eyebrow">Tracked IPOs</p>
-            <h2>종목 개요</h2>
-            <p className="panel-copy">이번 달과 다음 달 청약 기준으로 공모가와 현재 판단 점수를 빠르게 훑는 영역입니다.</p>
+            <p className="page-eyebrow">Tracked IPOs</p>
+            <h2 className="section-title">종목 개요</h2>
+            <p className="section-copy">청약 마감일 기준으로 공모가와 현재 판단 점수를 빠르게 훑는 영역입니다.</p>
           </div>
+          <span className="status-pill status-pill-soft">{ipos.length}개 종목</span>
         </div>
-        <div className="ipo-list">
+        <div className={styles.ipoList}>
           {ipos.map((ipo) => (
-            <Link className="ipo-card" href={`/ipos/${ipo.slug}`} key={ipo.id}>
-              <div className="ipo-card-head">
+            <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
+              <div className={styles.ipoCardHead}>
                 <div>
                   <h3>{ipo.name}</h3>
                   <p>
                     {ipo.market} · {ipo.leadManager}
                   </p>
                 </div>
-                <span className="score-badge">{ipo.score}점</span>
+                <span className={styles.scoreBadge}>{ipo.score}점</span>
               </div>
-              <dl>
+              <dl className={styles.ipoStats}>
                 <div>
                   <dt>청약</dt>
                   <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>

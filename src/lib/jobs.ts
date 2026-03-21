@@ -16,7 +16,7 @@ import { buildAnalysis } from "@/lib/analysis";
 import { atKstTime, formatDate, formatDateTime, formatMoney, formatPercent, isSameKstDate, kstDateKey, parseKstDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
-import { buildSampleDashboard, sampleIpos, sampleRecipients, sampleSourceRecords } from "@/lib/mock-data";
+import { buildFallbackDashboard } from "@/lib/fallback-data";
 import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
 import { fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
 import nodemailer from "nodemailer";
@@ -202,7 +202,7 @@ const fetchSourceRecords = async (): Promise<SourceIpoRecord[]> => {
     return await fetchOpendartCurrentMonthIpos();
   }
 
-  return sampleSourceRecords;
+  return [];
 };
 
 const canUseDatabase = async () => {
@@ -221,7 +221,7 @@ const canUseDatabase = async () => {
   } catch (error) {
     databaseReachableCache = false;
     const message = error instanceof Error ? error.message : "Unknown database connection error";
-    console.warn(`Database unavailable, falling back to sample mode: ${message}`);
+    console.warn(`Database unavailable, falling back to empty state: ${message}`);
     return false;
   }
 };
@@ -554,7 +554,7 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
 
 export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
   if (!(await canUseDatabase())) {
-    return buildSampleDashboard();
+    return buildFallbackDashboard();
   }
 
   await ensureAdminRecipient();
@@ -688,7 +688,7 @@ export const getIpoBySlug = async (slug: string): Promise<IpoRecord | null> => {
   const normalizedSlug = decodeURIComponent(slug);
 
   if (!(await canUseDatabase())) {
-    return sampleIpos.find((ipo) => ipo.slug === normalizedSlug) ?? null;
+    return null;
   }
 
   return toIpoRecordFromDb(normalizedSlug);
@@ -707,7 +707,7 @@ export const runDailySync = async (): Promise<SyncResult> => {
 
     if (!(await canUseDatabase())) {
       const result = {
-        mode: "sample" as const,
+        mode: "fallback" as const,
         synced: sourceRecords.length,
         ipos: sourceRecords.map(normalizeIpo),
         timestamp: new Date(),
@@ -716,8 +716,8 @@ export const runDailySync = async (): Promise<SyncResult> => {
       await logOperation({
         level: "WARN",
         source: "job:daily-sync",
-        action: "sample_mode",
-        message: `DB 연결이 없어 샘플 모드로 ${result.synced}건을 반환했습니다.`,
+        action: "fallback_mode",
+        message: `DB 연결이 없어 빈 fallback 기준으로 ${result.synced}건을 반환했습니다.`,
         context: { synced: result.synced },
       });
 
@@ -785,13 +785,13 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
       await logOperation({
         level: "WARN",
         source: "job:prepare-daily-alerts",
-        action: "sample_mode",
-        message: `DB 연결이 없어 샘플 모드로 알림 ${jobs.length}건을 준비했습니다.`,
+        action: "fallback_mode",
+        message: `DB 연결이 없어 fallback 상태에서 알림 ${jobs.length}건을 준비했습니다.`,
         context: { jobs: jobs.length },
       });
 
       return {
-        mode: "sample",
+        mode: "fallback",
         timestamp: new Date(),
         jobs,
       };
@@ -859,7 +859,7 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
 
 const resolveRecipients = async (): Promise<RecipientRecord[]> => {
   if (!(await canUseDatabase())) {
-    return sampleRecipients;
+    return [];
   }
 
   await ensureAdminRecipient();
@@ -1076,7 +1076,7 @@ export const dispatchAlerts = async (): Promise<DispatchResult> => {
     });
 
     return {
-      mode: useDatabase ? "database" : "sample",
+      mode: useDatabase ? "database" : "fallback",
       timestamp: now,
       attempted: readyJobs.length,
       deliveries,

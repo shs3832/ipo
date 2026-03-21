@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { formatDate, formatDateTime, formatMoney, formatPercent } from "@/lib/date";
 import { getIpoBySlug } from "@/lib/jobs";
+import styles from "@/app/ipos/[slug]/page.module.scss";
 
 export const dynamic = "force-dynamic";
 
@@ -43,127 +44,149 @@ export default async function IpoDetailPage({
   }
 
   return (
-    <main className="shell detail-shell">
-      <Link className="inline-link" href="/">
-        캘린더로 돌아가기
-      </Link>
+    <main className="page-shell">
+      <div className={styles.page}>
+        <Link className="inline-link" href="/">
+          캘린더로 돌아가기
+        </Link>
 
-      <section className="detail-hero">
-        <div>
-          <p className="eyebrow">{ipo.market}</p>
-          <h1>{ipo.name}</h1>
-          <p className="hero-copy">
-            {ipo.leadManager}
-            {ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}
-          </p>
-        </div>
-        <div className="score-panel">
-          <strong>{ipo.latestAnalysis.score}</strong>
-          <span>{ipo.latestAnalysis.ratingLabel}</span>
-        </div>
-      </section>
-
-      <section className="detail-grid">
-        <article className="detail-card">
-          <h2>핵심 일정</h2>
-          <dl className="stat-list">
-            <div>
-              <dt>청약 시작</dt>
-              <dd>{formatDate(ipo.subscriptionStart)}</dd>
-            </div>
-            <div>
-              <dt>청약 마감</dt>
-              <dd>{formatDate(ipo.subscriptionEnd)}</dd>
-            </div>
-            <div>
-              <dt>환불일</dt>
-              <dd>{ipo.refundDate ? formatDate(ipo.refundDate) : "-"}</dd>
-            </div>
-            <div>
-              <dt>상장 예정일</dt>
-              <dd>{ipo.listingDate ? formatDate(ipo.listingDate) : "-"}</dd>
-            </div>
-          </dl>
-        </article>
-
-        <article className="detail-card">
-          <h2>가격 정보</h2>
-          <dl className="stat-list">
-            <div>
-              <dt>희망 공모가</dt>
-              <dd>
-                {formatMoney(ipo.priceBandLow)} ~ {formatMoney(ipo.priceBandHigh)}
-              </dd>
-            </div>
-            <div>
-              <dt>확정 공모가</dt>
-              <dd>{formatMoney(ipo.offerPrice)}</dd>
-            </div>
-            <div>
-              <dt>최소청약주수</dt>
-              <dd>{ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주</dd>
-            </div>
-            <div>
-              <dt>최소청약금액</dt>
-              <dd>{formatMoney(getMinimumDepositAmount(ipo))}</dd>
-            </div>
-            <div>
-              <dt>증거금률</dt>
-              <dd>{formatPercent(ipo.depositRate)}</dd>
-            </div>
-            {isAdmin ? (
-              <>
-                <div>
-                  <dt>최근 수집 시각</dt>
-                  <dd>{formatDateTime(ipo.sourceFetchedAt)}</dd>
-                </div>
-                <div>
-                  <dt>소스 키</dt>
-                  <dd>{ipo.latestSourceKey}</dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
-        </article>
-
-        <article className="detail-card detail-card-wide">
-          <h2>분석 요약</h2>
-          <p className="analysis-summary">{ipo.latestAnalysis.summary}</p>
-          <div className="analysis-columns">
-            <div>
-              <h3>핵심 근거</h3>
-              <ul className="bullet-list">
-                {ipo.latestAnalysis.keyPoints.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3>주의 포인트</h3>
-              <ul className="bullet-list">
-                {ipo.latestAnalysis.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
+        <section className={styles.hero}>
+          <div className={styles.heroBody}>
+            <p className="page-eyebrow">{ipo.market}</p>
+            <h1 className="page-title">{ipo.name}</h1>
+            <p className="page-copy">
+              {ipo.leadManager}
+              {ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}
+            </p>
+            <div className={styles.metaRow}>
+              <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
+              <span className="status-pill status-pill-soft">
+                이벤트 {ipo.events.length}건 · 기준 점수 {ipo.latestAnalysis.score}점
+              </span>
             </div>
           </div>
-        </article>
 
-        <article className="detail-card detail-card-wide">
-          <h2>이벤트 타임라인</h2>
-          <div className="timeline">
-            {ipo.events.map((event) => (
-              <div className="timeline-item" key={event.id}>
-                <span className="timeline-tag">{eventLabel[event.type]}</span>
-                <div>
-                  <strong>{event.title}</strong>
-                  <p>{formatDate(event.eventDate)}</p>
-                </div>
+          <div className={styles.scoreCard}>
+            <span className={styles.scoreLabel}>현재 점수</span>
+            <strong>{ipo.latestAnalysis.score}</strong>
+            <span className={styles.scoreRating}>{ipo.latestAnalysis.ratingLabel}</span>
+          </div>
+        </section>
+
+        <section className={styles.grid}>
+          <article className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">핵심 일정</h2>
+              <p className="section-copy">캘린더와 메일 발송에 직접 영향을 주는 일정을 우선 노출합니다.</p>
+            </div>
+            <dl className={styles.statList}>
+              <div>
+                <dt>청약 시작</dt>
+                <dd>{formatDate(ipo.subscriptionStart)}</dd>
               </div>
-            ))}
-          </div>
-        </article>
-      </section>
+              <div>
+                <dt>청약 마감</dt>
+                <dd>{formatDate(ipo.subscriptionEnd)}</dd>
+              </div>
+              <div>
+                <dt>환불일</dt>
+                <dd>{ipo.refundDate ? formatDate(ipo.refundDate) : "-"}</dd>
+              </div>
+              <div>
+                <dt>상장 예정일</dt>
+                <dd>{ipo.listingDate ? formatDate(ipo.listingDate) : "-"}</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">가격 정보</h2>
+              <p className="section-copy">청약 최소금액까지 한 번에 읽을 수 있게 묶었습니다.</p>
+            </div>
+            <dl className={styles.statList}>
+              <div>
+                <dt>희망 공모가</dt>
+                <dd>
+                  {formatMoney(ipo.priceBandLow)} ~ {formatMoney(ipo.priceBandHigh)}
+                </dd>
+              </div>
+              <div>
+                <dt>확정 공모가</dt>
+                <dd>{formatMoney(ipo.offerPrice)}</dd>
+              </div>
+              <div>
+                <dt>최소청약주수</dt>
+                <dd>{ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주</dd>
+              </div>
+              <div>
+                <dt>최소청약금액</dt>
+                <dd>{formatMoney(getMinimumDepositAmount(ipo))}</dd>
+              </div>
+              <div>
+                <dt>증거금률</dt>
+                <dd>{formatPercent(ipo.depositRate)}</dd>
+              </div>
+              {isAdmin ? (
+                <>
+                  <div>
+                    <dt>최근 수집 시각</dt>
+                    <dd>{formatDateTime(ipo.sourceFetchedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>소스 키</dt>
+                    <dd>{ipo.latestSourceKey}</dd>
+                  </div>
+                </>
+              ) : null}
+            </dl>
+          </article>
+
+          <article className={`${styles.card} ${styles.cardWide}`}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">분석 요약</h2>
+              <p className="section-copy">현재 스코어가 어떤 근거와 주의사항 위에 놓여 있는지 분리해 보여줍니다.</p>
+            </div>
+            <p className={styles.analysisSummary}>{ipo.latestAnalysis.summary}</p>
+            <div className={styles.analysisColumns}>
+              <div className={styles.analysisBlock}>
+                <h3>핵심 근거</h3>
+                <ul className={styles.bulletList}>
+                  {ipo.latestAnalysis.keyPoints.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className={styles.analysisBlock}>
+                <h3>주의 포인트</h3>
+                <ul className={styles.bulletList}>
+                  {ipo.latestAnalysis.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </article>
+
+          <article className={`${styles.card} ${styles.cardWide}`}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">이벤트 타임라인</h2>
+              <p className="section-copy">발생 순서대로 이벤트를 따라가며 전체 일정을 빠르게 파악합니다.</p>
+            </div>
+            <div className={styles.timeline}>
+              {ipo.events.map((event) => (
+                <div className={styles.timelineItem} key={event.id}>
+                  <span className={styles.timelineTag}>{eventLabel[event.type]}</span>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <p>{formatDate(event.eventDate)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+      </div>
     </main>
   );
 }

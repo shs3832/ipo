@@ -1,0 +1,44 @@
+@use "tokens" as *;
+
+@mixin surface($padding: 28px, $radius: 24px) {
+  padding: $padding;
+  border-radius: $radius;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.9)),
+    var(--surface-strong);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(18px);
+}
+
+@mixin softSurface($padding: 22px, $radius: 22px) {
+  padding: $padding;
+  border-radius: $radius;
+  border: 1px solid var(--line);
+  background: rgba(248, 251, 255, 0.82);
+  box-shadow: var(--shadow-soft);
+}
+
+@mixin autoGrid($min: 220px) {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax($min, 1fr));
+}
+
+@mixin desktop {
+  @media (max-width: $bp-desktop) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (max-width: $bp-tablet) {
+    @content;
+  }
+}
+
+@mixin mobile {
+  @media (max-width: $bp-mobile) {
+    @content;
+  }
+}

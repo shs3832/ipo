@@ -1,0 +1,155 @@
+@use "../../styles/mixins" as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hero {
+  @include surface(34px, 32px);
+
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 340px);
+}
+
+.heroBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.heroMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroAside {
+  display: grid;
+  gap: 14px;
+}
+
+.heroStatusCard,
+.summaryCard,
+.card {
+  @include surface(24px, 28px);
+}
+
+.heroStatusCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.actionGroup {
+  display: grid;
+  gap: 12px;
+}
+
+.logoutForm {
+  display: contents;
+}
+
+.summaryGrid {
+  @include autoGrid(220px);
+}
+
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cardLabel {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.cardValue,
+.summaryValue {
+  font-size: clamp(1.55rem, 3vw, 2.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.cardCopy {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  @include softSurface(18px, 22px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1.02rem;
+}
+
+.row p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.rowHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bulletList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  list-style: disc;
+}
+
+@include tablet {
+  .hero,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@include mobile {
+  .hero,
+  .summaryCard,
+  .card {
+    padding: 22px;
+    border-radius: 24px;
+  }
+}

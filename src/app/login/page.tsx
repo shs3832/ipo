@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { isAdminAuthenticated, hasAdminPassword } from "@/lib/admin-auth";
 import { loginAction } from "@/app/login/actions";
+import styles from "@/app/login/page.module.scss";
 
 export const dynamic = "force-dynamic";
 
@@ -25,42 +26,53 @@ export default async function LoginPage({
   const error = params.error ? errorMessage[params.error] : null;
 
   return (
-    <main className="shell auth-shell">
-      <section className="auth-card">
-        <p className="eyebrow">Admin Login</p>
-        <h1>관리자만 민감한 정보와 운영 화면을 볼 수 있습니다.</h1>
-        <p className="hero-copy">
-          관리자 콘솔과 수집 로그, 수신자 정보, 소스 키 같은 운영용 정보는 로그인 후에만 노출됩니다.
-        </p>
+    <main className="page-shell">
+      <div className={styles.page}>
+        <section className={styles.card}>
+          <div className={styles.copyBlock}>
+            <p className="page-eyebrow">Admin Login</p>
+            <h1 className="page-title">관리자 운영 화면은 로그인 후에만 열립니다.</h1>
+            <p className="page-copy">
+              수집 로그, 수신자 정보, 소스 메타데이터 같은 운영용 정보는 일반 사용자 화면과 분리해
+              보호하고 있습니다.
+            </p>
+            <div className={styles.metaRow}>
+              <span className="status-pill">Signed Cookie Session</span>
+              <span className="status-pill status-pill-soft">관리자 메타데이터 보호</span>
+            </div>
+          </div>
 
-        {error ? <p className="auth-error">{error}</p> : null}
-        {!hasAdminPassword() ? (
-          <p className="auth-help">`.env` 또는 Vercel 환경변수에 `ADMIN_ACCESS_PASSWORD`를 먼저 설정해 주세요.</p>
-        ) : null}
+          {error ? <p className={styles.error}>{error}</p> : null}
+          {!hasAdminPassword() ? (
+            <p className={styles.help}>`.env` 또는 Vercel 환경변수에 `ADMIN_ACCESS_PASSWORD`를 먼저 설정해 주세요.</p>
+          ) : null}
 
-        <form action={loginAction} className="auth-form">
-          <input name="next" type="hidden" value={next} />
-          <label className="auth-label" htmlFor="password">
-            관리자 비밀번호
-          </label>
-          <input
-            autoComplete="current-password"
-            className="auth-input"
-            id="password"
-            name="password"
-            placeholder="비밀번호 입력"
-            required
-            type="password"
-          />
-          <button className="button-primary" type="submit">
-            로그인
-          </button>
-        </form>
+          <form action={loginAction} className={styles.form}>
+            <input name="next" type="hidden" value={next} />
+            <label className={styles.label} htmlFor="password">
+              관리자 비밀번호
+            </label>
+            <input
+              autoComplete="current-password"
+              className={styles.input}
+              id="password"
+              name="password"
+              placeholder="비밀번호 입력"
+              required
+              type="password"
+            />
+            <button className="button-primary" type="submit">
+              로그인
+            </button>
+          </form>
 
-        <Link className="inline-link" href="/">
-          캘린더로 돌아가기
-        </Link>
-      </section>
+          <div className={styles.footer}>
+            <Link className="inline-link" href="/">
+              캘린더로 돌아가기
+            </Link>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

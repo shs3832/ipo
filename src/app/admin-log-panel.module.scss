@@ -1,0 +1,131 @@
+@use "../styles/mixins" as *;
+
+.card {
+  @include surface(24px, 28px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  grid-column: 1 / -1;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filterPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    transform var(--transition-base),
+    border-color var(--transition-base),
+    background var(--transition-base);
+}
+
+.filterPill strong {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.filterPillActive {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: var(--primary-soft-strong);
+}
+
+.filterPill:hover {
+  transform: translateY(-1px);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  @include softSurface(18px, 22px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1.02rem;
+}
+
+.row p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.logMeta {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.levelInfo {
+  color: var(--subscription);
+  background: var(--subscription-soft);
+}
+
+.levelWarn {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.levelError {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.context {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@include tablet {
+  .header {
+    flex-direction: column;
+  }
+}
+
+@include mobile {
+  .card {
+    padding: 22px;
+    border-radius: 24px;
+  }
+}

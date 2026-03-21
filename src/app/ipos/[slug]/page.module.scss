@@ -1,0 +1,186 @@
+@use "../../../styles/mixins" as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.hero {
+  @include surface(34px, 32px);
+
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(220px, 280px);
+  align-items: end;
+}
+
+.heroBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scoreCard {
+  @include softSurface(24px, 28px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
+.scoreCard strong {
+  font-size: clamp(2.8rem, 5vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.scoreLabel,
+.scoreRating {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.card {
+  @include surface(24px, 28px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cardWide {
+  grid-column: 1 / -1;
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.statList {
+  display: grid;
+  gap: 12px;
+}
+
+.statList div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.statList dt {
+  color: var(--text-secondary);
+}
+
+.statList dd {
+  text-align: right;
+  font-weight: 700;
+}
+
+.analysisSummary {
+  color: var(--text-secondary);
+  line-height: 1.72;
+}
+
+.analysisColumns {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analysisBlock {
+  @include softSurface(18px, 22px);
+}
+
+.analysisBlock h3 {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.bulletList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 18px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  list-style: disc;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timelineItem {
+  @include softSurface(18px, 22px);
+
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.timelineItem strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1.02rem;
+}
+
+.timelineItem p {
+  color: var(--text-secondary);
+}
+
+.timelineTag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+@include tablet {
+  .hero,
+  .grid,
+  .analysisColumns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@include mobile {
+  .hero,
+  .card {
+    padding: 22px;
+    border-radius: 24px;
+  }
+
+  .timelineItem {
+    flex-direction: column;
+  }
+}

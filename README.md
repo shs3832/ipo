@@ -24,15 +24,25 @@
 - 월간 캘린더에서 `청약마감 / 환불 / 상장` 일정 표시
 - 일정 종류 체크박스 필터
 - 토요일/일요일 색 구분
+- 홈 화면 상단 히어로 + 요약 카드 + 월간 캘린더
 - 캘린더 아래 `종목 개요` 카드 목록
 - 종목 상세 페이지에서 일정, 가격, 점수, 분석 요약, 이벤트 타임라인 제공
 - 관리자만 볼 수 있는 민감 정보 분리
+- 로그인 / 관리자 / 상세 페이지까지 공통 톤으로 재정리된 카드형 UI 적용
+
+### 스타일 구조
+
+- 전역 엔트리: [`src/app/globals.scss`](/Users/shs/Desktop/Study/ipo/src/app/globals.scss)
+- 공통 토큰 / 리셋 / 공용 규칙: [`src/styles`](/Users/shs/Desktop/Study/ipo/src/styles)
+- 페이지별 스타일: 각 라우트의 `*.module.scss`
+- 기존 단일 `globals.css` 중심 구조에서 `공통 SCSS + 페이지별 모듈 SCSS` 구조로 분리됨
 
 ### 데이터 수집
 
 - `IPO_SOURCE_URL`이 있으면 외부 JSON 우선 사용
 - 없으면 `OpenDART` 실데이터 사용
-- 둘 다 없으면 샘플 데이터 사용
+- 둘 다 없으면 빈 fallback 상태로 동작
+- fallback 상태에서는 더미 공모주를 생성하지 않음
 - 현재 OpenDART는 `현재월 + 다음월 청약 일정`을 캘린더 표시 대상으로 수집
 - 내부적으로는 이전달~현재달 공시를 참고해 다음달 일정까지 보강
 
@@ -55,6 +65,12 @@
 - 최근 운영 로그 확인
 - `INFO / WARN / ERROR` 필터
 - 알림 발송/중복 건너뜀/실패 이력 저장
+
+### 현재 fallback 동작
+
+- DB 연결이 없거나 실데이터 소스를 사용할 수 없으면 대시보드는 빈 상태로 열립니다.
+- 상세 페이지는 fallback 상태에서 종목 slug를 찾지 못하면 정상적으로 `not found` 처리됩니다.
+- 과거 샘플 종목 `에이블데이터`, `로보헬스`는 코드와 DB에서 제거되었습니다.
 
 ## 점수 계산 현재 상태
 
@@ -122,6 +138,7 @@ node -v
 
 - `node v14` 같은 오래된 버전으로 실행하면 `tsx`, `Next 16` 빌드가 깨집니다.
 - 작업 전 `nvm use`를 먼저 하는 것이 안전합니다.
+- 스타일 작업 후에도 `npm run build`로 SCSS import 경로를 꼭 확인하는 것이 안전합니다.
 
 ## 시작하기
 
@@ -155,7 +172,7 @@ npm run dev
 
 1. `IPO_SOURCE_URL`
 2. `OPENDART_API_KEY`
-3. 샘플 데이터
+3. 빈 fallback
 
 ## 데이터베이스
 
@@ -181,6 +198,10 @@ npm run job:dispatch-alerts
 npm run mail:sample
 npm run source:check:opendart
 ```
+
+참고:
+
+- `npm run mail:sample`은 이름은 그대로지만, 샘플 종목을 보내는 명령이 아니라 준비된 알림 payload를 관리자 메일로 미리 보내보는 preview 용도입니다.
 
 ## API 엔드포인트
 
@@ -220,6 +241,7 @@ Vercel Cron은 `x-vercel-cron` 헤더를 통해 허용됩니다.
 - OpenDART는 종목별로 재무제표가 없을 수 있어, 어떤 종목은 점수에 재무 정보가 반영되고 어떤 종목은 반영되지 않습니다.
 - 현재 관리자 수신자는 기본적으로 `admin-recipient` 1명입니다.
 - 알림 중복 방지는 `idempotencyKey` 기반입니다.
+- 홈 화면에서 `종목 개요`는 캘린더 오른쪽이 아니라 아래쪽에 배치됩니다.
 
 ## 다음 개선 우선순위
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import styles from "@/app/admin-log-panel.module.scss";
 
 type OperationLogRecord = {
   id: string;
@@ -21,6 +22,12 @@ const filterItems: Array<{ id: LogFilter; label: string }> = [
   { id: "INFO", label: "INFO" },
 ];
 
+const levelClassNames: Record<OperationLogRecord["level"], string> = {
+  INFO: styles.levelInfo,
+  WARN: styles.levelWarn,
+  ERROR: styles.levelError,
+};
+
 export function AdminLogPanel({ logs }: { logs: OperationLogRecord[] }) {
   const [filter, setFilter] = useState<LogFilter>("ALL");
 
@@ -40,16 +47,16 @@ export function AdminLogPanel({ logs }: { logs: OperationLogRecord[] }) {
   );
 
   return (
-    <article className="detail-card detail-card-wide">
-      <div className="panel-header panel-header-stack">
+    <article className={styles.card}>
+      <div className={styles.header}>
         <div>
-          <h2>최근 운영 로그</h2>
-          <p className="panel-copy">전체 로그에서 원하는 레벨만 빠르게 좁혀볼 수 있습니다.</p>
+          <h2 className="section-title">최근 운영 로그</h2>
+          <p className="section-copy">전체 로그에서 원하는 레벨만 빠르게 좁혀볼 수 있습니다.</p>
         </div>
-        <div className="log-filter-row">
+        <div className={styles.filterRow}>
           {filterItems.map((item) => (
             <button
-              className={`log-filter-pill ${filter === item.id ? "log-filter-pill-active" : ""}`}
+              className={`${styles.filterPill} ${filter === item.id ? styles.filterPillActive : ""}`}
               key={item.id}
               onClick={() => setFilter(item.id)}
               type="button"
@@ -61,12 +68,12 @@ export function AdminLogPanel({ logs }: { logs: OperationLogRecord[] }) {
         </div>
       </div>
 
-      <div className="admin-list">
+      <div className={styles.list}>
         {filteredLogs.length ? (
           filteredLogs.map((log) => (
-            <div className="admin-row" key={log.id}>
-              <div className="log-meta">
-                <span className={`log-level log-${log.level.toLowerCase()}`}>{log.level}</span>
+            <div className={styles.row} key={log.id}>
+              <div className={styles.logMeta}>
+                <span className={`${styles.level} ${levelClassNames[log.level]}`}>{log.level}</span>
                 <div>
                   <strong>{log.message}</strong>
                   <p>
@@ -74,13 +81,13 @@ export function AdminLogPanel({ logs }: { logs: OperationLogRecord[] }) {
                   </p>
                 </div>
               </div>
-              <p className="mono-text log-context">
+              <p className={`mono-text ${styles.context}`}>
                 {log.context ? JSON.stringify(log.context) : "추가 컨텍스트 없음"}
               </p>
             </div>
           ))
         ) : (
-          <div className="admin-row">
+          <div className={styles.row}>
             <p>선택한 레벨의 로그가 없습니다.</p>
           </div>
         )}

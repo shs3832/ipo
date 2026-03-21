@@ -1,0 +1,109 @@
+@use "../styles/mixins" as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hero {
+  @include surface(36px, 32px);
+
+  position: relative;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 340px);
+  overflow: hidden;
+}
+
+.hero::after {
+  position: absolute;
+  top: -84px;
+  right: -72px;
+  width: 240px;
+  height: 240px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(42, 115, 245, 0.16) 0%, rgba(42, 115, 245, 0) 68%);
+  content: "";
+  pointer-events: none;
+}
+
+.heroBody,
+.heroAside {
+  position: relative;
+  z-index: 1;
+}
+
+.heroBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.heroMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroAside {
+  display: grid;
+  gap: 14px;
+}
+
+.heroMetricCard {
+  @include softSurface(22px, 24px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heroActionGroup {
+  display: grid;
+  gap: 12px;
+}
+
+.summaryGrid {
+  @include autoGrid(230px);
+}
+
+.summaryCard {
+  @include surface(24px, 28px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cardLabel {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.cardValue,
+.summaryValue {
+  font-size: clamp(1.7rem, 3.5vw, 2.35rem);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+}
+
+.cardCopy {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+@include tablet {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@include mobile {
+  .hero,
+  .summaryCard {
+    padding: 22px;
+    border-radius: 24px;
+  }
+}

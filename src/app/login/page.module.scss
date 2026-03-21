@@ -1,0 +1,92 @@
+@use "../../styles/mixins" as *;
+
+.page {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  @include surface(34px, 32px);
+
+  width: min(620px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.copyBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.label {
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.input {
+  min-height: 54px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text-primary);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary-soft-strong);
+  box-shadow: 0 0 0 4px rgba(42, 115, 245, 0.1);
+}
+
+.error,
+.help {
+  padding: 14px 16px;
+  border-radius: 18px;
+  line-height: 1.65;
+}
+
+.error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.help {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+@include mobile {
+  .page {
+    min-height: auto;
+    align-items: stretch;
+  }
+
+  .card {
+    padding: 24px;
+    border-radius: 24px;
+  }
+}
