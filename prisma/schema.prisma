@@ -65,6 +65,8 @@ model Ipo {
   priceBandLow      Int?
   priceBandHigh     Int?
   offerPrice        Int?
+  minimumSubscriptionShares Int?
+  depositRate       Float?
   subscriptionStart DateTime?
   subscriptionEnd   DateTime?
   refundDate        DateTime?

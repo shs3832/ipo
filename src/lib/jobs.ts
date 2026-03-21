@@ -13,7 +13,7 @@ import {
   type SyncResult,
 } from "@/lib/types";
 import { buildAnalysis } from "@/lib/analysis";
-import { atKstTime, formatDate, formatDateTime, isSameKstDate, kstDateKey, parseKstDate } from "@/lib/date";
+import { atKstTime, formatDate, formatDateTime, formatMoney, formatPercent, isSameKstDate, kstDateKey, parseKstDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
 import { buildSampleDashboard, sampleIpos, sampleRecipients, sampleSourceRecords } from "@/lib/mock-data";
@@ -55,6 +55,18 @@ const buildEvents = (record: SourceIpoRecord, ipoName: string) => [
     : []),
 ];
 
+const getMinimumDepositAmount = (ipo: IpoRecord) => {
+  if (
+    ipo.offerPrice == null ||
+    ipo.minimumSubscriptionShares == null ||
+    ipo.depositRate == null
+  ) {
+    return null;
+  }
+
+  return Math.round(ipo.offerPrice * ipo.minimumSubscriptionShares * ipo.depositRate);
+};
+
 const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 - 10시 분석`,
   intro: `${ipo.name}의 청약 마감 당일 10시 기준 분석 요약입니다.`,
@@ -72,6 +84,8 @@ const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
       lines: [
         `희망 밴드 ${ipo.priceBandLow?.toLocaleString("ko-KR") ?? "-"}원 ~ ${ipo.priceBandHigh?.toLocaleString("ko-KR") ?? "-"}원`,
         `확정 공모가 ${ipo.offerPrice?.toLocaleString("ko-KR") ?? "-"}원`,
+        `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
+        `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))} (증거금률 ${formatPercent(ipo.depositRate)})`,
         `환불일 ${ipo.refundDate ? formatDate(ipo.refundDate) : "-"}`,
         `상장 예정일 ${ipo.listingDate ? formatDate(ipo.listingDate) : "-"}`,
       ],
@@ -110,6 +124,8 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
     priceBandLow: record.priceBandLow ?? null,
     priceBandHigh: record.priceBandHigh ?? null,
     offerPrice: record.offerPrice ?? null,
+    minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
+    depositRate: record.depositRate ?? null,
     subscriptionStart: parseKstDate(record.subscriptionStart),
     subscriptionEnd: parseKstDate(record.subscriptionEnd),
     refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
@@ -191,6 +207,8 @@ const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {
     priceBandLow: ipo.priceBandLow,
     priceBandHigh: ipo.priceBandHigh,
     offerPrice: ipo.offerPrice,
+    minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+    depositRate: ipo.depositRate,
     subscriptionStart: ipo.subscriptionStart ?? new Date(),
     subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
     refundDate: ipo.refundDate,
@@ -349,6 +367,8 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       priceBandLow: record.priceBandLow ?? null,
       priceBandHigh: record.priceBandHigh ?? null,
       offerPrice: record.offerPrice ?? null,
+      minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
+      depositRate: record.depositRate ?? null,
       subscriptionStart: parseKstDate(record.subscriptionStart),
       subscriptionEnd: parseKstDate(record.subscriptionEnd),
       refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
@@ -364,6 +384,8 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       priceBandLow: record.priceBandLow ?? null,
       priceBandHigh: record.priceBandHigh ?? null,
       offerPrice: record.offerPrice ?? null,
+      minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
+      depositRate: record.depositRate ?? null,
       subscriptionStart: parseKstDate(record.subscriptionStart),
       subscriptionEnd: parseKstDate(record.subscriptionEnd),
       refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
@@ -464,6 +486,8 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
           priceBandLow: ipo.priceBandLow,
           priceBandHigh: ipo.priceBandHigh,
           offerPrice: ipo.offerPrice,
+          minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+          depositRate: ipo.depositRate,
           subscriptionStart: ipo.subscriptionStart ?? new Date(),
           subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
           refundDate: ipo.refundDate,

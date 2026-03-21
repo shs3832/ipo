@@ -40,3 +40,11 @@ export const formatMoney = (value: number | null | undefined) => {
     maximumFractionDigits: 0,
   }).format(value);
 };
+
+export const formatPercent = (value: number | null | undefined) => {
+  if (value == null) {
+    return "-";
+  }
+
+  return `${Math.round(value * 100)}%`;
+};

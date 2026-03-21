@@ -16,6 +16,8 @@ export type SourceIpoRecord = {
   priceBandLow?: number | null;
   priceBandHigh?: number | null;
   offerPrice?: number | null;
+  minimumSubscriptionShares?: number | null;
+  depositRate?: number | null;
   subscriptionStart: string;
   subscriptionEnd: string;
   refundDate?: string | null;
@@ -55,6 +57,8 @@ export type IpoRecord = {
   priceBandLow: number | null;
   priceBandHigh: number | null;
   offerPrice: number | null;
+  minimumSubscriptionShares: number | null;
+  depositRate: number | null;
   subscriptionStart: Date;
   subscriptionEnd: Date;
   refundDate: Date | null;

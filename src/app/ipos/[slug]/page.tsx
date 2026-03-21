@@ -1,10 +1,26 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { formatDate, formatDateTime, formatMoney } from "@/lib/date";
+import { formatDate, formatDateTime, formatMoney, formatPercent } from "@/lib/date";
 import { getIpoBySlug } from "@/lib/jobs";
 
 export const dynamic = "force-dynamic";
+
+const getMinimumDepositAmount = ({
+  offerPrice,
+  minimumSubscriptionShares,
+  depositRate,
+}: {
+  offerPrice: number | null;
+  minimumSubscriptionShares: number | null;
+  depositRate: number | null;
+}) => {
+  if (offerPrice == null || minimumSubscriptionShares == null || depositRate == null) {
+    return null;
+  }
+
+  return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
+};
 
 const eventLabel = {
   SUBSCRIPTION: "청약",
@@ -80,6 +96,18 @@ export default async function IpoDetailPage({
             <div>
               <dt>확정 공모가</dt>
               <dd>{formatMoney(ipo.offerPrice)}</dd>
+            </div>
+            <div>
+              <dt>최소청약주수</dt>
+              <dd>{ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주</dd>
+            </div>
+            <div>
+              <dt>최소청약금액</dt>
+              <dd>{formatMoney(getMinimumDepositAmount(ipo))}</dd>
+            </div>
+            <div>
+              <dt>증거금률</dt>
+              <dd>{formatPercent(ipo.depositRate)}</dd>
             </div>
             <div>
               <dt>최근 수집 시각</dt>
