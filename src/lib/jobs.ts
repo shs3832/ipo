@@ -17,6 +17,8 @@ import { atKstTime, formatDate, formatDateTime, formatMoney, formatPercent, isSa
 import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
 import { buildSampleDashboard, sampleIpos, sampleRecipients, sampleSourceRecords } from "@/lib/mock-data";
+import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
+import { fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
 import nodemailer from "nodemailer";
 
 let databaseReachableCache: boolean | null = null;
@@ -67,16 +69,64 @@ const getMinimumDepositAmount = (ipo: IpoRecord) => {
   return Math.round(ipo.offerPrice * ipo.minimumSubscriptionShares * ipo.depositRate);
 };
 
+const getDetailUrl = (slug: string) => {
+  const baseUrl = env.appBaseUrl.replace(/\/+$/, "");
+  return `${baseUrl}/ipos/${encodeURIComponent(slug)}`;
+};
+
+const buildDecisionTags = (ipo: IpoRecord) => {
+  const minimumDeposit = getMinimumDepositAmount(ipo);
+  const tags: string[] = [];
+
+  if (ipo.latestAnalysis.score >= 75) {
+    tags.push("#청약추천");
+  } else if (ipo.latestAnalysis.score >= 55) {
+    tags.push("#선별청약");
+  } else {
+    tags.push("#청약신중");
+  }
+
+  if (minimumDeposit != null && minimumDeposit <= 100_000 && ipo.latestAnalysis.score >= 60) {
+    tags.push("#균등추천");
+    tags.push("#소액참여적합");
+  } else {
+    tags.push("#균등비추천");
+  }
+
+  if (minimumDeposit != null && minimumDeposit <= 150_000 && ipo.latestAnalysis.score >= 75) {
+    tags.push("#레버리지검토가능");
+  } else {
+    tags.push("#레버리지신중");
+  }
+
+  if (ipo.latestAnalysis.warnings.length > 0) {
+    tags.push("#변동성주의");
+  }
+
+  return tags;
+};
+
 const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 - 10시 분석`,
+  tags: buildDecisionTags(ipo),
   intro: `${ipo.name}의 청약 마감 당일 10시 기준 분석 요약입니다.`,
+  webUrl: getDetailUrl(ipo.slug),
   sections: [
     {
-      label: "종목 개요",
+      label: "빠른 판단",
+      lines: [
+        `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
+        `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
+        `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`,
+      ],
+    },
+    {
+      label: "핵심 요약",
       lines: [
         `시장 ${ipo.market}`,
         `주관사 ${ipo.leadManager}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
         `청약 마감 ${formatDate(ipo.subscriptionEnd)} 16:00`,
+        ipo.latestAnalysis.summary,
       ],
     },
     {
@@ -84,8 +134,7 @@ const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
       lines: [
         `희망 밴드 ${ipo.priceBandLow?.toLocaleString("ko-KR") ?? "-"}원 ~ ${ipo.priceBandHigh?.toLocaleString("ko-KR") ?? "-"}원`,
         `확정 공모가 ${ipo.offerPrice?.toLocaleString("ko-KR") ?? "-"}원`,
-        `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
-        `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))} (증거금률 ${formatPercent(ipo.depositRate)})`,
+        `증거금률 ${formatPercent(ipo.depositRate)}`,
         `환불일 ${ipo.refundDate ? formatDate(ipo.refundDate) : "-"}`,
         `상장 예정일 ${ipo.listingDate ? formatDate(ipo.listingDate) : "-"}`,
       ],
@@ -93,8 +142,6 @@ const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
     {
       label: "10시 분석",
       lines: [
-        `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`,
-        ipo.latestAnalysis.summary,
         ...ipo.latestAnalysis.keyPoints,
       ],
     },
@@ -142,16 +189,20 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
 };
 
 const fetchSourceRecords = async (): Promise<SourceIpoRecord[]> => {
-  if (!env.ipoSourceUrl) {
-    return sampleSourceRecords;
+  if (env.ipoSourceUrl) {
+    const response = await fetch(env.ipoSourceUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`IPO source fetch failed: ${response.status}`);
+    }
+
+    return (await response.json()) as SourceIpoRecord[];
   }
 
-  const response = await fetch(env.ipoSourceUrl, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`IPO source fetch failed: ${response.status}`);
+  if (env.opendartApiKey) {
+    return await fetchOpendartCurrentMonthIpos();
   }
 
-  return (await response.json()) as SourceIpoRecord[];
+  return sampleSourceRecords;
 };
 
 const canUseDatabase = async () => {
@@ -278,6 +329,14 @@ const ensureAdminRecipient = async (): Promise<void> => {
     },
   });
 
+  await prisma.recipientChannel.deleteMany({
+    where: {
+      recipientId: recipient.id,
+      type: "EMAIL",
+      address: { not: email },
+    },
+  });
+
   await prisma.recipientChannel.upsert({
     where: {
       recipientId_type_address: {
@@ -331,11 +390,72 @@ const renderMessageText = (payload: NotificationJobRecord["payload"]) =>
   [
     payload.subject,
     "",
+    payload.tags.length ? payload.tags.join(" ") : null,
+    payload.tags.length ? "" : null,
     payload.intro,
+    payload.webUrl ? "" : null,
+    payload.webUrl ? `웹에서 보기: ${payload.webUrl}` : null,
     "",
     ...payload.sections.flatMap((section) => [section.label, ...section.lines, ""]),
     ...payload.footer,
-  ].join("\n");
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+export const renderMessageHtml = (payload: NotificationJobRecord["payload"]) => {
+  const tags = payload.tags.length
+    ? `<p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#8f3410;">${payload.tags
+        .map((tag) => escapeHtml(tag))
+        .join(" ")}</p>`
+    : "";
+
+  const link = payload.webUrl
+    ? `<p style="margin:0 0 20px;"><a href="${escapeHtml(payload.webUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#cf5b2f;color:#ffffff;text-decoration:none;font-weight:700;">웹에서 보기</a></p>`
+    : "";
+
+  const sections = payload.sections
+    .map(
+      (section) => `
+        <section style="margin:0 0 18px;">
+          <h2 style="margin:0 0 8px;font-size:16px;color:#26140c;">${escapeHtml(section.label)}</h2>
+          ${section.lines
+            .map(
+              (line) =>
+                `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#49352a;">${escapeHtml(line)}</p>`,
+            )
+            .join("")}
+        </section>
+      `,
+    )
+    .join("");
+
+  const footer = payload.footer
+    .map(
+      (line) =>
+        `<p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#6c5548;">${escapeHtml(line)}</p>`,
+    )
+    .join("");
+
+  return `
+    <div style="max-width:640px;margin:0 auto;padding:28px 20px;background:#f8f2eb;font-family:Arial,Helvetica,sans-serif;color:#26140c;">
+      <h1 style="margin:0 0 16px;font-size:24px;line-height:1.3;">${escapeHtml(payload.subject)}</h1>
+      ${tags}
+      <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#49352a;">${escapeHtml(payload.intro)}</p>
+      ${link}
+      ${sections}
+      <hr style="border:none;border-top:1px solid #e7d7cb;margin:24px 0;" />
+      ${footer}
+    </div>
+  `;
+};
 
 const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) => {
   if (!isEmailConfigured()) {
@@ -349,6 +469,7 @@ const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) 
     to,
     subject: payload.subject,
     text: renderMessageText(payload),
+    html: renderMessageHtml(payload),
   });
 
   return { providerMessageId: info.messageId };
@@ -466,6 +587,8 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
     }),
   ]);
 
+  const operationLogs = await getRecentOperationLogs(24);
+
   return {
     mode: "database",
     generatedAt: new Date(),
@@ -557,6 +680,7 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
       isActive: override.isActive,
       note: override.note,
     })),
+    operationLogs,
   };
 };
 
@@ -571,93 +695,166 @@ export const getIpoBySlug = async (slug: string): Promise<IpoRecord | null> => {
 };
 
 export const runDailySync = async (): Promise<SyncResult> => {
-  const sourceRecords = await fetchSourceRecords();
+  await logOperation({
+    level: "INFO",
+    source: "job:daily-sync",
+    action: "started",
+    message: "공모주 일정 동기화를 시작했습니다.",
+  });
 
-  if (!(await canUseDatabase())) {
+  try {
+    const sourceRecords = await fetchSourceRecords();
+
+    if (!(await canUseDatabase())) {
+      const result = {
+        mode: "sample" as const,
+        synced: sourceRecords.length,
+        ipos: sourceRecords.map(normalizeIpo),
+        timestamp: new Date(),
+      };
+
+      await logOperation({
+        level: "WARN",
+        source: "job:daily-sync",
+        action: "sample_mode",
+        message: `DB 연결이 없어 샘플 모드로 ${result.synced}건을 반환했습니다.`,
+        context: { synced: result.synced },
+      });
+
+      return result;
+    }
+
+    await ensureAdminRecipient();
+
+    const ipos = await Promise.all(sourceRecords.map((record) => upsertDatabaseIpo(record)));
+    const synced = ipos.filter(Boolean).length;
+
+    await logOperation({
+      level: "INFO",
+      source: "job:daily-sync",
+      action: "completed",
+      message: `공모주 일정 ${synced}건을 동기화했습니다.`,
+      context: { synced, sourceRecords: sourceRecords.length },
+    });
+
     return {
-      mode: "sample",
-      synced: sourceRecords.length,
-      ipos: sourceRecords.map(normalizeIpo),
+      mode: "database",
+      synced,
+      ipos: ipos.filter((ipo): ipo is IpoRecord => Boolean(ipo)),
       timestamp: new Date(),
     };
+  } catch (error) {
+    await logOperation({
+      level: "ERROR",
+      source: "job:daily-sync",
+      action: "failed",
+      message: "공모주 일정 동기화에 실패했습니다.",
+      context: toErrorContext(error),
+    });
+    throw error;
   }
-
-  await ensureAdminRecipient();
-
-  const ipos = await Promise.all(sourceRecords.map((record) => upsertDatabaseIpo(record)));
-
-  return {
-    mode: "database",
-    synced: ipos.filter(Boolean).length,
-    ipos: ipos.filter((ipo): ipo is IpoRecord => Boolean(ipo)),
-    timestamp: new Date(),
-  };
 };
 
 export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
-  const dashboard = await getDashboardSnapshot();
-  const today = new Date();
-  const closingIpos = dashboard.ipos.filter((ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN");
+  await logOperation({
+    level: "INFO",
+    source: "job:prepare-daily-alerts",
+    action: "started",
+    message: "10시 분석 알림 준비를 시작했습니다.",
+  });
 
-  const jobs = closingIpos.map((ipo) => ({
-    id: `prepared-${ipo.id}`,
-    ipoId: ipo.id,
-    ipoSlug: ipo.slug,
-    alertType: "CLOSING_DAY_ANALYSIS" as const,
-    scheduledFor: atKstTime(kstDateKey(today), 10),
-    payload: buildMessage(ipo),
-    status: "READY" as const,
-    idempotencyKey: `${ipo.id}:${kstDateKey(today)}:closing-day-analysis`,
-  }));
+  try {
+    const dashboard = await getDashboardSnapshot();
+    const today = new Date();
+    const closingIpos = dashboard.ipos.filter(
+      (ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN",
+    );
 
-  if (!(await canUseDatabase())) {
-    return {
-      mode: "sample",
-      timestamp: new Date(),
-      jobs,
-    };
-  }
+    const jobs = closingIpos.map((ipo) => ({
+      id: `prepared-${ipo.id}`,
+      ipoId: ipo.id,
+      ipoSlug: ipo.slug,
+      alertType: "CLOSING_DAY_ANALYSIS" as const,
+      scheduledFor: atKstTime(kstDateKey(today), 10),
+      payload: buildMessage(ipo),
+      status: "READY" as const,
+      idempotencyKey: `${ipo.id}:${kstDateKey(today)}:closing-day-analysis`,
+    }));
 
-  const storedJobs = await Promise.all(
-    jobs.map(async (job) => {
-      const saved = await prisma.notificationJob.upsert({
-        where: { idempotencyKey: job.idempotencyKey },
-        update: {
-          scheduledFor: job.scheduledFor,
-          payload: job.payload,
-          status: "READY",
-        },
-        create: {
-          ipoId: job.ipoId,
-          alertType: job.alertType,
-          scheduledFor: job.scheduledFor,
-          payload: job.payload,
-          status: "READY",
-          idempotencyKey: job.idempotencyKey,
-        },
-        include: {
-          ipo: true,
-        },
+    if (!(await canUseDatabase())) {
+      await logOperation({
+        level: "WARN",
+        source: "job:prepare-daily-alerts",
+        action: "sample_mode",
+        message: `DB 연결이 없어 샘플 모드로 알림 ${jobs.length}건을 준비했습니다.`,
+        context: { jobs: jobs.length },
       });
 
       return {
-        id: saved.id,
-        ipoId: saved.ipoId,
-        ipoSlug: saved.ipo.slug,
-        alertType: saved.alertType,
-        scheduledFor: saved.scheduledFor,
-        payload: saved.payload as NotificationJobRecord["payload"],
-        status: saved.status,
-        idempotencyKey: saved.idempotencyKey,
+        mode: "sample",
+        timestamp: new Date(),
+        jobs,
       };
-    }),
-  );
+    }
 
-  return {
-    mode: "database",
-    timestamp: new Date(),
-    jobs: storedJobs,
-  };
+    const storedJobs = await Promise.all(
+      jobs.map(async (job) => {
+        const saved = await prisma.notificationJob.upsert({
+          where: { idempotencyKey: job.idempotencyKey },
+          update: {
+            scheduledFor: job.scheduledFor,
+            payload: job.payload,
+            status: "READY",
+          },
+          create: {
+            ipoId: job.ipoId,
+            alertType: job.alertType,
+            scheduledFor: job.scheduledFor,
+            payload: job.payload,
+            status: "READY",
+            idempotencyKey: job.idempotencyKey,
+          },
+          include: {
+            ipo: true,
+          },
+        });
+
+        return {
+          id: saved.id,
+          ipoId: saved.ipoId,
+          ipoSlug: saved.ipo.slug,
+          alertType: saved.alertType,
+          scheduledFor: saved.scheduledFor,
+          payload: saved.payload as NotificationJobRecord["payload"],
+          status: saved.status,
+          idempotencyKey: saved.idempotencyKey,
+        };
+      }),
+    );
+
+    await logOperation({
+      level: "INFO",
+      source: "job:prepare-daily-alerts",
+      action: "completed",
+      message: `10시 분석 알림 ${storedJobs.length}건을 준비했습니다.`,
+      context: { jobs: storedJobs.length },
+    });
+
+    return {
+      mode: "database",
+      timestamp: new Date(),
+      jobs: storedJobs,
+    };
+  } catch (error) {
+    await logOperation({
+      level: "ERROR",
+      source: "job:prepare-daily-alerts",
+      action: "failed",
+      message: "10시 분석 알림 준비에 실패했습니다.",
+      context: toErrorContext(error),
+    });
+    throw error;
+  }
 };
 
 const resolveRecipients = async (): Promise<RecipientRecord[]> => {
@@ -701,159 +898,206 @@ const resolveRecipients = async (): Promise<RecipientRecord[]> => {
 };
 
 export const dispatchAlerts = async (): Promise<DispatchResult> => {
-  const useDatabase = await canUseDatabase();
-  const recipients = await resolveRecipients();
-  const now = new Date();
-  const prepared = await prepareDailyAlerts();
-  const readyJobs = prepared.jobs.filter((job) => job.scheduledFor <= now);
-  const deliveries: NotificationDeliveryRecord[] = [];
+  await logOperation({
+    level: "INFO",
+    source: "job:dispatch-alerts",
+    action: "started",
+    message: "10시 분석 메일 발송을 시작했습니다.",
+  });
 
-  for (const job of readyJobs) {
-    const jobDeliveries: Array<"SENT" | "FAILED" | "PENDING" | "SKIPPED"> = [];
+  try {
+    const useDatabase = await canUseDatabase();
+    const recipients = await resolveRecipients();
+    const now = new Date();
+    const prepared = await prepareDailyAlerts();
+    const readyJobs = prepared.jobs.filter((job) => job.scheduledFor <= now);
+    const deliveries: NotificationDeliveryRecord[] = [];
 
-    for (const recipient of recipients) {
-      for (const channel of recipient.channels) {
-        if (channel.type !== "EMAIL") {
-          continue;
-        }
+    for (const job of readyJobs) {
+      const jobDeliveries: Array<"SENT" | "FAILED" | "PENDING" | "SKIPPED"> = [];
 
-        const idempotencyKey = `${job.idempotencyKey}:${recipient.id}:${channel.type}`;
-
-        if (useDatabase) {
-          const existing = await prisma.notificationDelivery.findUnique({
-            where: { idempotencyKey },
-          });
-
-          if (existing?.status === "SENT") {
-            deliveries.push({
-              id: existing.id,
-              jobId: existing.jobId,
-              recipientId: existing.recipientId,
-              channelType: existing.channelType,
-              channelAddress: existing.channelAddress,
-              status: existing.status,
-              providerMessageId: existing.providerMessageId,
-              errorMessage: existing.errorMessage,
-              sentAt: existing.sentAt,
-              idempotencyKey: existing.idempotencyKey,
-            });
-            jobDeliveries.push("SENT");
+      for (const recipient of recipients) {
+        for (const channel of recipient.channels) {
+          if (channel.type !== "EMAIL") {
             continue;
           }
-        }
 
-        try {
-          const response = await sendEmail(channel.address, job.payload);
-          const sentAt = new Date();
+          const idempotencyKey = `${job.idempotencyKey}:${recipient.id}:${channel.type}`;
 
           if (useDatabase) {
-            const delivery = await prisma.notificationDelivery.upsert({
+            const existing = await prisma.notificationDelivery.findUnique({
               where: { idempotencyKey },
-              update: {
-                status: "SENT",
-                providerMessageId: response.providerMessageId,
-                sentAt,
-                errorMessage: null,
-              },
-              create: {
+            });
+
+            if (existing?.status === "SENT") {
+              deliveries.push({
+                id: existing.id,
+                jobId: existing.jobId,
+                recipientId: existing.recipientId,
+                channelType: existing.channelType,
+                channelAddress: existing.channelAddress,
+                status: "SKIPPED",
+                providerMessageId: existing.providerMessageId,
+                errorMessage: existing.errorMessage,
+                sentAt: existing.sentAt,
+                idempotencyKey: existing.idempotencyKey,
+              });
+              jobDeliveries.push("SKIPPED");
+              continue;
+            }
+          }
+
+          try {
+            const response = await sendEmail(channel.address, job.payload);
+            const sentAt = new Date();
+
+            if (useDatabase) {
+              const delivery = await prisma.notificationDelivery.upsert({
+                where: { idempotencyKey },
+                update: {
+                  status: "SENT",
+                  providerMessageId: response.providerMessageId,
+                  sentAt,
+                  errorMessage: null,
+                },
+                create: {
+                  jobId: job.id,
+                  recipientId: recipient.id,
+                  channelType: "EMAIL",
+                  channelAddress: channel.address,
+                  status: "SENT",
+                  providerMessageId: response.providerMessageId,
+                  sentAt,
+                  idempotencyKey,
+                },
+              });
+
+              deliveries.push({
+                id: delivery.id,
+                jobId: delivery.jobId,
+                recipientId: delivery.recipientId,
+                channelType: delivery.channelType,
+                channelAddress: delivery.channelAddress,
+                status: delivery.status,
+                providerMessageId: delivery.providerMessageId,
+                errorMessage: delivery.errorMessage,
+                sentAt: delivery.sentAt,
+                idempotencyKey: delivery.idempotencyKey,
+              });
+            } else {
+              deliveries.push({
+                id: `delivery-${recipient.id}-${job.id}`,
                 jobId: job.id,
                 recipientId: recipient.id,
                 channelType: "EMAIL",
                 channelAddress: channel.address,
                 status: "SENT",
                 providerMessageId: response.providerMessageId,
+                errorMessage: null,
                 sentAt,
                 idempotencyKey,
-              },
+              });
+            }
+
+            jobDeliveries.push("SENT");
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown delivery failure";
+
+            await logOperation({
+              level: "ERROR",
+              source: "job:dispatch-alerts",
+              action: "delivery_failed",
+              message: "메일 발송에 실패했습니다.",
+              context: toErrorContext(error, {
+                jobId: job.id,
+                recipientId: recipient.id,
+                channelAddress: channel.address,
+              }),
             });
 
+            if (useDatabase) {
+              await prisma.notificationDelivery.upsert({
+                where: { idempotencyKey },
+                update: {
+                  status: "FAILED",
+                  errorMessage: message,
+                },
+                create: {
+                  jobId: job.id,
+                  recipientId: recipient.id,
+                  channelType: "EMAIL",
+                  channelAddress: channel.address,
+                  status: "FAILED",
+                  errorMessage: message,
+                  idempotencyKey,
+                },
+              });
+            }
+
             deliveries.push({
-              id: delivery.id,
-              jobId: delivery.jobId,
-              recipientId: delivery.recipientId,
-              channelType: delivery.channelType,
-              channelAddress: delivery.channelAddress,
-              status: delivery.status,
-              providerMessageId: delivery.providerMessageId,
-              errorMessage: delivery.errorMessage,
-              sentAt: delivery.sentAt,
-              idempotencyKey: delivery.idempotencyKey,
-            });
-          } else {
-            deliveries.push({
-              id: `delivery-${recipient.id}-${job.id}`,
+              id: `delivery-failed-${recipient.id}-${job.id}`,
               jobId: job.id,
               recipientId: recipient.id,
               channelType: "EMAIL",
               channelAddress: channel.address,
-              status: "SENT",
-              providerMessageId: response.providerMessageId,
-              errorMessage: null,
-              sentAt,
+              status: "FAILED",
+              providerMessageId: null,
+              errorMessage: message,
+              sentAt: null,
               idempotencyKey,
             });
+            jobDeliveries.push("FAILED");
           }
-
-          jobDeliveries.push("SENT");
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Unknown delivery failure";
-
-          if (useDatabase) {
-            await prisma.notificationDelivery.upsert({
-              where: { idempotencyKey },
-              update: {
-                status: "FAILED",
-                errorMessage: message,
-              },
-              create: {
-                jobId: job.id,
-                recipientId: recipient.id,
-                channelType: "EMAIL",
-                channelAddress: channel.address,
-                status: "FAILED",
-                errorMessage: message,
-                idempotencyKey,
-              },
-            });
-          }
-
-          deliveries.push({
-            id: `delivery-failed-${recipient.id}-${job.id}`,
-            jobId: job.id,
-            recipientId: recipient.id,
-            channelType: "EMAIL",
-            channelAddress: channel.address,
-            status: "FAILED",
-            providerMessageId: null,
-            errorMessage: message,
-            sentAt: null,
-            idempotencyKey,
-          });
-          jobDeliveries.push("FAILED");
         }
+      }
+
+      if (useDatabase) {
+        await prisma.notificationJob.update({
+          where: { id: job.id },
+          data: {
+            status: jobDeliveries.every((status) => status === "SENT" || status === "SKIPPED")
+              ? "SENT"
+              : "PARTIAL_FAILURE",
+          },
+        });
       }
     }
 
-    if (useDatabase) {
-      await prisma.notificationJob.update({
-        where: { id: job.id },
-        data: {
-          status: jobDeliveries.every((status) => status === "SENT") ? "SENT" : "PARTIAL_FAILURE",
-        },
-      });
-    }
-  }
+    const sentCount = deliveries.filter((delivery) => delivery.status === "SENT").length;
+    const failedCount = deliveries.filter((delivery) => delivery.status === "FAILED").length;
+    const skippedCount = deliveries.filter((delivery) => delivery.status === "SKIPPED").length;
 
-  return {
-    mode: useDatabase ? "database" : "sample",
-    timestamp: now,
-    attempted: readyJobs.length,
-    deliveries,
-  };
+    await logOperation({
+      level: failedCount > 0 ? "WARN" : "INFO",
+      source: "job:dispatch-alerts",
+      action: "completed",
+      message: `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
+      context: { attempted: readyJobs.length, sentCount, failedCount, skippedCount },
+    });
+
+    return {
+      mode: useDatabase ? "database" : "sample",
+      timestamp: now,
+      attempted: readyJobs.length,
+      deliveries,
+    };
+  } catch (error) {
+    await logOperation({
+      level: "ERROR",
+      source: "job:dispatch-alerts",
+      action: "failed",
+      message: "10시 분석 메일 발송 작업이 실패했습니다.",
+      context: toErrorContext(error),
+    });
+    throw error;
+  }
 };
 
 export const getRecentStatusSummary = async () => {
   const dashboard = await getDashboardSnapshot();
+  const errorCount = dashboard.operationLogs.filter((log) => log.level === "ERROR").length;
+  const warnCount = dashboard.operationLogs.filter((log) => log.level === "WARN").length;
+
   return {
     mode: dashboard.mode,
     generatedAt: formatDateTime(dashboard.generatedAt),
@@ -861,5 +1105,7 @@ export const getRecentStatusSummary = async () => {
     recipientCount: dashboard.recipients.length,
     jobCount: dashboard.jobs.length,
     deliveryCount: dashboard.deliveries.length,
+    errorCount,
+    warnCount,
   };
 };

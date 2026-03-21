@@ -6,6 +6,7 @@ export type ChannelType = "EMAIL" | "TELEGRAM";
 export type AlertType = "CLOSING_DAY_ANALYSIS";
 export type DeliveryStatus = "PENDING" | "SENT" | "FAILED" | "SKIPPED";
 export type JobStatus = "READY" | "SENT" | "PARTIAL_FAILURE";
+export type OperationLogLevel = "INFO" | "WARN" | "ERROR";
 
 export type SourceIpoRecord = {
   sourceKey: string;
@@ -90,7 +91,9 @@ export type RecipientRecord = {
 
 export type NotificationMessage = {
   subject: string;
+  tags: string[];
   intro: string;
+  webUrl: string | null;
   sections: { label: string; lines: string[] }[];
   footer: string[];
 };
@@ -128,6 +131,16 @@ export type AdminOverrideRecord = {
   note: string | null;
 };
 
+export type OperationLogRecord = {
+  id: string;
+  level: OperationLogLevel;
+  source: string;
+  action: string;
+  message: string;
+  context: Record<string, unknown> | null;
+  createdAt: Date;
+};
+
 export type DashboardSnapshot = {
   mode: "database" | "sample";
   generatedAt: Date;
@@ -137,6 +150,7 @@ export type DashboardSnapshot = {
   jobs: NotificationJobRecord[];
   deliveries: NotificationDeliveryRecord[];
   overrides: AdminOverrideRecord[];
+  operationLogs: OperationLogRecord[];
 };
 
 export type SyncResult = {

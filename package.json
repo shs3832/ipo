@@ -14,7 +14,9 @@
     "prisma:generate": "prisma generate",
     "job:daily-sync": "tsx scripts/daily-sync.ts",
     "job:prepare-daily-alerts": "tsx scripts/prepare-daily-alerts.ts",
-    "job:dispatch-alerts": "tsx scripts/dispatch-alerts.ts"
+    "job:dispatch-alerts": "tsx scripts/dispatch-alerts.ts",
+    "mail:sample": "tsx scripts/send-sample-email.ts",
+    "source:check:opendart": "tsx scripts/check-opendart.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

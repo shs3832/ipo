@@ -46,6 +46,13 @@ export default async function AdminPage() {
           </strong>
           <p>10시 분석 잡과 최근 채널 전송 기록</p>
         </article>
+        <article className="summary-card">
+          <span>경고 / 오류</span>
+          <strong>
+            {summary.warnCount} / {summary.errorCount}
+          </strong>
+          <p>최근 운영 로그 기준 주의 및 실패 건수</p>
+        </article>
       </section>
 
       <section className="admin-grid">
@@ -119,6 +126,28 @@ export default async function AdminPage() {
                   <p>{override.slug ?? "전체 적용"}</p>
                 </div>
                 <p>{override.note ?? JSON.stringify(override.payload)}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-card detail-card-wide">
+          <h2>최근 운영 로그</h2>
+          <div className="admin-list">
+            {snapshot.operationLogs.map((log) => (
+              <div className="admin-row" key={log.id}>
+                <div className="log-meta">
+                  <span className={`log-level log-${log.level.toLowerCase()}`}>{log.level}</span>
+                  <div>
+                    <strong>{log.message}</strong>
+                    <p>
+                      {log.source} · {log.action} · {formatDateTime(log.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mono-text log-context">
+                  {log.context ? JSON.stringify(log.context) : "추가 컨텍스트 없음"}
+                </p>
               </div>
             ))}
           </div>

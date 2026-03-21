@@ -149,7 +149,7 @@ a {
 }
 
 .summary-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .summary-card {
@@ -278,6 +278,41 @@ a {
   padding: 18px;
   background: var(--surface-strong);
   border: 1px solid rgba(38, 20, 12, 0.08);
+}
+
+.log-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.log-level {
+  min-width: 60px;
+  text-align: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.log-info {
+  background: rgba(65, 100, 217, 0.12);
+  color: #2f4dad;
+}
+
+.log-warn {
+  background: rgba(207, 91, 47, 0.14);
+  color: #9d441d;
+}
+
+.log-error {
+  background: rgba(170, 50, 50, 0.14);
+  color: #9a2222;
+}
+
+.log-context {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ipo-card-head,

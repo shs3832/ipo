@@ -1,3 +1,7 @@
+import { loadEnvConfig } from "@next/env";
+
+loadEnvConfig(process.cwd());
+
 const parsePort = (value: string | undefined) => {
   if (!value) {
     return null;
@@ -18,6 +22,8 @@ export const env = {
   smtpPass: process.env.SMTP_PASS ?? "",
   smtpFrom: process.env.SMTP_FROM ?? "IPO Calendar <alerts@example.com>",
   ipoSourceUrl: process.env.IPO_SOURCE_URL ?? "",
+  opendartApiKey: process.env.OPENDART_API_KEY ?? "",
+  opendartBaseUrl: process.env.OPENDART_BASE_URL ?? "https://opendart.fss.or.kr",
 };
 
 export const isDatabaseEnabled = () => Boolean(env.databaseUrl);

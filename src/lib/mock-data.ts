@@ -6,6 +6,7 @@ import type {
   IpoRecord,
   NotificationDeliveryRecord,
   NotificationJobRecord,
+  OperationLogRecord,
   RecipientRecord,
   SourceIpoRecord,
 } from "@/lib/types";
@@ -176,7 +177,9 @@ export const sampleJobs = (ipos: IpoRecord[]): NotificationJobRecord[] => {
     scheduledFor: atKstTime(ipo.subscriptionEnd.toISOString().slice(0, 10), 10),
     payload: {
       subject: `[공모주] ${ipo.name} 오늘 청약 마감 - 10시 분석`,
+      tags: ["#샘플", "#청약추천", "#균등추천"],
       intro: `${ipo.name}의 청약 마감 당일 10시 기준 분석 요약입니다.`,
+      webUrl: null,
       sections: [
         {
           label: "종목 정보",
@@ -224,6 +227,36 @@ export const sampleOverrides: AdminOverrideRecord[] = [
   },
 ];
 
+export const sampleOperationLogs: OperationLogRecord[] = [
+  {
+    id: "log-sync-success",
+    level: "INFO",
+    source: "job:daily-sync",
+    action: "sync_completed",
+    message: "공모주 일정 2건을 성공적으로 동기화했습니다.",
+    context: { synced: 2, mode: "sample" },
+    createdAt: new Date(),
+  },
+  {
+    id: "log-alert-success",
+    level: "INFO",
+    source: "job:dispatch-alerts",
+    action: "dispatch_completed",
+    message: "10시 분석 메일 1건을 정상 발송했습니다.",
+    context: { attempted: 1, sent: 1 },
+    createdAt: new Date(),
+  },
+  {
+    id: "log-source-warning",
+    level: "WARN",
+    source: "system:source",
+    action: "sample_mode",
+    message: "외부 소스가 비어 있어 샘플 데이터를 사용 중입니다.",
+    context: { sourceKey: "sample-source" },
+    createdAt: new Date(),
+  },
+];
+
 export const buildSampleDashboard = (): DashboardSnapshot => {
   const jobs = sampleJobs(sampleIpos);
   const deliveries = sampleDeliveries(jobs);
@@ -237,5 +270,6 @@ export const buildSampleDashboard = (): DashboardSnapshot => {
     jobs,
     deliveries,
     overrides: sampleOverrides,
+    operationLogs: sampleOperationLogs,
   };
 };

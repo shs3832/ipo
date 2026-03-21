@@ -204,3 +204,17 @@ model AdminOverride {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model OperationLog {
+  id        String   @id @default(cuid())
+  level     String
+  source    String
+  action    String
+  message   String
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([source, createdAt])
+  @@index([level, createdAt])
+}

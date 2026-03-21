@@ -50,6 +50,14 @@ cp .env.example .env
 - `ADMIN_EMAIL`: 1차 관리자 수신 이메일
 - `SMTP_*`: 실제 이메일 발송 설정
 - `IPO_SOURCE_URL`: 외부 JSON 소스가 있으면 사용, 없으면 샘플 데이터 사용
+- `OPENDART_API_KEY`: OpenDART 실데이터 수집용 API 키
+- `OPENDART_BASE_URL`: 기본값은 `https://opendart.fss.or.kr`
+
+소스 우선순위:
+
+1. `IPO_SOURCE_URL`
+2. `OPENDART_API_KEY`
+3. 샘플 데이터
 
 ## 데이터베이스 준비
 
@@ -74,6 +82,42 @@ npm run job:dispatch-alerts
 
 샘플 모드에서는 실제 이메일 대신 콘솔 프리뷰를 출력합니다.  
 SMTP를 설정하면 동일한 흐름으로 실발송됩니다.
+
+## OpenDART 준비
+
+실데이터 연동 전, OpenDART 키가 정상인지 먼저 확인할 수 있습니다.
+
+`.env`에 아래 값을 넣으세요.
+
+```bash
+OPENDART_API_KEY="발급받은_키"
+OPENDART_BASE_URL="https://opendart.fss.or.kr"
+```
+
+그다음 연결 확인:
+
+```bash
+npm run source:check:opendart
+```
+
+정상이면 `status: "000"`이 반환됩니다.  
+이 단계는 키 자체와 OpenDART 접근 가능 여부만 확인하며, 아직 캘린더 실데이터 수집기로 전환하는 단계는 아닙니다.
+
+OpenDART 기반 1차 수집기는 현재달 `증권신고서(지분증권)` 공시를 기준으로 아래 정보를 채웁니다.
+
+- 종목명
+- 시장 구분(가능한 범위)
+- 대표/공동 주관사
+- 청약 시작일/종료일
+- 공모가
+
+아래 항목은 OpenDART만으로는 바로 확보되지 않거나 보수적으로 비워 둘 수 있습니다.
+
+- 최소청약주수
+- 증거금률
+- 환불일
+- 상장일
+- 수요예측 경쟁률
 
 ## API 엔드포인트
 
@@ -107,6 +151,7 @@ Vercel Cron 호출은 `x-vercel-cron` 헤더를 통해 허용됩니다.
    - `SMTP_PASS`
    - `SMTP_FROM`
    - 필요 시 `IPO_SOURCE_URL`
+   - 실데이터 연동 시 `OPENDART_API_KEY`
 5. PostgreSQL에 스키마 반영
 
 ```bash
