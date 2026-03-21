@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IPO Calendar Alerts
 
-## Getting Started
+공모주 일정을 매일 동기화해 내부 캘린더에 반영하고, 청약 마감 당일 오전 10시에 분석 메일을 발송하는 Next.js 기반 MVP입니다.
 
-First, run the development server:
+## 포함 기능
+
+- 내부 월간 캘린더에서 `청약 / 환불 / 상장` 일정 확인
+- 종목 상세 화면에서 공모가, 일정, 점수형 분석 확인
+- 관리자 화면에서 수신자, 발송 잡, 최근 발송 이력 확인
+- `daily-sync`, `prepare-daily-alerts`, `dispatch-alerts` 배치 작업 분리
+- 현재는 이메일 발송 구현, 텔레그램은 데이터 모델만 선반영
+- PostgreSQL 기반 Prisma 스키마 제공
+- `DATABASE_URL`이 없으면 샘플 데이터로 전체 흐름 미리보기 가능
+
+## Node 버전 관리
+
+이 프로젝트는 `nvm` 기준으로 관리합니다.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+nvm install
+nvm use
+node -v
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+현재 프로젝트 기본 버전은 `.nvmrc`의 `v24.14.0`입니다.  
+`~/.zprofile`에도 `nvm` 로딩을 넣어 두어서 새 터미널에서도 바로 버전 전환이 됩니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 설치와 실행
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run prisma:generate
+npm run dev
+```
 
-## Learn More
+브라우저에서 [http://localhost:3000](http://localhost:3000) 을 열면 됩니다.
 
-To learn more about Next.js, take a look at the following resources:
+## 환경 변수
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`.env.example`을 복사해 `.env`로 사용하세요.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+cp .env.example .env
+```
 
-## Deploy on Vercel
+주요 변수:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `DATABASE_URL`: PostgreSQL 연결 문자열
+- `JOB_SECRET`: 잡 API 보호용 시크릿
+- `ADMIN_EMAIL`: 1차 관리자 수신 이메일
+- `SMTP_*`: 실제 이메일 발송 설정
+- `IPO_SOURCE_URL`: 외부 JSON 소스가 있으면 사용, 없으면 샘플 데이터 사용
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 데이터베이스 준비
+
+Prisma 스키마는 `prisma/schema.prisma`에 있습니다.
+
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+개발 초기에는 `DATABASE_URL` 없이도 샘플 모드로 화면과 배치를 확인할 수 있습니다.
+
+## 배치 작업
+
+세 가지 잡이 분리되어 있습니다.
+
+```bash
+npm run job:daily-sync
+npm run job:prepare-daily-alerts
+npm run job:dispatch-alerts
+```
+
+샘플 모드에서는 실제 이메일 대신 콘솔 프리뷰를 출력합니다.  
+SMTP를 설정하면 동일한 흐름으로 실발송됩니다.
+
+## API 엔드포인트
+
+- `GET /api/jobs/daily-sync`
+- `GET /api/jobs/prepare-daily-alerts`
+- `GET /api/jobs/dispatch-alerts`
+
+`JOB_SECRET`가 설정된 경우 `x-job-secret` 헤더 또는 `?secret=` 쿼리가 필요합니다.  
+Vercel Cron 호출은 `x-vercel-cron` 헤더를 통해 허용됩니다.
+
+## 배포 메모
+
+`vercel.json`에 다음 UTC 기준 크론이 들어 있습니다.
+
+- `21:00 UTC` -> `06:00 KST` `daily-sync`
+- `00:00 UTC` -> `09:00 KST` `prepare-daily-alerts`
+- `01:00 UTC` -> `10:00 KST` `dispatch-alerts`
+
+## Vercel 배포 순서
+
+1. GitHub에 현재 저장소를 push
+2. Vercel에서 `Add New Project`로 저장소 import
+3. Framework는 `Next.js` 그대로 사용
+4. Environment Variables에 아래 값 입력
+   - `DATABASE_URL`
+   - `JOB_SECRET`
+   - `ADMIN_EMAIL`
+   - `SMTP_HOST`
+   - `SMTP_PORT`
+   - `SMTP_USER`
+   - `SMTP_PASS`
+   - `SMTP_FROM`
+   - 필요 시 `IPO_SOURCE_URL`
+5. PostgreSQL에 스키마 반영
+
+```bash
+npx prisma db push
+```
+
+6. 첫 배포 후 Vercel 프로젝트의 `Cron Jobs`와 `Functions` 로그에서 스케줄 호출 여부 확인
+
+참고:
+
+- 이 프로젝트는 `package.json`의 `engines.node = 24.x`를 사용합니다.
+- 화면은 `force-dynamic`으로 설정되어 배포 후에도 최신 DB 상태를 즉시 반영합니다.
+- `JOB_SECRET`를 설정해 두면 일반 호출은 막고, Vercel Cron은 그대로 통과합니다.
+
+## 확장 방향
+
+- 실제 공모주 소스 어댑터 추가
+- 관리자 초대 기반 다중 수신자 UI
+- 텔레그램 발송 어댑터 구현
+- 종목별 구독 범위와 필터링
+- 수동 보정 입력 폼과 변경 이력 저장
