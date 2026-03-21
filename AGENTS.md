@@ -41,6 +41,13 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 4. `prepare-daily-alerts` creates payloads for closing-day emails
 5. `dispatch-alerts` sends deliveries and logs status
 
+Additional notes:
+
+- public home/detail read paths are split from admin dashboard reads
+- home `/` is intended to stay static with `revalidate = 300`
+- read paths should not perform recipient bootstrap or other DB writes
+- stale IPOs in the current display range are marked `WITHDRAWN` during sync
+
 ## OpenDART Scope Right Now
 
 Currently implemented in:
@@ -53,6 +60,7 @@ Behavior:
 - Display range is `current month + next month`
 - Disclosure lookup range is `previous month + current month`
 - Records are filtered by `subscriptionStart` / `subscriptionEnd` being within display range
+- Month boundary and "today" logic must use `Asia/Seoul` helpers, not server local timezone
 
 OpenDART currently provides:
 
@@ -121,6 +129,8 @@ Treat it as a structured heuristic.
 - Required env for proper prod setup:
   - `ADMIN_ACCESS_PASSWORD`
   - `ADMIN_SESSION_SECRET`
+  - `JOB_SECRET`
+- Missing auth env should fail closed, not fall back to development-style secrets
 - Never commit `.env`
 
 ## Logging / Debugging
@@ -137,6 +147,7 @@ Current behavior:
 
 - `daily-sync`, `prepare-daily-alerts`, `dispatch-alerts` log `started/completed/failed`
 - Admin UI can filter `전체 / ERROR / WARN / INFO`
+- unauthorized or misconfigured job calls should also be treated as operational signals worth checking
 
 When debugging:
 
@@ -144,6 +155,11 @@ When debugging:
 2. Check Vercel function logs
 3. Check `notification_job` and `notification_delivery`
 4. Check `OperationLog`
+
+## Documentation Memory
+
+- Use [issue.md](/Users/shs/Desktop/Study/ipo/issue.md) as the running per-thread change log.
+- If the user asks to "update md files", update `issue.md` first with what happened in the thread, what changed, and which files were touched, then sync other docs if needed.
 
 ## Email Notes
 
@@ -186,3 +202,4 @@ If continuing feature work, highest-impact next tasks are:
 - Keep admin-only metadata hidden from general users
 - Preserve idempotency in notification jobs
 - Be careful with schedules: timezone is `Asia/Seoul`
+- For notification sending, prefer verified email channels and keep delivery idempotency address-aware

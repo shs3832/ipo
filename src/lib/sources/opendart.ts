@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { getKstTodayKey } from "@/lib/date";
 
 const OPENDART_OK_STATUS = "000";
 const OPENDART_EMPTY_RESULT_STATUS = "013";
@@ -28,11 +29,7 @@ export const checkOpendartApiKey = async (): Promise<OpendartHealthCheckResult> 
     };
   }
 
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
-  const dateKey = `${yyyy}${mm}${dd}`;
+  const dateKey = getKstTodayKey().replaceAll("-", "");
 
   const endpoint = buildOpendartUrl("/api/list.json", {
     crtfc_key: env.opendartApiKey,

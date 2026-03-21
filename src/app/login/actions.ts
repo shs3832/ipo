@@ -7,7 +7,7 @@ import {
   createAdminSessionCookieValue,
   getAdminSessionCookieName,
   getAdminSessionMaxAge,
-  hasAdminPassword,
+  isAdminAuthConfigured,
   isValidAdminPassword,
 } from "@/lib/admin-auth";
 
@@ -23,7 +23,7 @@ export async function loginAction(formData: FormData) {
   const next = normalizeNext(formData.get("next"));
   const password = String(formData.get("password") ?? "");
 
-  if (!hasAdminPassword()) {
+  if (!isAdminAuthConfigured()) {
     redirect(`/login?next=${encodeURIComponent(next)}&error=not-configured`);
   }
 

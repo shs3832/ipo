@@ -2,26 +2,82 @@ import { createHash } from "node:crypto";
 
 import {
   type AdminOverrideRecord,
+  type AdminStatusSummary,
   type DashboardSnapshot,
   type DispatchResult,
+  type IpoAdminMetadata,
   type IpoRecord,
   type NotificationDeliveryRecord,
   type NotificationJobRecord,
   type PreparedAlertsResult,
+  type PublicHomeSnapshot,
+  type PublicIpoDetailRecord,
   type RecipientRecord,
   type SourceIpoRecord,
   type SyncResult,
 } from "@/lib/types";
 import { buildAnalysis } from "@/lib/analysis";
-import { atKstTime, formatDate, formatDateTime, formatMoney, formatPercent, isSameKstDate, kstDateKey, parseKstDate } from "@/lib/date";
+import {
+  atKstTime,
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatPercent,
+  getKstMonthRange,
+  getKstTodayKey,
+  isSameKstDate,
+  parseKstDate,
+} from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
-import { buildFallbackDashboard } from "@/lib/fallback-data";
+import { getCachedExternalData } from "@/lib/external-cache";
+import { buildFallbackDashboard, buildFallbackPublicHomeSnapshot } from "@/lib/fallback-data";
 import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
 import { fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
 import nodemailer from "nodemailer";
 
-let databaseReachableCache: boolean | null = null;
+let databaseReachableCache: { value: boolean; expiresAt: number } | null = null;
+const IPO_SOURCE_URL_CACHE_TTL_MS = 1000 * 60 * 30;
+const DATABASE_REACHABLE_CACHE_TTL_MS = 60_000;
+const DATABASE_UNREACHABLE_CACHE_TTL_MS = 10_000;
+type SyncOptions = {
+  forceRefresh?: boolean;
+};
+
+const getDisplayRange = (date = new Date()) => {
+  const currentMonth = getKstMonthRange(date, 0);
+  const nextMonth = getKstMonthRange(date, 1);
+
+  return {
+    currentMonth,
+    start: currentMonth.start,
+    end: nextMonth.end,
+    startKey: currentMonth.startKey,
+    endKey: nextMonth.endKey,
+  };
+};
+
+const getDisplayRangeWhere = (date = new Date()) => {
+  const range = getDisplayRange(date);
+
+  return {
+    status: { not: "WITHDRAWN" as const },
+    OR: [
+      {
+        subscriptionStart: {
+          gte: range.start,
+          lte: range.end,
+        },
+      },
+      {
+        subscriptionEnd: {
+          gte: range.start,
+          lte: range.end,
+        },
+      },
+    ],
+  };
+};
 
 const slugify = (value: string) =>
   value
@@ -188,43 +244,217 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
   };
 };
 
-const fetchSourceRecords = async (): Promise<SourceIpoRecord[]> => {
+const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SourceIpoRecord[]> => {
   if (env.ipoSourceUrl) {
-    const response = await fetch(env.ipoSourceUrl, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`IPO source fetch failed: ${response.status}`);
-    }
+    const cacheKey = createHash("sha256").update(env.ipoSourceUrl).digest("hex");
 
-    return (await response.json()) as SourceIpoRecord[];
+    return getCachedExternalData(
+      {
+        key: `ipo-source-url:${cacheKey}`,
+        source: "ipo-source-url",
+        ttlMs: IPO_SOURCE_URL_CACHE_TTL_MS,
+        bypass: forceRefresh,
+      },
+      async () => {
+        const response = await fetch(env.ipoSourceUrl, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`IPO source fetch failed: ${response.status}`);
+        }
+
+        return (await response.json()) as SourceIpoRecord[];
+      },
+    );
   }
 
   if (env.opendartApiKey) {
-    return await fetchOpendartCurrentMonthIpos();
+    return await fetchOpendartCurrentMonthIpos({ forceRefresh });
   }
 
   return [];
 };
+
+const isSameAnalysis = (
+  left: Pick<NotificationJobRecord["payload"], never> & {
+    score: number;
+    ratingLabel: string;
+    summary: string;
+    keyPoints: string[];
+    warnings: string[];
+  },
+  right: {
+    score: number;
+    ratingLabel: string;
+    summary: string;
+    keyPoints: string[];
+    warnings: string[];
+  },
+) =>
+  left.score === right.score
+  && left.ratingLabel === right.ratingLabel
+  && left.summary === right.summary
+  && JSON.stringify(left.keyPoints) === JSON.stringify(right.keyPoints)
+  && JSON.stringify(left.warnings) === JSON.stringify(right.warnings);
 
 const canUseDatabase = async () => {
   if (!isDatabaseEnabled()) {
     return false;
   }
 
-  if (databaseReachableCache != null) {
-    return databaseReachableCache;
+  if (databaseReachableCache && databaseReachableCache.expiresAt > Date.now()) {
+    return databaseReachableCache.value;
   }
 
   try {
     await prisma.$queryRawUnsafe("SELECT 1");
-    databaseReachableCache = true;
+    databaseReachableCache = {
+      value: true,
+      expiresAt: Date.now() + DATABASE_REACHABLE_CACHE_TTL_MS,
+    };
     return true;
   } catch (error) {
-    databaseReachableCache = false;
+    databaseReachableCache = {
+      value: false,
+      expiresAt: Date.now() + DATABASE_UNREACHABLE_CACHE_TTL_MS,
+    };
     const message = error instanceof Error ? error.message : "Unknown database connection error";
     console.warn(`Database unavailable, falling back to empty state: ${message}`);
     return false;
   }
 };
+
+const toIpoRecord = (ipo: {
+  id: string;
+  slug: string;
+  name: string;
+  market: string;
+  leadManager: string | null;
+  coManagers: unknown;
+  priceBandLow: number | null;
+  priceBandHigh: number | null;
+  offerPrice: number | null;
+  minimumSubscriptionShares: number | null;
+  depositRate: number | null;
+  subscriptionStart: Date | null;
+  subscriptionEnd: Date | null;
+  refundDate: Date | null;
+  listingDate: Date | null;
+  status: IpoRecord["status"];
+  events: Array<{
+    id: string;
+    type: IpoRecord["events"][number]["type"];
+    title: string;
+    eventDate: Date;
+  }>;
+  analyses: Array<{
+    score: number;
+    ratingLabel: string;
+    summary: string;
+    keyPoints: unknown;
+    warnings: unknown;
+    generatedAt: Date;
+  }>;
+  sourceSnapshots: Array<{
+    sourceKey: string;
+    fetchedAt: Date;
+  }>;
+}): IpoRecord => ({
+  id: ipo.id,
+  slug: ipo.slug,
+  name: ipo.name,
+  market: ipo.market,
+  leadManager: ipo.leadManager ?? "-",
+  coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
+  priceBandLow: ipo.priceBandLow,
+  priceBandHigh: ipo.priceBandHigh,
+  offerPrice: ipo.offerPrice,
+  minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+  depositRate: ipo.depositRate,
+  subscriptionStart: ipo.subscriptionStart ?? new Date(),
+  subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
+  refundDate: ipo.refundDate,
+  listingDate: ipo.listingDate,
+  status: ipo.status,
+  events: ipo.events.map((event) => ({
+    id: event.id,
+    type: event.type,
+    title: event.title,
+    eventDate: event.eventDate,
+  })),
+  latestAnalysis: {
+    score: ipo.analyses[0].score,
+    ratingLabel: ipo.analyses[0].ratingLabel,
+    summary: ipo.analyses[0].summary,
+    keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
+    warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
+    generatedAt: ipo.analyses[0].generatedAt,
+  },
+  latestSourceKey: ipo.sourceSnapshots[0].sourceKey,
+  sourceFetchedAt: ipo.sourceSnapshots[0].fetchedAt,
+});
+
+const toPublicIpoDetailRecord = (ipo: {
+  id: string;
+  slug: string;
+  name: string;
+  market: string;
+  leadManager: string | null;
+  coManagers: unknown;
+  priceBandLow: number | null;
+  priceBandHigh: number | null;
+  offerPrice: number | null;
+  minimumSubscriptionShares: number | null;
+  depositRate: number | null;
+  subscriptionStart: Date | null;
+  subscriptionEnd: Date | null;
+  refundDate: Date | null;
+  listingDate: Date | null;
+  status: IpoRecord["status"];
+  events: Array<{
+    id: string;
+    type: IpoRecord["events"][number]["type"];
+    title: string;
+    eventDate: Date;
+  }>;
+  analyses: Array<{
+    score: number;
+    ratingLabel: string;
+    summary: string;
+    keyPoints: unknown;
+    warnings: unknown;
+    generatedAt: Date;
+  }>;
+}): PublicIpoDetailRecord => ({
+  id: ipo.id,
+  slug: ipo.slug,
+  name: ipo.name,
+  market: ipo.market,
+  leadManager: ipo.leadManager ?? "-",
+  coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
+  priceBandLow: ipo.priceBandLow,
+  priceBandHigh: ipo.priceBandHigh,
+  offerPrice: ipo.offerPrice,
+  minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+  depositRate: ipo.depositRate,
+  subscriptionStart: ipo.subscriptionStart ?? new Date(),
+  subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
+  refundDate: ipo.refundDate,
+  listingDate: ipo.listingDate,
+  status: ipo.status,
+  events: ipo.events.map((event) => ({
+    id: event.id,
+    type: event.type,
+    title: event.title,
+    eventDate: event.eventDate,
+  })),
+  latestAnalysis: {
+    score: ipo.analyses[0].score,
+    ratingLabel: ipo.analyses[0].ratingLabel,
+    summary: ipo.analyses[0].summary,
+    keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
+    warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
+    generatedAt: ipo.analyses[0].generatedAt,
+  },
+});
 
 const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {
   const ipo = await prisma.ipo.findUnique({
@@ -248,40 +478,7 @@ const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {
     return null;
   }
 
-  return {
-    id: ipo.id,
-    slug: ipo.slug,
-    name: ipo.name,
-    market: ipo.market,
-    leadManager: ipo.leadManager ?? "-",
-    coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
-    priceBandLow: ipo.priceBandLow,
-    priceBandHigh: ipo.priceBandHigh,
-    offerPrice: ipo.offerPrice,
-    minimumSubscriptionShares: ipo.minimumSubscriptionShares,
-    depositRate: ipo.depositRate,
-    subscriptionStart: ipo.subscriptionStart ?? new Date(),
-    subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
-    refundDate: ipo.refundDate,
-    listingDate: ipo.listingDate,
-    status: ipo.status,
-    events: ipo.events.map((event) => ({
-      id: event.id,
-      type: event.type,
-      title: event.title,
-      eventDate: event.eventDate,
-    })),
-    latestAnalysis: {
-      score: ipo.analyses[0].score,
-      ratingLabel: ipo.analyses[0].ratingLabel,
-      summary: ipo.analyses[0].summary,
-      keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
-      warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
-      generatedAt: ipo.analyses[0].generatedAt,
-    },
-    latestSourceKey: ipo.sourceSnapshots[0].sourceKey,
-    sourceFetchedAt: ipo.sourceSnapshots[0].fetchedAt,
-  };
+  return toIpoRecord(ipo);
 };
 
 const ensureAdminRecipient = async (): Promise<void> => {
@@ -374,6 +571,124 @@ const ensureAdminRecipient = async (): Promise<void> => {
     });
   }
 };
+
+const createDeliveryIdempotencyKey = (jobIdempotencyKey: string, recipientId: string, channelAddress: string) =>
+  `${jobIdempotencyKey}:${recipientId}:EMAIL:${encodeURIComponent(channelAddress.trim().toLowerCase())}`;
+
+const markStaleDisplayRangeIpos = async (sourceRecords: SourceIpoRecord[]) => {
+  const activeSlugs = sourceRecords.map((record) => slugify(record.name));
+  const displayRangeWhere = getDisplayRangeWhere();
+
+  const result = await prisma.ipo.updateMany({
+    where: {
+      ...displayRangeWhere,
+      slug: {
+        notIn: activeSlugs,
+      },
+    },
+    data: {
+      status: "WITHDRAWN",
+    },
+  });
+
+  if (result.count > 0) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "marked_withdrawn",
+      message: `표시 범위에서 사라진 공모주 ${result.count}건을 WITHDRAWN으로 표시했습니다.`,
+      context: { count: result.count },
+    });
+  }
+
+  return result.count;
+};
+
+const toRecipientRecord = (recipient: {
+  id: string;
+  name: string;
+  status: RecipientRecord["status"];
+  inviteState: RecipientRecord["inviteState"];
+  consentedAt: Date | null;
+  unsubscribedAt: Date | null;
+  channels: RecipientRecord["channels"];
+}): RecipientRecord => ({
+  id: recipient.id,
+  name: recipient.name,
+  status: recipient.status,
+  inviteState: recipient.inviteState,
+  consentedAt: recipient.consentedAt,
+  unsubscribedAt: recipient.unsubscribedAt,
+  channels: recipient.channels.map((channel) => ({
+    id: channel.id,
+    type: channel.type,
+    address: channel.address,
+    isPrimary: channel.isPrimary,
+    isVerified: channel.isVerified,
+  })),
+});
+
+const toNotificationJobRecord = (job: {
+  id: string;
+  ipoId: string;
+  alertType: NotificationJobRecord["alertType"];
+  scheduledFor: Date;
+  payload: unknown;
+  status: NotificationJobRecord["status"];
+  idempotencyKey: string;
+  ipo: {
+    slug: string;
+  };
+}): NotificationJobRecord => ({
+  id: job.id,
+  ipoId: job.ipoId,
+  ipoSlug: job.ipo.slug,
+  alertType: job.alertType,
+  scheduledFor: job.scheduledFor,
+  payload: job.payload as NotificationJobRecord["payload"],
+  status: job.status,
+  idempotencyKey: job.idempotencyKey,
+});
+
+const toNotificationDeliveryRecord = (delivery: {
+  id: string;
+  jobId: string;
+  recipientId: string;
+  channelType: NotificationDeliveryRecord["channelType"];
+  channelAddress: string;
+  status: NotificationDeliveryRecord["status"];
+  providerMessageId: string | null;
+  errorMessage: string | null;
+  sentAt: Date | null;
+  idempotencyKey: string;
+}): NotificationDeliveryRecord => ({
+  id: delivery.id,
+  jobId: delivery.jobId,
+  recipientId: delivery.recipientId,
+  channelType: delivery.channelType,
+  channelAddress: delivery.channelAddress,
+  status: delivery.status,
+  providerMessageId: delivery.providerMessageId,
+  errorMessage: delivery.errorMessage,
+  sentAt: delivery.sentAt,
+  idempotencyKey: delivery.idempotencyKey,
+});
+
+const toAdminOverrideRecord = (override: {
+  id: string;
+  slug: string | null;
+  type: string;
+  payload: unknown;
+  isActive: boolean;
+  note: string | null;
+}): AdminOverrideRecord => ({
+  id: override.id,
+  slug: override.slug,
+  type: override.type,
+  payload: override.payload as AdminOverrideRecord["payload"],
+  isActive: override.isActive,
+  note: override.note,
+});
 
 const createTransporter = () =>
   nodemailer.createTransport({
@@ -477,7 +792,59 @@ const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) 
 
 const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
   const slug = slugify(record.name);
+  const checksum = toChecksum(record);
   const analysis = buildAnalysis(record);
+  const latestSnapshot = await prisma.ipo.findUnique({
+    where: { slug },
+    include: {
+      analyses: {
+        orderBy: { generatedAt: "desc" },
+        take: 1,
+      },
+      sourceSnapshots: {
+        orderBy: { fetchedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  if (
+    latestSnapshot?.sourceSnapshots[0]?.sourceKey === record.sourceKey &&
+    latestSnapshot.sourceSnapshots[0]?.checksum === checksum
+  ) {
+    const latestAnalysis = latestSnapshot.analyses[0];
+    const analysisChanged = !latestAnalysis
+      || !isSameAnalysis(
+        {
+          score: latestAnalysis.score,
+          ratingLabel: latestAnalysis.ratingLabel,
+          summary: latestAnalysis.summary,
+          keyPoints: Array.isArray(latestAnalysis.keyPoints) ? (latestAnalysis.keyPoints as string[]) : [],
+          warnings: Array.isArray(latestAnalysis.warnings) ? (latestAnalysis.warnings as string[]) : [],
+        },
+        analysis,
+      );
+
+    if (analysisChanged && latestSnapshot.id) {
+      await prisma.ipoAnalysis.create({
+        data: {
+          ipoId: latestSnapshot.id,
+          score: analysis.score,
+          ratingLabel: analysis.ratingLabel,
+          summary: analysis.summary,
+          keyPoints: analysis.keyPoints,
+          warnings: analysis.warnings,
+          generatedAt: analysis.generatedAt,
+        },
+      });
+    }
+
+    const unchanged = await toIpoRecordFromDb(slug);
+    if (unchanged) {
+      return unchanged;
+    }
+  }
+
   const ipo = await prisma.ipo.upsert({
     where: { slug },
     update: {
@@ -532,7 +899,7 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
     data: {
       ipoId: ipo.id,
       sourceKey: record.sourceKey,
-      checksum: toChecksum(record),
+      checksum,
       payload: record,
     },
   });
@@ -557,10 +924,11 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
     return buildFallbackDashboard();
   }
 
-  await ensureAdminRecipient();
+  const displayRange = getDisplayRange();
 
   const [ipos, recipients, jobs, deliveries, overrides] = await Promise.all([
     prisma.ipo.findMany({
+      where: getDisplayRangeWhere(),
       orderBy: { subscriptionEnd: "asc" },
       include: {
         events: { orderBy: { eventDate: "asc" } },
@@ -592,95 +960,128 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
   return {
     mode: "database",
     generatedAt: new Date(),
-    calendarMonth: new Date(),
-    ipos: ipos.flatMap((ipo) => {
-      if (!ipo.analyses.length || !ipo.sourceSnapshots.length) {
-        return [];
-      }
-
-      return [
-        {
-          id: ipo.id,
-          slug: ipo.slug,
-          name: ipo.name,
-          market: ipo.market,
-          leadManager: ipo.leadManager ?? "-",
-          coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
-          priceBandLow: ipo.priceBandLow,
-          priceBandHigh: ipo.priceBandHigh,
-          offerPrice: ipo.offerPrice,
-          minimumSubscriptionShares: ipo.minimumSubscriptionShares,
-          depositRate: ipo.depositRate,
-          subscriptionStart: ipo.subscriptionStart ?? new Date(),
-          subscriptionEnd: ipo.subscriptionEnd ?? new Date(),
-          refundDate: ipo.refundDate,
-          listingDate: ipo.listingDate,
-          status: ipo.status,
-          events: ipo.events.map((event) => ({
-            id: event.id,
-            type: event.type,
-            title: event.title,
-            eventDate: event.eventDate,
-          })),
-          latestAnalysis: {
-            score: ipo.analyses[0].score,
-            ratingLabel: ipo.analyses[0].ratingLabel,
-            summary: ipo.analyses[0].summary,
-            keyPoints: Array.isArray(ipo.analyses[0].keyPoints) ? (ipo.analyses[0].keyPoints as string[]) : [],
-            warnings: Array.isArray(ipo.analyses[0].warnings) ? (ipo.analyses[0].warnings as string[]) : [],
-            generatedAt: ipo.analyses[0].generatedAt,
-          },
-          latestSourceKey: ipo.sourceSnapshots[0].sourceKey,
-          sourceFetchedAt: ipo.sourceSnapshots[0].fetchedAt,
-        },
-      ];
-    }),
-    recipients: recipients.map((recipient) => ({
-      id: recipient.id,
-      name: recipient.name,
-      status: recipient.status,
-      inviteState: recipient.inviteState,
-      consentedAt: recipient.consentedAt,
-      unsubscribedAt: recipient.unsubscribedAt,
-      channels: recipient.channels.map((channel) => ({
-        id: channel.id,
-        type: channel.type,
-        address: channel.address,
-        isPrimary: channel.isPrimary,
-        isVerified: channel.isVerified,
-      })),
-    })),
-    jobs: jobs.map((job) => ({
-      id: job.id,
-      ipoId: job.ipoId,
-      ipoSlug: job.ipo.slug,
-      alertType: job.alertType,
-      scheduledFor: job.scheduledFor,
-      payload: job.payload as NotificationJobRecord["payload"],
-      status: job.status,
-      idempotencyKey: job.idempotencyKey,
-    })),
-    deliveries: deliveries.map((delivery) => ({
-      id: delivery.id,
-      jobId: delivery.jobId,
-      recipientId: delivery.recipientId,
-      channelType: delivery.channelType,
-      channelAddress: delivery.channelAddress,
-      status: delivery.status,
-      providerMessageId: delivery.providerMessageId,
-      errorMessage: delivery.errorMessage,
-      sentAt: delivery.sentAt,
-      idempotencyKey: delivery.idempotencyKey,
-    })),
-    overrides: overrides.map((override) => ({
-      id: override.id,
-      slug: override.slug,
-      type: override.type,
-      payload: override.payload as AdminOverrideRecord["payload"],
-      isActive: override.isActive,
-      note: override.note,
-    })),
+    calendarMonth: displayRange.currentMonth.start,
+    ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
+    recipients: recipients.map(toRecipientRecord),
+    jobs: jobs.map(toNotificationJobRecord),
+    deliveries: deliveries.map(toNotificationDeliveryRecord),
+    overrides: overrides.map(toAdminOverrideRecord),
     operationLogs,
+  };
+};
+
+export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
+  if (!(await canUseDatabase())) {
+    return buildFallbackPublicHomeSnapshot();
+  }
+
+  const displayRange = getDisplayRange();
+
+  const [ipos, recipientCount, jobCount] = await Promise.all([
+    prisma.ipo.findMany({
+      where: getDisplayRangeWhere(),
+      orderBy: { subscriptionEnd: "asc" },
+      include: {
+        events: { orderBy: { eventDate: "asc" } },
+        analyses: { orderBy: { generatedAt: "desc" }, take: 1 },
+        sourceSnapshots: { orderBy: { fetchedAt: "desc" }, take: 1 },
+      },
+    }),
+    prisma.recipient.count({
+      where: {
+        status: "ACTIVE",
+        unsubscribedAt: null,
+      },
+    }),
+    prisma.notificationJob.count({
+      where: {
+        status: "READY",
+      },
+    }),
+  ]);
+
+  return {
+    mode: "database",
+    generatedAt: new Date(),
+    calendarMonth: displayRange.currentMonth.start,
+    ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
+    recipientCount,
+    jobCount,
+  };
+};
+
+export const buildAdminStatusSummary = (dashboard: DashboardSnapshot): AdminStatusSummary => {
+  const errorCount = dashboard.operationLogs.filter((log) => log.level === "ERROR").length;
+  const warnCount = dashboard.operationLogs.filter((log) => log.level === "WARN").length;
+
+  return {
+    mode: dashboard.mode,
+    generatedAt: formatDateTime(dashboard.generatedAt),
+    ipoCount: dashboard.ipos.length,
+    recipientCount: dashboard.recipients.length,
+    jobCount: dashboard.jobs.length,
+    deliveryCount: dashboard.deliveries.length,
+    errorCount,
+    warnCount,
+  };
+};
+
+export const getPublicIpoBySlug = async (slug: string): Promise<PublicIpoDetailRecord | null> => {
+  const normalizedSlug = decodeURIComponent(slug);
+
+  if (!(await canUseDatabase())) {
+    return null;
+  }
+
+  const ipo = await prisma.ipo.findUnique({
+    where: { slug: normalizedSlug },
+    include: {
+      events: {
+        orderBy: { eventDate: "asc" },
+      },
+      analyses: {
+        orderBy: { generatedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  if (!ipo || ipo.analyses.length === 0) {
+    return null;
+  }
+
+  return toPublicIpoDetailRecord(ipo);
+};
+
+export const getIpoAdminMetadataBySlug = async (slug: string): Promise<IpoAdminMetadata | null> => {
+  const normalizedSlug = decodeURIComponent(slug);
+
+  if (!(await canUseDatabase())) {
+    return null;
+  }
+
+  const latestSnapshot = await prisma.ipoSourceSnapshot.findFirst({
+    where: {
+      ipo: {
+        slug: normalizedSlug,
+      },
+    },
+    orderBy: {
+      fetchedAt: "desc",
+    },
+    select: {
+      sourceKey: true,
+      fetchedAt: true,
+    },
+  });
+
+  if (!latestSnapshot) {
+    return null;
+  }
+
+  return {
+    latestSourceKey: latestSnapshot.sourceKey,
+    sourceFetchedAt: latestSnapshot.fetchedAt,
   };
 };
 
@@ -694,16 +1095,17 @@ export const getIpoBySlug = async (slug: string): Promise<IpoRecord | null> => {
   return toIpoRecordFromDb(normalizedSlug);
 };
 
-export const runDailySync = async (): Promise<SyncResult> => {
+export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SyncResult> => {
   await logOperation({
     level: "INFO",
     source: "job:daily-sync",
     action: "started",
-    message: "공모주 일정 동기화를 시작했습니다.",
+    message: forceRefresh ? "공모주 일정 강제 새로고침 동기화를 시작했습니다." : "공모주 일정 동기화를 시작했습니다.",
+    context: forceRefresh ? { forceRefresh } : null,
   });
 
   try {
-    const sourceRecords = await fetchSourceRecords();
+    const sourceRecords = await fetchSourceRecords({ forceRefresh });
 
     if (!(await canUseDatabase())) {
       const result = {
@@ -718,7 +1120,7 @@ export const runDailySync = async (): Promise<SyncResult> => {
         source: "job:daily-sync",
         action: "fallback_mode",
         message: `DB 연결이 없어 빈 fallback 기준으로 ${result.synced}건을 반환했습니다.`,
-        context: { synced: result.synced },
+        context: { synced: result.synced, forceRefresh },
       });
 
       return result;
@@ -728,13 +1130,14 @@ export const runDailySync = async (): Promise<SyncResult> => {
 
     const ipos = await Promise.all(sourceRecords.map((record) => upsertDatabaseIpo(record)));
     const synced = ipos.filter(Boolean).length;
+    const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords);
 
     await logOperation({
       level: "INFO",
       source: "job:daily-sync",
       action: "completed",
       message: `공모주 일정 ${synced}건을 동기화했습니다.`,
-      context: { synced, sourceRecords: sourceRecords.length },
+      context: { synced, sourceRecords: sourceRecords.length, markedWithdrawn, forceRefresh },
     });
 
     return {
@@ -764,8 +1167,13 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
   });
 
   try {
+    if (await canUseDatabase()) {
+      await ensureAdminRecipient();
+    }
+
     const dashboard = await getDashboardSnapshot();
-    const today = new Date();
+    const todayKey = getKstTodayKey();
+    const today = parseKstDate(todayKey);
     const closingIpos = dashboard.ipos.filter(
       (ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN",
     );
@@ -775,10 +1183,10 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
       ipoId: ipo.id,
       ipoSlug: ipo.slug,
       alertType: "CLOSING_DAY_ANALYSIS" as const,
-      scheduledFor: atKstTime(kstDateKey(today), 10),
+      scheduledFor: atKstTime(todayKey, 10),
       payload: buildMessage(ipo),
       status: "READY" as const,
-      idempotencyKey: `${ipo.id}:${kstDateKey(today)}:closing-day-analysis`,
+      idempotencyKey: `${ipo.id}:${todayKey}:closing-day-analysis`,
     }));
 
     if (!(await canUseDatabase())) {
@@ -880,21 +1288,31 @@ const resolveRecipients = async (): Promise<RecipientRecord[]> => {
     },
   });
 
-  return recipients.map((recipient) => ({
-    id: recipient.id,
-    name: recipient.name,
-    status: recipient.status,
-    inviteState: recipient.inviteState,
-    consentedAt: recipient.consentedAt,
-    unsubscribedAt: recipient.unsubscribedAt,
-    channels: recipient.channels.map((channel) => ({
-      id: channel.id,
-      type: channel.type,
-      address: channel.address,
-      isPrimary: channel.isPrimary,
-      isVerified: channel.isVerified,
-    })),
-  }));
+  return recipients
+    .map((recipient) => {
+      const verifiedEmailChannels = recipient.channels.filter(
+        (channel) => channel.type === "EMAIL" && channel.isVerified,
+      );
+      const primaryVerifiedEmails = verifiedEmailChannels.filter((channel) => channel.isPrimary);
+      const selectedEmailChannels = primaryVerifiedEmails.length ? primaryVerifiedEmails : verifiedEmailChannels;
+
+      return {
+        id: recipient.id,
+        name: recipient.name,
+        status: recipient.status,
+        inviteState: recipient.inviteState,
+        consentedAt: recipient.consentedAt,
+        unsubscribedAt: recipient.unsubscribedAt,
+        channels: selectedEmailChannels.map((channel) => ({
+          id: channel.id,
+          type: channel.type,
+          address: channel.address,
+          isPrimary: channel.isPrimary,
+          isVerified: channel.isVerified,
+        })),
+      } satisfies RecipientRecord;
+    })
+    .filter((recipient) => recipient.channels.length > 0);
 };
 
 export const dispatchAlerts = async (): Promise<DispatchResult> => {
@@ -922,7 +1340,7 @@ export const dispatchAlerts = async (): Promise<DispatchResult> => {
             continue;
           }
 
-          const idempotencyKey = `${job.idempotencyKey}:${recipient.id}:${channel.type}`;
+          const idempotencyKey = createDeliveryIdempotencyKey(job.idempotencyKey, recipient.id, channel.address);
 
           if (useDatabase) {
             const existing = await prisma.notificationDelivery.findUnique({
@@ -1091,21 +1509,4 @@ export const dispatchAlerts = async (): Promise<DispatchResult> => {
     });
     throw error;
   }
-};
-
-export const getRecentStatusSummary = async () => {
-  const dashboard = await getDashboardSnapshot();
-  const errorCount = dashboard.operationLogs.filter((log) => log.level === "ERROR").length;
-  const warnCount = dashboard.operationLogs.filter((log) => log.level === "WARN").length;
-
-  return {
-    mode: dashboard.mode,
-    generatedAt: formatDateTime(dashboard.generatedAt),
-    ipoCount: dashboard.ipos.length,
-    recipientCount: dashboard.recipients.length,
-    jobCount: dashboard.jobs.length,
-    deliveryCount: dashboard.deliveries.length,
-    errorCount,
-    warnCount,
-  };
 };

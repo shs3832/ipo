@@ -2,17 +2,22 @@ import type { NextRequest } from "next/server";
 
 import { env } from "@/lib/env";
 
-export const isAuthorizedJobRequest = (request: NextRequest) => {
+export const hasJobSecret = () => Boolean(env.jobSecret);
+
+export const getJobAuthorization = (request: NextRequest) => {
   if (!env.jobSecret) {
-    return true;
+    return { authorized: false, reason: "misconfigured" as const };
   }
 
   if (request.headers.get("x-vercel-cron")) {
-    return true;
+    return { authorized: true, reason: "authorized" as const };
   }
 
   const headerSecret = request.headers.get("x-job-secret");
   const querySecret = request.nextUrl.searchParams.get("secret");
 
-  return headerSecret === env.jobSecret || querySecret === env.jobSecret;
+  return {
+    authorized: headerSecret === env.jobSecret || querySecret === env.jobSecret,
+    reason: headerSecret === env.jobSecret || querySecret === env.jobSecret ? ("authorized" as const) : ("unauthorized" as const),
+  };
 };

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { formatDate, formatMoney, kstDateKey } from "@/lib/date";
+import { formatDate, formatMoney, getKstDayOfWeek, kstDateKey } from "@/lib/date";
 import styles from "@/app/home-content.module.scss";
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
@@ -110,7 +110,7 @@ export function HomeContent({
       return true;
     }
 
-    const dayOfWeek = new Date(dayValue).getDay();
+    const dayOfWeek = getKstDayOfWeek(new Date(dayValue));
     return dayOfWeek !== 0 && dayOfWeek !== 6;
   });
 
@@ -158,7 +158,7 @@ export function HomeContent({
           {visibleMonthDays.map((dayValue) => {
             const day = new Date(dayValue);
             const entries = (eventsByDate[kstDateKey(day)] ?? []).filter((entry) => filters[entry.type]);
-            const dayOfWeek = day.getDay();
+            const dayOfWeek = getKstDayOfWeek(day);
             const isSunday = dayOfWeek === 0;
             const isSaturday = dayOfWeek === 6;
             const isCurrentMonth = formatDate(day, "yyyy-MM") === currentMonthKey;

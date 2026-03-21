@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { formatDateTime } from "@/lib/date";
-import { getDashboardSnapshot, getRecentStatusSummary } from "@/lib/jobs";
+import { buildAdminStatusSummary, getDashboardSnapshot } from "@/lib/jobs";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { logoutAction } from "@/app/login/actions";
 import { AdminLogPanel } from "@/app/admin-log-panel";
@@ -15,7 +15,8 @@ export default async function AdminPage() {
     redirect("/login?next=/admin");
   }
 
-  const [snapshot, summary] = await Promise.all([getDashboardSnapshot(), getRecentStatusSummary()]);
+  const snapshot = await getDashboardSnapshot();
+  const summary = buildAdminStatusSummary(snapshot);
 
   return (
     <main className="page-shell">

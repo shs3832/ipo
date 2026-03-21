@@ -4,6 +4,7 @@
 
 - 사람용 프로젝트 개요: [README.md](/Users/shs/Desktop/Study/ipo/README.md)
 - 에이전트/작업자용 맥락 메모: [AGENTS.md](/Users/shs/Desktop/Study/ipo/AGENTS.md)
+- 현재 스레드 작업 기록: [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
 
 ## Current Notes
 
@@ -17,3 +18,4 @@
 - 더미 종목 `에이블데이터`, `로보헬스`는 코드와 DB에서 제거되었습니다.
 - 실데이터가 없을 때는 샘플 종목을 보여주지 않고 `fallback` 빈 상태로 동작합니다.
 - `npm run mail:sample` 스크립트 이름은 유지되지만, 실제로는 준비된 알림 payload를 메일로 미리 보내는 preview 성격입니다.
+- 사용자가 `md 파일 업데이트`라고 요청하면, 우선 [`issue.md`](/Users/shs/Desktop/Study/ipo/issue.md)에 현재 스레드에서 무엇을 어떻게 바꿨는지 기록하고 필요한 문서를 같이 맞춥니다.

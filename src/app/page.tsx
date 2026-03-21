@@ -1,18 +1,16 @@
 import Link from "next/link";
 
-import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { formatDate, getMonthDays, kstDateKey } from "@/lib/date";
-import { getDashboardSnapshot } from "@/lib/jobs";
 import { HomeContent } from "@/app/home-content";
+import { getCachedHomeSnapshot } from "@/lib/page-data";
 import styles from "@/app/page.module.scss";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
 
 export default async function Home() {
-  const isAdmin = await isAdminAuthenticated();
-  const snapshot = await getDashboardSnapshot();
+  const snapshot = await getCachedHomeSnapshot();
   const monthDays = getMonthDays(snapshot.calendarMonth);
   const currentMonthKey = formatDate(snapshot.calendarMonth, "yyyy-MM");
   const eventsByDate = new Map<string, { title: string; slug: string; type: EventType }[]>();
@@ -63,8 +61,8 @@ export default async function Home() {
             </article>
 
             <div className={styles.heroActionGroup}>
-              <Link className="button-primary" href={isAdmin ? "/admin" : "/login?next=/admin"}>
-                {isAdmin ? "관리자 화면" : "관리자 로그인"}
+              <Link className="button-primary" href="/admin">
+                관리자 화면
               </Link>
               <a className="button-secondary" href="#calendar-panel">
                 일정 바로 보기
@@ -81,12 +79,12 @@ export default async function Home() {
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>활성 수신자</span>
-            <strong className={styles.summaryValue}>{snapshot.recipients.length}</strong>
+            <strong className={styles.summaryValue}>{snapshot.recipientCount}</strong>
             <p className={styles.cardCopy}>현재 구조는 단일 관리자 기준이지만 다중 수신자로 확장 가능합니다.</p>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>준비된 알림 잡</span>
-            <strong className={styles.summaryValue}>{snapshot.jobs.length}</strong>
+            <strong className={styles.summaryValue}>{snapshot.jobCount}</strong>
             <p className={styles.cardCopy}>당일 오전 10시 발송을 위해 준비된 분석 메일 작업입니다.</p>
           </article>
         </section>

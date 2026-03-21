@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { formatDate, formatDateTime, formatMoney, formatPercent } from "@/lib/date";
-import { getIpoBySlug } from "@/lib/jobs";
+import { getIpoAdminMetadataBySlug } from "@/lib/jobs";
+import { getCachedIpoDetail } from "@/lib/page-data";
 import styles from "@/app/ipos/[slug]/page.module.scss";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +38,13 @@ export default async function IpoDetailPage({
 }) {
   const { slug } = await params;
   const isAdmin = await isAdminAuthenticated();
-  const ipo = await getIpoBySlug(slug);
+  const ipo = await getCachedIpoDetail(slug);
 
   if (!ipo) {
     notFound();
   }
+
+  const adminMetadata = isAdmin ? await getIpoAdminMetadataBySlug(slug) : null;
 
   return (
     <main className="page-shell">
@@ -131,11 +134,11 @@ export default async function IpoDetailPage({
                 <>
                   <div>
                     <dt>최근 수집 시각</dt>
-                    <dd>{formatDateTime(ipo.sourceFetchedAt)}</dd>
+                    <dd>{adminMetadata ? formatDateTime(adminMetadata.sourceFetchedAt) : "-"}</dd>
                   </div>
                   <div>
                     <dt>소스 키</dt>
-                    <dd>{ipo.latestSourceKey}</dd>
+                    <dd>{adminMetadata?.latestSourceKey ?? "-"}</dd>
                   </div>
                 </>
               ) : null}

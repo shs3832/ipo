@@ -166,6 +166,33 @@ export type DashboardSnapshot = {
   operationLogs: OperationLogRecord[];
 };
 
+export type PublicHomeSnapshot = {
+  mode: "database" | "fallback";
+  generatedAt: Date;
+  calendarMonth: Date;
+  ipos: IpoRecord[];
+  recipientCount: number;
+  jobCount: number;
+};
+
+export type AdminStatusSummary = {
+  mode: "database" | "fallback";
+  generatedAt: string;
+  ipoCount: number;
+  recipientCount: number;
+  jobCount: number;
+  deliveryCount: number;
+  errorCount: number;
+  warnCount: number;
+};
+
+export type PublicIpoDetailRecord = Omit<IpoRecord, "latestSourceKey" | "sourceFetchedAt">;
+
+export type IpoAdminMetadata = {
+  latestSourceKey: string;
+  sourceFetchedAt: Date;
+};
+
 export type SyncResult = {
   mode: "database" | "fallback";
   synced: number;

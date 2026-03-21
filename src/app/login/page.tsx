@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { isAdminAuthenticated, hasAdminPassword } from "@/lib/admin-auth";
+import { hasAdminPassword, hasAdminSessionSecret, isAdminAuthenticated } from "@/lib/admin-auth";
 import { loginAction } from "@/app/login/actions";
 import styles from "@/app/login/page.module.scss";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const errorMessage = {
   invalid: "비밀번호가 올바르지 않습니다.",
-  "not-configured": "관리자 비밀번호가 아직 설정되지 않았습니다. 환경변수에 ADMIN_ACCESS_PASSWORD를 추가해 주세요.",
+  "not-configured": "관리자 로그인 설정이 완전하지 않습니다. ADMIN_ACCESS_PASSWORD와 ADMIN_SESSION_SECRET을 모두 설정해 주세요.",
 } as const;
 
 export default async function LoginPage({
@@ -43,8 +43,10 @@ export default async function LoginPage({
           </div>
 
           {error ? <p className={styles.error}>{error}</p> : null}
-          {!hasAdminPassword() ? (
-            <p className={styles.help}>`.env` 또는 Vercel 환경변수에 `ADMIN_ACCESS_PASSWORD`를 먼저 설정해 주세요.</p>
+          {!hasAdminPassword() || !hasAdminSessionSecret() ? (
+            <p className={styles.help}>
+              `.env` 또는 Vercel 환경변수에 `ADMIN_ACCESS_PASSWORD`와 `ADMIN_SESSION_SECRET`을 모두 설정해 주세요.
+            </p>
           ) : null}
 
           <form action={loginAction} className={styles.form}>

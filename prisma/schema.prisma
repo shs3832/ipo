@@ -105,6 +105,18 @@ model IpoSourceSnapshot {
   @@index([ipoId, fetchedAt])
 }
 
+model ExternalDataCache {
+  cacheKey  String   @id
+  source    String
+  payload   Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([source, expiresAt])
+  @@index([expiresAt])
+}
+
 model IpoAnalysis {
   id          String   @id @default(cuid())
   ipoId        String

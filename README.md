@@ -30,6 +30,16 @@
 - 종목 상세 페이지에서 일정, 가격, 점수, 분석 요약, 이벤트 타임라인 제공
 - 관리자만 볼 수 있는 민감 정보 분리
 - 로그인 / 관리자 / 상세 페이지까지 공통 톤으로 재정리된 카드형 UI 적용
+- 상세 페이지는 이동 중 중앙 스피너 기반 loading 상태를 표시
+- 관리자 페이지는 이동 중 스피너와 카드 틀을 함께 보여주는 loading 상태를 표시
+
+### 라우팅 / 성능
+
+- 홈 `/`는 정적 경로로 prerender 되며 `5분` 단위로 재검증됩니다.
+- 공개 홈 데이터는 관리자 대시보드 조회와 분리된 read model을 사용합니다.
+- 공개 조회 경로에서는 관리자 bootstrap 같은 DB write를 수행하지 않습니다.
+- 상세 페이지 공개 데이터는 캐시된 helper로 읽고, 관리자 메타데이터만 조건부로 덧붙입니다.
+- 관리자 페이지는 snapshot을 1회만 읽고 상태 요약은 메모리에서 계산합니다.
 
 ### 스타일 구조
 
@@ -47,6 +57,8 @@
 - fallback 상태에서는 더미 공모주를 생성하지 않음
 - 현재 OpenDART는 `현재월 + 다음월 청약 일정`을 캘린더 표시 대상으로 수집
 - 내부적으로는 이전달~현재달 공시를 참고해 다음달 일정까지 보강
+- 날짜/월 경계 계산은 `Asia/Seoul` 기준 helper로 통일되어 있음
+- `daily-sync` 이후 현재 표시 범위에서 소스에 없는 종목은 `WITHDRAWN`으로 정리됨
 
 ### 알림
 
@@ -59,6 +71,9 @@
 - `daily-sync`: 공모주 일정 동기화
 - `prepare-daily-alerts`: 오늘 청약 마감 종목의 10시 메일 payload 생성
 - `dispatch-alerts`: 수신자별 실제 발송
+- 발송 대상 이메일은 `verified` 채널만 사용
+- verified primary 이메일이 있으면 해당 채널을 우선 사용
+- delivery idempotency key는 채널 주소까지 포함해 다중 이메일에서도 중복 방지가 유지됨
 
 ### 관리자/운영
 
@@ -74,6 +89,7 @@
 - 상세 페이지는 fallback 상태에서 종목 slug를 찾지 못하면 정상적으로 `not found` 처리됩니다.
 - 과거 샘플 종목 `에이블데이터`, `로보헬스`는 코드와 DB에서 제거되었습니다.
 - 샘플 공모주를 대신 보여주지 않으며, 운영 모드는 `fallback`으로 표기됩니다.
+- DB 가용성 판정은 TTL 캐시를 사용하므로 일시 장애 후 재시도 시 자동 복귀할 수 있습니다.
 
 ## 점수 계산 현재 상태
 
@@ -161,7 +177,7 @@ npm run dev
 주요 변수:
 
 - `DATABASE_URL`: PostgreSQL 연결 문자열
-- `JOB_SECRET`: 잡 API 보호용 시크릿
+- `JOB_SECRET`: 잡 API 보호용 필수 시크릿
 - `ADMIN_ACCESS_PASSWORD`: 관리자 로그인 비밀번호
 - `ADMIN_SESSION_SECRET`: 관리자 세션 서명용 랜덤 시크릿
 - `ADMIN_EMAIL`: 관리자 이메일
@@ -170,6 +186,9 @@ npm run dev
 - `IPO_SOURCE_URL`: 외부 JSON 데이터 소스
 - `OPENDART_API_KEY`
 - `OPENDART_BASE_URL`
+
+관리자 로그인은 `ADMIN_ACCESS_PASSWORD`와 `ADMIN_SESSION_SECRET`이 둘 다 있어야 동작합니다.
+`JOB_SECRET`이 없으면 잡 API는 허용되지 않고 misconfigured 상태로 차단됩니다.
 
 소스 우선순위:
 
@@ -212,7 +231,7 @@ npm run source:check:opendart
 - `GET /api/jobs/prepare-daily-alerts`
 - `GET /api/jobs/dispatch-alerts`
 
-`JOB_SECRET`가 설정되면 `?secret=` 쿼리 또는 `x-job-secret` 헤더가 필요합니다.  
+`JOB_SECRET`는 필수입니다. `?secret=` 쿼리 또는 `x-job-secret` 헤더가 필요합니다.  
 Vercel Cron은 `x-vercel-cron` 헤더를 통해 허용됩니다.
 
 ## 배포 메모

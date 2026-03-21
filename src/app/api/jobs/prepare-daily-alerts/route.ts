@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { isAuthorizedJobRequest } from "@/lib/job-auth";
+import { getJobAuthorization } from "@/lib/job-auth";
 import { prepareDailyAlerts } from "@/lib/jobs";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedJobRequest(request)) {
+  const auth = getJobAuthorization(request);
+
+  if (!auth.authorized) {
+    if (auth.reason === "misconfigured") {
+      await logOperation({
+        level: "ERROR",
+        source: "api:prepare-daily-alerts",
+        action: "misconfigured",
+        message: "JOB_SECRET 누락으로 prepare-daily-alerts 호출을 차단했습니다.",
+        context: { path: request.nextUrl.pathname },
+      });
+      return NextResponse.json({ error: "Job secret is not configured" }, { status: 500 });
+    }
+
     await logOperation({
       level: "WARN",
       source: "api:prepare-daily-alerts",

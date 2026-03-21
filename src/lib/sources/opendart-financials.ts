@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { getKstDateParts } from "@/lib/date";
 
 type OpendartFinancialResponse = {
   status?: string;
@@ -94,8 +95,7 @@ const calculateDebtRatio = (liabilities: number | null, equity: number | null) =
 };
 
 const buildFinancialAttempts = () => {
-  const now = new Date();
-  const currentYear = now.getFullYear();
+  const { year: currentYear } = getKstDateParts();
 
   return [
     { year: currentYear - 1, reportCode: "11011", label: `${currentYear - 1} 사업보고서` },

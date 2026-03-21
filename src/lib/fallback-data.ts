@@ -1,4 +1,5 @@
-import type { DashboardSnapshot, OperationLogRecord } from "@/lib/types";
+import { getKstMonthStart } from "@/lib/date";
+import type { DashboardSnapshot, OperationLogRecord, PublicHomeSnapshot } from "@/lib/types";
 
 const buildFallbackLogs = (): OperationLogRecord[] => [
   {
@@ -17,11 +18,20 @@ const buildFallbackLogs = (): OperationLogRecord[] => [
 export const buildFallbackDashboard = (): DashboardSnapshot => ({
   mode: "fallback",
   generatedAt: new Date(),
-  calendarMonth: new Date(),
+  calendarMonth: getKstMonthStart(),
   ipos: [],
   recipients: [],
   jobs: [],
   deliveries: [],
   overrides: [],
   operationLogs: buildFallbackLogs(),
+});
+
+export const buildFallbackPublicHomeSnapshot = (): PublicHomeSnapshot => ({
+  mode: "fallback",
+  generatedAt: new Date(),
+  calendarMonth: getKstMonthStart(),
+  ipos: [],
+  recipientCount: 0,
+  jobCount: 0,
 });

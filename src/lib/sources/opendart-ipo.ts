@@ -1,5 +1,7 @@
 import type { SourceIpoRecord } from "@/lib/types";
+import { getKstMonthRange, getKstTodayKey } from "@/lib/date";
 import { env } from "@/lib/env";
+import { getCachedExternalData } from "@/lib/external-cache";
 import { fetchLatestFinancialSnapshot } from "@/lib/sources/opendart-financials";
 
 type OpendartListResponse = {
@@ -33,15 +35,6 @@ type OpendartEquityResponse = {
   }>;
 };
 
-type MonthWindow = {
-  key: string;
-  label: string;
-  bgnDe: string;
-  endDe: string;
-  monthStart: Date;
-  monthEnd: Date;
-};
-
 type DateRange = {
   key: string;
   label: string;
@@ -54,33 +47,16 @@ type DateRange = {
 const OPENDART_OK_STATUS = "000";
 const PAGE_SIZE = 100;
 const MAX_DISCLOSURE_PAGES = 8;
+const OPENDART_SOURCE_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+type FetchOpendartCurrentMonthIposOptions = {
+  forceRefresh?: boolean;
+};
 
 const buildUrl = (path: string, params: Record<string, string>) => {
   const baseUrl = env.opendartBaseUrl.replace(/\/+$/, "");
   const search = new URLSearchParams(params);
   return `${baseUrl}${path}?${search.toString()}`;
 };
-
-const toMonthWindow = (date: Date): MonthWindow => {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const monthStart = new Date(year, month, 1);
-  const monthEnd = new Date(year, month + 1, 0);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const key = `${year}-${pad(month + 1)}`;
-  const toDateKey = (value: Date) => `${value.getFullYear()}${pad(value.getMonth() + 1)}${pad(value.getDate())}`;
-
-  return {
-    key,
-    label: `${year}년 ${pad(month + 1)}월`,
-    bgnDe: toDateKey(monthStart),
-    endDe: toDateKey(monthEnd),
-    monthStart,
-    monthEnd,
-  };
-};
-
-const shiftMonth = (date: Date, offset: number) => new Date(date.getFullYear(), date.getMonth() + offset, 1);
 
 const shiftDay = (date: Date, offset: number) => {
   const shifted = new Date(date);
@@ -101,21 +77,20 @@ const toDateRange = (start: Date, end: Date, label: string, key: string): DateRa
 });
 
 const getDisplayRange = () => {
-  const now = new Date();
-  const currentMonth = toMonthWindow(now);
-  const nextMonth = toMonthWindow(shiftMonth(now, 1));
-  const previousMonth = toMonthWindow(shiftMonth(now, -1));
+  const currentMonth = getKstMonthRange(new Date(), 0);
+  const nextMonth = getKstMonthRange(new Date(), 1);
+  const previousMonth = getKstMonthRange(new Date(), -1);
 
   return {
     displayRange: toDateRange(
-      currentMonth.monthStart,
-      nextMonth.monthEnd,
+      currentMonth.start,
+      nextMonth.end,
       `${currentMonth.label} ~ ${nextMonth.label}`,
       `${currentMonth.key}_${nextMonth.key}`,
     ),
     disclosureRange: toDateRange(
-      previousMonth.monthStart,
-      currentMonth.monthEnd,
+      previousMonth.start,
+      currentMonth.end,
       `${previousMonth.label} ~ ${currentMonth.label}`,
       `${previousMonth.key}_${currentMonth.key}`,
     ),
@@ -169,12 +144,7 @@ const buildStatus = (start: string | null, end: string | null) => {
     return "UPCOMING" as const;
   }
 
-  const today = new Date();
-  const todayKey = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    String(today.getDate()).padStart(2, "0"),
-  ].join("-");
+  const todayKey = getKstTodayKey();
 
   if (todayKey < start) {
     return "UPCOMING" as const;
@@ -280,12 +250,10 @@ const fetchEquitySecurityInfo = async (corpCode: string, range: DateRange) => {
 const selectGroupRows = (groups: OpendartEquityResponse["group"], title: string) =>
   groups?.find((group) => group.title === title)?.list ?? [];
 
-export const fetchOpendartCurrentMonthIpos = async (): Promise<SourceIpoRecord[]> => {
-  if (!env.opendartApiKey) {
-    return [];
-  }
-
-  const { displayRange, disclosureRange } = getDisplayRange();
+const fetchOpendartCurrentMonthIposUncached = async (
+  displayRange: DateRange,
+  disclosureRange: DateRange,
+): Promise<SourceIpoRecord[]> => {
   const disclosures = await fetchCandidateDisclosuresForRange(disclosureRange);
   if (disclosures.length === 0) {
     return [];
@@ -379,4 +347,24 @@ export const fetchOpendartCurrentMonthIpos = async (): Promise<SourceIpoRecord[]
   );
 
   return records.filter((record): record is SourceIpoRecord => record !== null);
+};
+
+export const fetchOpendartCurrentMonthIpos = async ({
+  forceRefresh = false,
+}: FetchOpendartCurrentMonthIposOptions = {}): Promise<SourceIpoRecord[]> => {
+  if (!env.opendartApiKey) {
+    return [];
+  }
+
+  const { displayRange, disclosureRange } = getDisplayRange();
+
+  return getCachedExternalData(
+    {
+      key: `opendart-current-month-ipos:${displayRange.key}:${disclosureRange.key}`,
+      source: "opendart-current-month-ipos",
+      ttlMs: OPENDART_SOURCE_CACHE_TTL_MS,
+      bypass: forceRefresh,
+    },
+    async () => fetchOpendartCurrentMonthIposUncached(displayRange, disclosureRange),
+  );
 };

@@ -7,9 +7,9 @@ import { env } from "@/lib/env";
 const ADMIN_SESSION_COOKIE = "ipo_admin_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 14;
 
-const getAdminPassword = () => env.adminAccessPassword || env.jobSecret;
+const getAdminPassword = () => env.adminAccessPassword;
 
-const getSessionSecret = () => env.adminSessionSecret || env.jobSecret || "ipo-dev-session-secret";
+const getSessionSecret = () => env.adminSessionSecret;
 
 const sign = (payload: string) => createHmac("sha256", getSessionSecret()).update(payload).digest("hex");
 
@@ -32,7 +32,15 @@ const isValidSignature = (payload: string, signature: string) => {
 
 export const hasAdminPassword = () => Boolean(getAdminPassword());
 
+export const hasAdminSessionSecret = () => Boolean(getSessionSecret());
+
+export const isAdminAuthConfigured = () => hasAdminPassword() && hasAdminSessionSecret();
+
 export const verifyAdminSession = (token: string | undefined | null) => {
+  if (!hasAdminSessionSecret()) {
+    return false;
+  }
+
   if (!token) {
     return false;
   }
@@ -60,6 +68,10 @@ export const isAdminAuthenticated = async () => {
 };
 
 export const isValidAdminPassword = (password: string) => {
+  if (!isAdminAuthConfigured()) {
+    return false;
+  }
+
   const expected = getAdminPassword();
   if (!expected) {
     return false;
@@ -75,7 +87,13 @@ export const isValidAdminPassword = (password: string) => {
   return timingSafeEqual(left, right);
 };
 
-export const createAdminSessionCookieValue = () => encodeSession(Date.now() + SESSION_MAX_AGE * 1000);
+export const createAdminSessionCookieValue = () => {
+  if (!isAdminAuthConfigured()) {
+    throw new Error("Admin auth is not fully configured.");
+  }
+
+  return encodeSession(Date.now() + SESSION_MAX_AGE * 1000);
+};
 
 export const getAdminSessionCookieName = () => ADMIN_SESSION_COOKIE;
 
