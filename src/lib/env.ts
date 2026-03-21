@@ -14,6 +14,8 @@ const parsePort = (value: string | undefined) => {
 export const env = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   jobSecret: process.env.JOB_SECRET ?? "",
+  adminAccessPassword: process.env.ADMIN_ACCESS_PASSWORD ?? "",
+  adminSessionSecret: process.env.ADMIN_SESSION_SECRET ?? "",
   adminEmail: process.env.ADMIN_EMAIL ?? "me@example.com",
   appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
   smtpHost: process.env.SMTP_HOST ?? "",

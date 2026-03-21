@@ -34,8 +34,8 @@ const slugify = (value: string) =>
 const buildEvents = (record: SourceIpoRecord, ipoName: string) => [
   {
     type: "SUBSCRIPTION" as const,
-    title: `${ipoName} 청약`,
-    eventDate: parseKstDate(record.subscriptionStart),
+    title: `${ipoName} 청약 마감`,
+    eventDate: parseKstDate(record.subscriptionEnd),
   },
   ...(record.refundDate
     ? [

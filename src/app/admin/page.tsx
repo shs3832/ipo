@@ -1,11 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { formatDateTime } from "@/lib/date";
 import { getDashboardSnapshot, getRecentStatusSummary } from "@/lib/jobs";
+import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { logoutAction } from "@/app/login/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  if (!(await isAdminAuthenticated())) {
+    redirect("/login?next=/admin");
+  }
+
   const [snapshot, summary] = await Promise.all([getDashboardSnapshot(), getRecentStatusSummary()]);
 
   return (
@@ -22,6 +29,11 @@ export default async function AdminPage() {
           <Link className="button-primary" href="/">
             캘린더 보기
           </Link>
+          <form action={logoutAction}>
+            <button className="button-secondary" type="submit">
+              로그아웃
+            </button>
+          </form>
           <span className="pill">상태 요약 {summary.mode}</span>
         </div>
       </section>

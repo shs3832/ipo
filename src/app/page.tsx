@@ -1,20 +1,20 @@
 import Link from "next/link";
 
-import { formatDate, formatMoney, getMonthDays, kstDateKey } from "@/lib/date";
+import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { formatDate, getMonthDays, kstDateKey } from "@/lib/date";
 import { getDashboardSnapshot } from "@/lib/jobs";
+import { HomeContent } from "@/app/home-content";
 
 export const dynamic = "force-dynamic";
 
-const eventLabel = {
-  SUBSCRIPTION: "청약",
-  REFUND: "환불",
-  LISTING: "상장",
-};
+type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
 
 export default async function Home() {
+  const isAdmin = await isAdminAuthenticated();
   const snapshot = await getDashboardSnapshot();
   const monthDays = getMonthDays(snapshot.calendarMonth);
-  const eventsByDate = new Map<string, { title: string; slug: string; type: keyof typeof eventLabel }[]>();
+  const currentMonthKey = formatDate(snapshot.calendarMonth, "yyyy-MM");
+  const eventsByDate = new Map<string, { title: string; slug: string; type: EventType }[]>();
 
   snapshot.ipos.forEach((ipo) => {
     ipo.events.forEach((event) => {
@@ -41,8 +41,8 @@ export default async function Home() {
           </p>
         </div>
         <div className="hero-actions">
-          <Link className="button-primary" href="/admin">
-            관리자 화면
+          <Link className="button-primary" href={isAdmin ? "/admin" : "/login?next=/admin"}>
+            {isAdmin ? "관리자 화면" : "관리자 로그인"}
           </Link>
           <span className="pill">현재 모드: {snapshot.mode === "database" ? "Database" : "Sample"}</span>
         </div>
@@ -66,82 +66,23 @@ export default async function Home() {
         </article>
       </section>
 
-      <section className="content-grid">
-        <article className="calendar-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Monthly View</p>
-              <h2>{formatDate(snapshot.calendarMonth, "yyyy년 MM월")} 일정</h2>
-            </div>
-          </div>
-          <div className="weekday-row">
-            {["일", "월", "화", "수", "목", "금", "토"].map((label) => (
-              <span key={label}>{label}</span>
-            ))}
-          </div>
-          <div className="calendar-grid">
-            {monthDays.map((day) => {
-              const entries = eventsByDate.get(kstDateKey(day)) ?? [];
-
-              return (
-                <div className="calendar-cell" key={day.toISOString()}>
-                  <div className="calendar-date">{formatDate(day, "d")}</div>
-                  <div className="calendar-events">
-                    {entries.length ? (
-                      entries.map((entry) => (
-                        <Link className={`event-chip event-${entry.type.toLowerCase()}`} href={`/ipos/${entry.slug}`} key={`${entry.slug}-${entry.type}`}>
-                          <span>{eventLabel[entry.type]}</span>
-                          <strong>{entry.title}</strong>
-                        </Link>
-                      ))
-                    ) : (
-                      <span className="event-empty">일정 없음</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </article>
-
-        <article className="side-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Tracked IPOs</p>
-              <h2>종목 개요</h2>
-            </div>
-          </div>
-          <div className="ipo-list">
-            {snapshot.ipos.map((ipo) => (
-              <Link className="ipo-card" href={`/ipos/${ipo.slug}`} key={ipo.id}>
-                <div className="ipo-card-head">
-                  <div>
-                    <h3>{ipo.name}</h3>
-                    <p>
-                      {ipo.market} · {ipo.leadManager}
-                    </p>
-                  </div>
-                  <span className="score-badge">{ipo.latestAnalysis.score}점</span>
-                </div>
-                <dl>
-                  <div>
-                    <dt>청약</dt>
-                    <dd>{formatDate(ipo.subscriptionEnd)}</dd>
-                  </div>
-                  <div>
-                    <dt>공모가</dt>
-                    <dd>{formatMoney(ipo.offerPrice)}</dd>
-                  </div>
-                  <div>
-                    <dt>판단</dt>
-                    <dd>{ipo.latestAnalysis.ratingLabel}</dd>
-                  </div>
-                </dl>
-              </Link>
-            ))}
-          </div>
-        </article>
-      </section>
+      <HomeContent
+        calendarMonthLabel={formatDate(snapshot.calendarMonth, "yyyy년 MM월")}
+        currentMonthKey={currentMonthKey}
+        eventsByDate={Object.fromEntries(eventsByDate)}
+        ipos={snapshot.ipos.map((ipo) => ({
+          id: ipo.id,
+          slug: ipo.slug,
+          name: ipo.name,
+          market: ipo.market,
+          leadManager: ipo.leadManager,
+          score: ipo.latestAnalysis.score,
+          subscriptionEnd: ipo.subscriptionEnd.toISOString(),
+          offerPrice: ipo.offerPrice,
+          ratingLabel: ipo.latestAnalysis.ratingLabel,
+        }))}
+        monthDays={monthDays.map((day) => day.toISOString())}
+      />
     </main>
   );
 }

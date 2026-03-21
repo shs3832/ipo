@@ -47,6 +47,8 @@ cp .env.example .env
 
 - `DATABASE_URL`: PostgreSQL 연결 문자열
 - `JOB_SECRET`: 잡 API 보호용 시크릿
+- `ADMIN_ACCESS_PASSWORD`: 관리자 로그인 비밀번호
+- `ADMIN_SESSION_SECRET`: 관리자 세션 서명용 시크릿
 - `ADMIN_EMAIL`: 1차 관리자 수신 이메일
 - `SMTP_*`: 실제 이메일 발송 설정
 - `IPO_SOURCE_URL`: 외부 JSON 소스가 있으면 사용, 없으면 샘플 데이터 사용
@@ -144,6 +146,8 @@ Vercel Cron 호출은 `x-vercel-cron` 헤더를 통해 허용됩니다.
 4. Environment Variables에 아래 값 입력
    - `DATABASE_URL`
    - `JOB_SECRET`
+   - `ADMIN_ACCESS_PASSWORD`
+   - `ADMIN_SESSION_SECRET`
    - `ADMIN_EMAIL`
    - `SMTP_HOST`
    - `SMTP_PORT`

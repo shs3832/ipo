@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { formatDate, formatDateTime, formatMoney, formatPercent } from "@/lib/date";
 import { getIpoBySlug } from "@/lib/jobs";
 
@@ -23,7 +24,7 @@ const getMinimumDepositAmount = ({
 };
 
 const eventLabel = {
-  SUBSCRIPTION: "청약",
+  SUBSCRIPTION: "청약마감",
   REFUND: "환불",
   LISTING: "상장",
 };
@@ -34,6 +35,7 @@ export default async function IpoDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const isAdmin = await isAdminAuthenticated();
   const ipo = await getIpoBySlug(slug);
 
   if (!ipo) {
@@ -109,14 +111,18 @@ export default async function IpoDetailPage({
               <dt>증거금률</dt>
               <dd>{formatPercent(ipo.depositRate)}</dd>
             </div>
-            <div>
-              <dt>최근 수집 시각</dt>
-              <dd>{formatDateTime(ipo.sourceFetchedAt)}</dd>
-            </div>
-            <div>
-              <dt>소스 키</dt>
-              <dd>{ipo.latestSourceKey}</dd>
-            </div>
+            {isAdmin ? (
+              <>
+                <div>
+                  <dt>최근 수집 시각</dt>
+                  <dd>{formatDateTime(ipo.sourceFetchedAt)}</dd>
+                </div>
+                <div>
+                  <dt>소스 키</dt>
+                  <dd>{ipo.latestSourceKey}</dd>
+                </div>
+              </>
+            ) : null}
           </dl>
         </article>
 

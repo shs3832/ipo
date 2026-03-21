@@ -109,8 +109,8 @@ export const sampleIpos: IpoRecord[] = sampleSourceRecords.map((record, index) =
       {
         id: `${slug}-subscription`,
         type: "SUBSCRIPTION",
-        title: `${record.name} 청약`,
-        eventDate: parseKstDate(record.subscriptionStart),
+        title: `${record.name} 청약 마감`,
+        eventDate: parseKstDate(record.subscriptionEnd),
       },
       ...(record.refundDate
         ? [

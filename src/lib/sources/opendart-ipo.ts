@@ -37,6 +37,8 @@ type MonthWindow = {
   label: string;
   bgnDe: string;
   endDe: string;
+  monthStart: Date;
+  monthEnd: Date;
 };
 
 const OPENDART_OK_STATUS = "000";
@@ -64,10 +66,21 @@ const toMonthWindow = (date: Date): MonthWindow => {
     label: `${year}년 ${pad(month + 1)}월`,
     bgnDe: toDateKey(monthStart),
     endDe: toDateKey(monthEnd),
+    monthStart,
+    monthEnd,
   };
 };
 
 const shiftMonth = (date: Date, offset: number) => new Date(date.getFullYear(), date.getMonth() + offset, 1);
+
+const shiftDay = (date: Date, offset: number) => {
+  const shifted = new Date(date);
+  shifted.setDate(shifted.getDate() + offset);
+  return shifted;
+};
+
+const toDateKey = (value: Date) =>
+  `${value.getFullYear()}${String(value.getMonth() + 1).padStart(2, "0")}${String(value.getDate()).padStart(2, "0")}`;
 
 const parseNumber = (value: string | undefined) => {
   if (!value || value === "-") {
@@ -201,11 +214,13 @@ const pickMonthWithIpoDisclosures = async () => {
 };
 
 const fetchEquitySecurityInfo = async (corpCode: string, window: MonthWindow) => {
+  const detailBgnDe = toDateKey(shiftDay(window.monthStart, -365));
+  const detailEndDe = toDateKey(shiftDay(window.monthEnd, 62));
   const endpoint = buildUrl("/api/estkRs.json", {
     crtfc_key: env.opendartApiKey,
     corp_code: corpCode,
-    bgn_de: window.bgnDe,
-    end_de: window.endDe,
+    bgn_de: detailBgnDe,
+    end_de: detailEndDe,
   });
 
   const response = await fetch(endpoint, { cache: "no-store" });
