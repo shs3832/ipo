@@ -15,6 +15,8 @@
     "job:daily-sync": "tsx scripts/daily-sync.ts",
     "job:prepare-daily-alerts": "tsx scripts/prepare-daily-alerts.ts",
     "job:dispatch-alerts": "tsx scripts/dispatch-alerts.ts",
+    "job:prepare-closing-alerts": "tsx scripts/prepare-closing-alerts.ts",
+    "job:dispatch-closing-alerts": "tsx scripts/dispatch-closing-alerts.ts",
     "mail:sample": "tsx scripts/send-sample-email.ts",
     "source:check:opendart": "tsx scripts/check-opendart.ts"
   },

@@ -7,6 +7,7 @@ export type AlertType = "CLOSING_DAY_ANALYSIS";
 export type DeliveryStatus = "PENDING" | "SENT" | "FAILED" | "SKIPPED";
 export type JobStatus = "READY" | "SENT" | "PARTIAL_FAILURE";
 export type OperationLogLevel = "INFO" | "WARN" | "ERROR";
+export type SchedulerHealthStatus = "PENDING" | "HEALTHY" | "LATE" | "MISSED" | "FAILED";
 
 export type SourceIpoRecord = {
   sourceKey: string;
@@ -175,6 +176,18 @@ export type OperationLogRecord = {
   createdAt: Date;
 };
 
+export type SchedulerStatusRecord = {
+  id: string;
+  label: string;
+  status: SchedulerHealthStatus;
+  statusLabel: string;
+  expectedAt: Date;
+  expectedAtLabel: string;
+  lastCompletedAt: Date | null;
+  lastCompletedAtLabel: string | null;
+  detail: string;
+};
+
 export type DashboardSnapshot = {
   mode: "database" | "fallback";
   generatedAt: Date;
@@ -185,6 +198,7 @@ export type DashboardSnapshot = {
   deliveries: NotificationDeliveryRecord[];
   overrides: AdminOverrideRecord[];
   operationLogs: OperationLogRecord[];
+  schedulerStatuses: SchedulerStatusRecord[];
 };
 
 export type PublicHomeSnapshot = {

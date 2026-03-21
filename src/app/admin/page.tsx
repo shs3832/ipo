@@ -4,19 +4,45 @@ import { redirect } from "next/navigation";
 import { formatDateTime } from "@/lib/date";
 import { buildAdminStatusSummary, getDashboardSnapshot } from "@/lib/jobs";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { triggerManualSyncAction } from "@/app/admin/actions";
 import { logoutAction } from "@/app/login/actions";
 import { AdminLogPanel } from "@/app/admin-log-panel";
 import styles from "@/app/admin/page.module.scss";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+const syncMessage = {
+  success: (synced: string | undefined) =>
+    `최신 공모주 데이터를 수동으로 다시 가져왔습니다.${synced ? ` 반영 건수 ${synced}건.` : ""}`,
+  error: "최신 공모주 데이터를 가져오지 못했습니다. 운영 로그와 Vercel 함수 로그를 확인해 주세요.",
+} as const;
+
+const schedulerToneClassNames = {
+  HEALTHY: styles.schedulerBadgeHealthy,
+  PENDING: styles.schedulerBadgePending,
+  LATE: styles.schedulerBadgeLate,
+  MISSED: styles.schedulerBadgeMissed,
+  FAILED: styles.schedulerBadgeFailed,
+} as const;
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sync?: keyof typeof syncMessage; synced?: string }>;
+}) {
   if (!(await isAdminAuthenticated())) {
     redirect("/login?next=/admin");
   }
 
+  const params = await searchParams;
   const snapshot = await getDashboardSnapshot();
   const summary = buildAdminStatusSummary(snapshot);
+  const syncStatus = params.sync && params.sync in syncMessage ? params.sync : null;
+  const syncFeedback = syncStatus
+    ? (typeof syncMessage[syncStatus] === "function"
+        ? syncMessage[syncStatus](params.synced)
+        : syncMessage[syncStatus])
+    : null;
 
   return (
     <main className="page-shell">
@@ -44,6 +70,11 @@ export default async function AdminPage() {
               <p className={styles.cardCopy}>운영 로그 기준으로 즉시 확인이 필요한 신호를 요약했습니다.</p>
             </article>
             <div className={styles.actionGroup}>
+              <form action={triggerManualSyncAction} className={styles.syncForm}>
+                <button className="button-primary" type="submit">
+                  최신 데이터 가져오기
+                </button>
+              </form>
               <Link className="button-primary" href="/">
                 캘린더 보기
               </Link>
@@ -55,6 +86,16 @@ export default async function AdminPage() {
             </div>
           </div>
         </section>
+
+        {syncFeedback ? (
+          <section
+            className={`${styles.feedbackBanner} ${
+              syncStatus === "success" ? styles.feedbackSuccess : styles.feedbackError
+            }`}
+          >
+            <p>{syncFeedback}</p>
+          </section>
+        ) : null}
 
         <section className={styles.summaryGrid}>
           <article className={styles.summaryCard}>
@@ -74,7 +115,7 @@ export default async function AdminPage() {
             <strong className={styles.summaryValue}>
               {summary.jobCount} / {summary.deliveryCount}
             </strong>
-            <p className={styles.cardCopy}>오전 10시 분석 잡과 최근 채널 발송 기록입니다.</p>
+            <p className={styles.cardCopy}>10시 분석 메일과 마감 30분 전 메일의 최근 작업 기록입니다.</p>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>운영 모드</span>
@@ -84,6 +125,43 @@ export default async function AdminPage() {
         </section>
 
         <section className={styles.grid}>
+          <article className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">일일 업데이트 검증</h2>
+              <p className="section-copy">
+                Vercel Cron UTC 스케줄을 KST로 환산해 06:00 동기화, 09:00/10:00 분석 메일,
+                15:25/15:30 마감 리마인더 실행 여부를 검증합니다.
+              </p>
+            </div>
+            <div className={styles.list}>
+              {snapshot.schedulerStatuses.length ? (
+                snapshot.schedulerStatuses.map((status) => (
+                  <div className={styles.row} key={status.id}>
+                    <div className={styles.rowHead}>
+                      <div>
+                        <strong>{status.label}</strong>
+                        <p>
+                          예정 {status.expectedAtLabel}
+                          {status.lastCompletedAtLabel ? ` · 최근 성공 ${status.lastCompletedAtLabel}` : ""}
+                        </p>
+                      </div>
+                      <span
+                        className={`${styles.schedulerBadge} ${schedulerToneClassNames[status.status]}`}
+                      >
+                        {status.statusLabel}
+                      </span>
+                    </div>
+                    <p>{status.detail}</p>
+                  </div>
+                ))
+              ) : (
+                <div className={styles.row}>
+                  <p>DB fallback 상태에서는 일일 스케줄 검증 이력을 집계하지 않습니다.</p>
+                </div>
+              )}
+            </div>
+          </article>
+
           <article className={styles.card}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">수신자 채널</h2>

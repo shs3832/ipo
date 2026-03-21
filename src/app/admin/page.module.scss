@@ -50,8 +50,31 @@
   gap: 12px;
 }
 
+.syncForm,
 .logoutForm {
   display: contents;
+}
+
+.feedbackBanner {
+  @include surface(18px, 22px);
+
+  border: 1px solid transparent;
+}
+
+.feedbackBanner p {
+  line-height: 1.6;
+}
+
+.feedbackSuccess {
+  border-color: rgba(51, 179, 120, 0.28);
+  background: color-mix(in srgb, rgba(51, 179, 120, 0.14) 58%, white);
+  color: #0f6b43;
+}
+
+.feedbackError {
+  border-color: rgba(226, 90, 90, 0.28);
+  background: color-mix(in srgb, rgba(226, 90, 90, 0.12) 58%, white);
+  color: #8f2c2c;
 }
 
 .summaryGrid {
@@ -133,6 +156,41 @@
 
 .rowHead > div {
   min-width: 0;
+}
+
+.schedulerBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.schedulerBadgeHealthy {
+  color: #0f6b43;
+  background: rgba(51, 179, 120, 0.16);
+}
+
+.schedulerBadgePending {
+  color: #5f5a12;
+  background: rgba(214, 181, 49, 0.18);
+}
+
+.schedulerBadgeLate {
+  color: #9a4f16;
+  background: rgba(255, 159, 67, 0.18);
+}
+
+.schedulerBadgeMissed,
+.schedulerBadgeFailed {
+  color: #9f2f2f;
+  background: rgba(226, 90, 90, 0.16);
 }
 
 .bulletList {

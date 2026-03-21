@@ -7,12 +7,14 @@ import {
   type DispatchResult,
   type IpoAdminMetadata,
   type IpoRecord,
+  type OperationLogRecord,
   type NotificationDeliveryRecord,
   type NotificationJobRecord,
   type PreparedAlertsResult,
   type PublicHomeSnapshot,
   type PublicIpoDetailRecord,
   type RecipientRecord,
+  type SchedulerStatusRecord,
   type SourceIpoRecord,
   type SyncResult,
 } from "@/lib/types";
@@ -26,6 +28,7 @@ import {
   getKstMonthRange,
   getKstTodayKey,
   isSameKstDate,
+  kstDateKey,
   parseKstDate,
   shiftKstDateKey,
 } from "@/lib/date";
@@ -47,6 +50,80 @@ const DATABASE_UNREACHABLE_CACHE_TTL_MS = 10_000;
 type SyncOptions = {
   forceRefresh?: boolean;
 };
+
+type SchedulerDefinition = {
+  id: string;
+  label: string;
+  source: string;
+  expectedHour: number;
+  expectedMinute?: number;
+};
+
+type PreparedJobSeed = {
+  ipoId: string;
+  ipoSlug: string;
+  alertType: NotificationJobRecord["alertType"];
+  scheduledFor: Date;
+  payload: NotificationJobRecord["payload"];
+  status: NotificationJobRecord["status"];
+  idempotencyKey: string;
+};
+
+type DispatchPreparedAlertsOptions = {
+  source: string;
+  startedMessage: string;
+  completionMessage: (counts: {
+    attempted: number;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+    staleSkippedCount: number;
+  }) => string;
+  failureMessage: string;
+  prepare: () => Promise<PreparedAlertsResult>;
+  isDispatchable?: (job: NotificationJobRecord, now: Date) => boolean;
+};
+
+const SCHEDULER_EARLY_GRACE_MS = 5 * 60 * 1000;
+const SCHEDULER_LATE_GRACE_MS = 30 * 60 * 1000;
+const schedulerDefinitions: SchedulerDefinition[] = [
+  {
+    id: "daily-sync",
+    label: "공모주 데이터 동기화",
+    source: "job:daily-sync",
+    expectedHour: 6,
+  },
+  {
+    id: "prepare-daily-alerts",
+    label: "10시 분석 메일 준비",
+    source: "job:prepare-daily-alerts",
+    expectedHour: 9,
+  },
+  {
+    id: "dispatch-alerts",
+    label: "10시 분석 메일 발송",
+    source: "job:dispatch-alerts",
+    expectedHour: 10,
+  },
+  {
+    id: "prepare-closing-alerts",
+    label: "마감 30분 전 메일 준비",
+    source: "job:prepare-closing-alerts",
+    expectedHour: 15,
+    expectedMinute: 25,
+  },
+  {
+    id: "dispatch-closing-alerts",
+    label: "마감 30분 전 메일 발송",
+    source: "job:dispatch-closing-alerts",
+    expectedHour: 15,
+    expectedMinute: 30,
+  },
+];
+
+const CLOSING_TIME_HOUR = 16;
+const CLOSING_SOON_ALERT_HOUR = 15;
+const CLOSING_SOON_ALERT_MINUTE = 30;
 
 const getDisplayRange = (date = new Date()) => {
   const currentMonth = getKstMonthRange(date, 0);
@@ -332,7 +409,7 @@ const buildDecisionTags = (ipo: IpoRecord) => {
   return tags;
 };
 
-const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
+const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 - 10시 분석`,
   tags: buildDecisionTags(ipo),
   intro: `${ipo.name}의 청약 마감 당일 10시 기준 분석 요약입니다.`,
@@ -381,8 +458,96 @@ const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
   footer: ["투자 참고용 요약이며 확정 수익을 보장하지 않습니다."],
 });
 
+const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
+  subject: `[공모주] ${ipo.name} 오늘 청약 마감 30분 전 알림`,
+  tags: buildDecisionTags(ipo),
+  intro: `${ipo.name} 청약 마감까지 30분 남았습니다. 최종 주문 전 핵심 정보를 다시 확인하세요.`,
+  webUrl: getDetailUrl(ipo.slug),
+  sections: [
+    {
+      label: "지금 확인할 항목",
+      lines: [
+        `청약 마감 오늘 16:00`,
+        `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
+        `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
+        `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`,
+      ],
+    },
+    {
+      label: "공모 정보",
+      lines: [
+        `시장 ${ipo.market}`,
+        `주관사 ${ipo.leadManager}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
+        `확정 공모가 ${ipo.offerPrice?.toLocaleString("ko-KR") ?? "-"}원`,
+        `증거금률 ${formatPercent(ipo.depositRate)}`,
+      ],
+    },
+    {
+      label: "빠른 리마인드",
+      lines: [
+        ipo.latestAnalysis.summary,
+        ...ipo.latestAnalysis.keyPoints.slice(0, 2),
+      ],
+    },
+    {
+      label: "마감 전 체크",
+      lines: ipo.latestAnalysis.warnings.length
+        ? ipo.latestAnalysis.warnings
+        : ["최종 청약 전 증권사 주문 가능 시간과 환불일, 상장 예정일을 함께 확인하세요."],
+    },
+  ],
+  footer: [
+    "마감 직전에는 증권사별 주문 마감이 조금 다를 수 있으니 최종 화면을 다시 확인해 주세요.",
+    "투자 참고용 요약이며 확정 수익을 보장하지 않습니다.",
+  ],
+});
+
 const toChecksum = (record: SourceIpoRecord) =>
   createHash("sha256").update(JSON.stringify(record)).digest("hex");
+
+const getTodayClosingIpos = (dashboard: DashboardSnapshot, today: Date) =>
+  dashboard.ipos.filter(
+    (ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN",
+  );
+
+const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
+  const storedJobs = await Promise.all(
+    jobs.map(async (job) => {
+      const saved = await prisma.notificationJob.upsert({
+        where: { idempotencyKey: job.idempotencyKey },
+        update: {
+          scheduledFor: job.scheduledFor,
+          payload: job.payload,
+          status: "READY",
+        },
+        create: {
+          ipoId: job.ipoId,
+          alertType: job.alertType,
+          scheduledFor: job.scheduledFor,
+          payload: job.payload,
+          status: "READY",
+          idempotencyKey: job.idempotencyKey,
+        },
+        include: {
+          ipo: true,
+        },
+      });
+
+      return {
+        id: saved.id,
+        ipoId: saved.ipoId,
+        ipoSlug: saved.ipo.slug,
+        alertType: saved.alertType,
+        scheduledFor: saved.scheduledFor,
+        payload: saved.payload as NotificationJobRecord["payload"],
+        status: saved.status,
+        idempotencyKey: saved.idempotencyKey,
+      } satisfies NotificationJobRecord;
+    }),
+  );
+
+  return storedJobs;
+};
 
 const parseSnapshotNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -550,6 +715,137 @@ const canUseDatabase = async () => {
     console.warn(`Database unavailable, falling back to empty state: ${message}`);
     return false;
   }
+};
+
+const getSchedulerValidationLogs = async (date = new Date()): Promise<OperationLogRecord[]> => {
+  const sources = schedulerDefinitions.map((definition) => definition.source);
+  const since = atKstTime(shiftKstDateKey(getKstTodayKey(date), -1), 0);
+
+  const logs = await prisma.operationLog.findMany({
+    where: {
+      source: { in: sources },
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 120,
+  });
+
+  return logs.map((log) => ({
+    id: log.id,
+    level: log.level as OperationLogRecord["level"],
+    source: log.source,
+    action: log.action,
+    message: log.message,
+    context:
+      log.context && typeof log.context === "object" && !Array.isArray(log.context)
+        ? (log.context as Record<string, unknown>)
+        : null,
+    createdAt: log.createdAt,
+  }));
+};
+
+const buildSchedulerStatuses = (
+  logs: OperationLogRecord[],
+  now = new Date(),
+): SchedulerStatusRecord[] => {
+  const todayKey = getKstTodayKey(now);
+
+  return schedulerDefinitions.map((definition) => {
+    const expectedAt = atKstTime(todayKey, definition.expectedHour, definition.expectedMinute ?? 0);
+    const sourceLogs = logs.filter((log) => log.source === definition.source);
+    const todayLogs = sourceLogs.filter((log) => kstDateKey(log.createdAt) === todayKey);
+    const completionThreshold = expectedAt.getTime() - SCHEDULER_EARLY_GRACE_MS;
+    const completedAfterThreshold = todayLogs.find(
+      (log) => log.action === "completed" && log.createdAt.getTime() >= completionThreshold,
+    );
+    const failedAfterThreshold = todayLogs.find(
+      (log) => log.action === "failed" && log.createdAt.getTime() >= completionThreshold,
+    );
+    const earlyCompletion = todayLogs.find(
+      (log) => log.action === "completed" && log.createdAt.getTime() < completionThreshold,
+    );
+    const lastCompletedAt = sourceLogs.find((log) => log.action === "completed")?.createdAt ?? null;
+    const expectedAtLabel = formatDateTime(expectedAt, "yyyy.MM.dd HH:mm");
+    const lastCompletedAtLabel = lastCompletedAt ? formatDateTime(lastCompletedAt) : null;
+
+    if (now.getTime() < expectedAt.getTime()) {
+      return {
+        id: definition.id,
+        label: definition.label,
+        status: "PENDING",
+        statusLabel: "대기",
+        expectedAt,
+        expectedAtLabel,
+        lastCompletedAt,
+        lastCompletedAtLabel,
+        detail: lastCompletedAtLabel
+          ? `예정 시각은 ${expectedAtLabel}이며 최근 성공은 ${lastCompletedAtLabel}입니다.`
+          : `예정 시각은 ${expectedAtLabel}이며 아직 성공 이력이 없습니다.`,
+      };
+    }
+
+    if (completedAfterThreshold) {
+      const delayMs = completedAfterThreshold.createdAt.getTime() - expectedAt.getTime();
+      const isLate = delayMs > SCHEDULER_LATE_GRACE_MS;
+      const delayMinutes = Math.max(0, Math.round(delayMs / 60000));
+
+      return {
+        id: definition.id,
+        label: definition.label,
+        status: isLate ? "LATE" : "HEALTHY",
+        statusLabel: isLate ? "지연" : "정상",
+        expectedAt,
+        expectedAtLabel,
+        lastCompletedAt,
+        lastCompletedAtLabel,
+        detail: isLate
+          ? `${expectedAtLabel} 기준으로 ${delayMinutes}분 늦게 실행됐습니다. 최근 성공 ${formatDateTime(completedAfterThreshold.createdAt)}.`
+          : `예정 시각 ${expectedAtLabel} 기준으로 정상 실행됐습니다. 최근 성공 ${formatDateTime(completedAfterThreshold.createdAt)}.`,
+      };
+    }
+
+    if (failedAfterThreshold) {
+      return {
+        id: definition.id,
+        label: definition.label,
+        status: "FAILED",
+        statusLabel: "실패",
+        expectedAt,
+        expectedAtLabel,
+        lastCompletedAt,
+        lastCompletedAtLabel,
+        detail: `예정 시각 이후 실패 로그가 있고 성공 로그가 없습니다. 최근 실패 ${formatDateTime(failedAfterThreshold.createdAt)}.`,
+      };
+    }
+
+    if (earlyCompletion) {
+      return {
+        id: definition.id,
+        label: definition.label,
+        status: "MISSED",
+        statusLabel: "미실행",
+        expectedAt,
+        expectedAtLabel,
+        lastCompletedAt,
+        lastCompletedAtLabel,
+        detail: `예정 전 실행 ${formatDateTime(earlyCompletion.createdAt)}만 확인됐고, ${expectedAtLabel} 이후 성공 로그는 없습니다.`,
+      };
+    }
+
+    return {
+      id: definition.id,
+      label: definition.label,
+      status: "MISSED",
+      statusLabel: "미실행",
+      expectedAt,
+      expectedAtLabel,
+      lastCompletedAt,
+      lastCompletedAtLabel,
+      detail: lastCompletedAtLabel
+        ? `오늘 ${expectedAtLabel} 기준 성공 로그가 없습니다. 최근 성공은 ${lastCompletedAtLabel}입니다.`
+        : `오늘 ${expectedAtLabel} 기준 성공 로그가 없습니다.`,
+    };
+  });
 };
 
 const toIpoRecord = (ipo: {
@@ -1195,7 +1491,7 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
   try {
     const displayRange = getDisplayRange();
 
-    const [ipos, recipients, jobs, deliveries, overrides] = await Promise.all([
+    const [ipos, recipients, jobs, deliveries, overrides, schedulerLogs] = await Promise.all([
       prisma.ipo.findMany({
         where: getDisplayRangeWhere(),
         orderBy: { subscriptionEnd: "asc" },
@@ -1222,6 +1518,7 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
         where: { isActive: true },
         orderBy: { updatedAt: "desc" },
       }),
+      getSchedulerValidationLogs(),
     ]);
 
     const operationLogs = await getRecentOperationLogs(24);
@@ -1236,6 +1533,7 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
       deliveries: deliveries.map(toNotificationDeliveryRecord),
       overrides: overrides.map(toAdminOverrideRecord),
       operationLogs,
+      schedulerStatuses: buildSchedulerStatuses(schedulerLogs),
     };
   } catch (error) {
     if (isMissingSchemaError(error)) {
@@ -1493,17 +1791,14 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
     const dashboard = await getDashboardSnapshot();
     const todayKey = getKstTodayKey();
     const today = parseKstDate(todayKey);
-    const closingIpos = dashboard.ipos.filter(
-      (ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN",
-    );
+    const closingIpos = getTodayClosingIpos(dashboard, today);
 
-    const jobs = closingIpos.map((ipo) => ({
-      id: `prepared-${ipo.id}`,
+    const jobs: PreparedJobSeed[] = closingIpos.map((ipo) => ({
       ipoId: ipo.id,
       ipoSlug: ipo.slug,
       alertType: "CLOSING_DAY_ANALYSIS" as const,
       scheduledFor: atKstTime(todayKey, 10),
-      payload: buildMessage(ipo),
+      payload: buildClosingDayAnalysisMessage(ipo),
       status: "READY" as const,
       idempotencyKey: `${ipo.id}:${todayKey}:closing-day-analysis`,
     }));
@@ -1524,40 +1819,7 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
       };
     }
 
-    const storedJobs = await Promise.all(
-      jobs.map(async (job) => {
-        const saved = await prisma.notificationJob.upsert({
-          where: { idempotencyKey: job.idempotencyKey },
-          update: {
-            scheduledFor: job.scheduledFor,
-            payload: job.payload,
-            status: "READY",
-          },
-          create: {
-            ipoId: job.ipoId,
-            alertType: job.alertType,
-            scheduledFor: job.scheduledFor,
-            payload: job.payload,
-            status: "READY",
-            idempotencyKey: job.idempotencyKey,
-          },
-          include: {
-            ipo: true,
-          },
-        });
-
-        return {
-          id: saved.id,
-          ipoId: saved.ipoId,
-          ipoSlug: saved.ipo.slug,
-          alertType: saved.alertType,
-          scheduledFor: saved.scheduledFor,
-          payload: saved.payload as NotificationJobRecord["payload"],
-          status: saved.status,
-          idempotencyKey: saved.idempotencyKey,
-        };
-      }),
-    );
+    const storedJobs = await persistPreparedJobs(jobs);
 
     await logOperation({
       level: "INFO",
@@ -1578,6 +1840,79 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
       source: "job:prepare-daily-alerts",
       action: "failed",
       message: "10시 분석 알림 준비에 실패했습니다.",
+      context: toErrorContext(error),
+    });
+    throw error;
+  }
+};
+
+export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> => {
+  await logOperation({
+    level: "INFO",
+    source: "job:prepare-closing-alerts",
+    action: "started",
+    message: "마감 30분 전 알림 준비를 시작했습니다.",
+  });
+
+  try {
+    if (await canUseDatabase()) {
+      await ensureAdminRecipient();
+    }
+
+    const now = new Date();
+    const todayKey = getKstTodayKey(now);
+    const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
+    const today = parseKstDate(todayKey);
+    const dashboard = await getDashboardSnapshot();
+    const closingIpos = now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [];
+
+    const jobs: PreparedJobSeed[] = closingIpos.map((ipo) => ({
+      ipoId: ipo.id,
+      ipoSlug: ipo.slug,
+      alertType: "CLOSING_DAY_ANALYSIS" as const,
+      scheduledFor: atKstTime(todayKey, CLOSING_SOON_ALERT_HOUR, CLOSING_SOON_ALERT_MINUTE),
+      payload: buildClosingSoonReminderMessage(ipo),
+      status: "READY" as const,
+      idempotencyKey: `${ipo.id}:${todayKey}:closing-soon-reminder`,
+    }));
+
+    if (!(await canUseDatabase())) {
+      await logOperation({
+        level: "WARN",
+        source: "job:prepare-closing-alerts",
+        action: "fallback_mode",
+        message: `DB 연결이 없어 fallback 상태에서 마감 30분 전 알림 ${jobs.length}건을 준비했습니다.`,
+        context: { jobs: jobs.length, afterClose: now >= closingCutoffAt },
+      });
+
+      return {
+        mode: "fallback",
+        timestamp: new Date(),
+        jobs,
+      };
+    }
+
+    const storedJobs = await persistPreparedJobs(jobs);
+
+    await logOperation({
+      level: "INFO",
+      source: "job:prepare-closing-alerts",
+      action: "completed",
+      message: `마감 30분 전 알림 ${storedJobs.length}건을 준비했습니다.`,
+      context: { jobs: storedJobs.length, afterClose: now >= closingCutoffAt },
+    });
+
+    return {
+      mode: "database",
+      timestamp: new Date(),
+      jobs: storedJobs,
+    };
+  } catch (error) {
+    await logOperation({
+      level: "ERROR",
+      source: "job:prepare-closing-alerts",
+      action: "failed",
+      message: "마감 30분 전 알림 준비에 실패했습니다.",
       context: toErrorContext(error),
     });
     throw error;
@@ -1634,20 +1969,29 @@ const resolveRecipients = async (): Promise<RecipientRecord[]> => {
     .filter((recipient) => recipient.channels.length > 0);
 };
 
-export const dispatchAlerts = async (): Promise<DispatchResult> => {
+const dispatchPreparedAlerts = async ({
+  source,
+  startedMessage,
+  completionMessage,
+  failureMessage,
+  prepare,
+  isDispatchable = () => true,
+}: DispatchPreparedAlertsOptions): Promise<DispatchResult> => {
   await logOperation({
     level: "INFO",
-    source: "job:dispatch-alerts",
+    source,
     action: "started",
-    message: "10시 분석 메일 발송을 시작했습니다.",
+    message: startedMessage,
   });
 
   try {
     const useDatabase = await canUseDatabase();
     const recipients = await resolveRecipients();
     const now = new Date();
-    const prepared = await prepareDailyAlerts();
-    const readyJobs = prepared.jobs.filter((job) => job.scheduledFor <= now);
+    const prepared = await prepare();
+    const dueJobs = prepared.jobs.filter((job) => job.scheduledFor <= now);
+    const readyJobs = dueJobs.filter((job) => isDispatchable(job, now));
+    const staleSkippedCount = dueJobs.length - readyJobs.length;
     const deliveries: NotificationDeliveryRecord[] = [];
 
     for (const job of readyJobs) {
@@ -1806,10 +2150,16 @@ export const dispatchAlerts = async (): Promise<DispatchResult> => {
 
     await logOperation({
       level: failedCount > 0 ? "WARN" : "INFO",
-      source: "job:dispatch-alerts",
+      source,
       action: "completed",
-      message: `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
-      context: { attempted: readyJobs.length, sentCount, failedCount, skippedCount },
+      message: completionMessage({
+        attempted: readyJobs.length,
+        sentCount,
+        failedCount,
+        skippedCount,
+        staleSkippedCount,
+      }),
+      context: { attempted: readyJobs.length, sentCount, failedCount, skippedCount, staleSkippedCount },
     });
 
     return {
@@ -1821,11 +2171,35 @@ export const dispatchAlerts = async (): Promise<DispatchResult> => {
   } catch (error) {
     await logOperation({
       level: "ERROR",
-      source: "job:dispatch-alerts",
+      source,
       action: "failed",
-      message: "10시 분석 메일 발송 작업이 실패했습니다.",
+      message: failureMessage,
       context: toErrorContext(error),
     });
     throw error;
   }
 };
+
+export const dispatchAlerts = async (): Promise<DispatchResult> =>
+  dispatchPreparedAlerts({
+    source: "job:dispatch-alerts",
+    startedMessage: "10시 분석 메일 발송을 시작했습니다.",
+    completionMessage: ({ sentCount, failedCount, skippedCount }) =>
+      `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
+    failureMessage: "10시 분석 메일 발송 작업이 실패했습니다.",
+    prepare: prepareDailyAlerts,
+  });
+
+export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
+  dispatchPreparedAlerts({
+    source: "job:dispatch-closing-alerts",
+    startedMessage: "마감 30분 전 알림 메일 발송을 시작했습니다.",
+    completionMessage: ({ sentCount, failedCount, skippedCount, staleSkippedCount }) =>
+      `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
+    failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
+    prepare: prepareClosingSoonAlerts,
+    isDispatchable: (job, now) => {
+      const todayKey = kstDateKey(job.scheduledFor);
+      return now < atKstTime(todayKey, CLOSING_TIME_HOUR);
+    },
+  });
