@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IpoStatus {
+  UPCOMING
+  OPEN
+  CLOSED
+  LISTED
+  WITHDRAWN
+}
+
+enum IpoEventType {
+  SUBSCRIPTION
+  REFUND
+  LISTING
+}
+
+enum RecipientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InviteState {
+  INTERNAL
+  INVITED
+  ACCEPTED
+  REVOKED
+}
+
+enum ChannelType {
+  EMAIL
+  TELEGRAM
+}
+
+enum AlertType {
+  CLOSING_DAY_ANALYSIS
+}
+
+enum JobStatus {
+  READY
+  SENT
+  PARTIAL_FAILURE
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Ipo {
+  id                String              @id @default(cuid())
+  slug              String              @unique
+  name              String
+  market            String
+  leadManager       String?
+  coManagers        Json?
+  priceBandLow      Int?
+  priceBandHigh     Int?
+  offerPrice        Int?
+  subscriptionStart DateTime?
+  subscriptionEnd   DateTime?
+  refundDate        DateTime?
+  listingDate       DateTime?
+  status            IpoStatus           @default(UPCOMING)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  events            IpoEvent[]
+  sourceSnapshots   IpoSourceSnapshot[]
+  analyses          IpoAnalysis[]
+  notificationJobs  NotificationJob[]
+}
+
+model IpoEvent {
+  id        String       @id @default(cuid())
+  ipoId     String
+  type      IpoEventType
+  title     String
+  eventDate DateTime
+  createdAt DateTime     @default(now())
+  ipo       Ipo          @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@unique([ipoId, type, eventDate])
+}
+
+model IpoSourceSnapshot {
+  id         String   @id @default(cuid())
+  ipoId       String
+  sourceKey   String
+  checksum    String
+  payload     Json
+  fetchedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  ipo         Ipo      @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@index([ipoId, fetchedAt])
+}
+
+model IpoAnalysis {
+  id          String   @id @default(cuid())
+  ipoId        String
+  score        Int
+  ratingLabel  String
+  summary      String
+  keyPoints    Json
+  warnings     Json
+  generatedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  ipo          Ipo      @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@index([ipoId, generatedAt])
+}
+
+model Recipient {
+  id            String             @id @default(cuid())
+  name          String
+  status        RecipientStatus    @default(ACTIVE)
+  inviteState   InviteState        @default(INTERNAL)
+  consentedAt   DateTime?
+  unsubscribedAt DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  channels      RecipientChannel[]
+  subscriptions Subscription[]
+  deliveries    NotificationDelivery[]
+}
+
+model RecipientChannel {
+  id          String      @id @default(cuid())
+  recipientId String
+  type        ChannelType
+  address     String
+  isPrimary   Boolean     @default(false)
+  isVerified  Boolean     @default(false)
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  recipient   Recipient   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientId, type, address])
+}
+
+model Subscription {
+  id         String    @id @default(cuid())
+  recipientId String
+  alertType  AlertType
+  scope      Json?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  recipient  Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, alertType])
+}
+
+model NotificationJob {
+  id             String                 @id @default(cuid())
+  ipoId          String
+  alertType      AlertType
+  scheduledFor   DateTime
+  payload        Json
+  status         JobStatus              @default(READY)
+  idempotencyKey String                 @unique
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  ipo            Ipo                    @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+  deliveries     NotificationDelivery[]
+
+  @@index([scheduledFor, status])
+}
+
+model NotificationDelivery {
+  id               String         @id @default(cuid())
+  jobId            String
+  recipientId      String
+  channelType      ChannelType
+  channelAddress   String
+  status           DeliveryStatus @default(PENDING)
+  providerMessageId String?
+  errorMessage     String?
+  sentAt           DateTime?
+  createdAt        DateTime       @default(now())
+  idempotencyKey   String         @unique
+  job              NotificationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  recipient        Recipient      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, recipientId, channelType])
+}
+
+model AdminOverride {
+  id        String   @id @default(cuid())
+  slug      String?
+  type      String
+  payload   Json
+  isActive  Boolean  @default(true)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

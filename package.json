@@ -1,24 +1,40 @@
 {
-  "name": "tmp-next",
+  "name": "ipo-calendar-alerts",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "prisma:generate": "prisma generate",
+    "job:daily-sync": "tsx scripts/daily-sync.ts",
+    "job:prepare-daily-alerts": "tsx scripts/prepare-daily-alerts.ts",
+    "job:dispatch-alerts": "tsx scripts/dispatch-alerts.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.18.0",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "next": "16.2.1",
+    "nodemailer": "^8.0.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "prisma": "^6.18.0",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/jobs/daily-sync",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}
