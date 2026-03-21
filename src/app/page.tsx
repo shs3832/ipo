@@ -52,7 +52,7 @@ export default async function Home() {
         <article className="summary-card">
           <span>공모주 수</span>
           <strong>{snapshot.ipos.length}</strong>
-          <p>이번 달 기준 일정과 분석이 연결된 종목</p>
+          <p>이번 달과 다음 달 일정 범위에 걸쳐 표시되는 종목</p>
         </article>
         <article className="summary-card">
           <span>수신자</span>

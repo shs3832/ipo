@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/date";
 import { getDashboardSnapshot, getRecentStatusSummary } from "@/lib/jobs";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { logoutAction } from "@/app/login/actions";
+import { AdminLogPanel } from "@/app/admin-log-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -143,27 +144,17 @@ export default async function AdminPage() {
           </div>
         </article>
 
-        <article className="detail-card detail-card-wide">
-          <h2>최근 운영 로그</h2>
-          <div className="admin-list">
-            {snapshot.operationLogs.map((log) => (
-              <div className="admin-row" key={log.id}>
-                <div className="log-meta">
-                  <span className={`log-level log-${log.level.toLowerCase()}`}>{log.level}</span>
-                  <div>
-                    <strong>{log.message}</strong>
-                    <p>
-                      {log.source} · {log.action} · {formatDateTime(log.createdAt)}
-                    </p>
-                  </div>
-                </div>
-                <p className="mono-text log-context">
-                  {log.context ? JSON.stringify(log.context) : "추가 컨텍스트 없음"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </article>
+        <AdminLogPanel
+          logs={snapshot.operationLogs.map((log) => ({
+            id: log.id,
+            level: log.level,
+            source: log.source,
+            action: log.action,
+            message: log.message,
+            context: log.context,
+            createdAtLabel: formatDateTime(log.createdAt),
+          }))}
+        />
       </section>
     </main>
   );

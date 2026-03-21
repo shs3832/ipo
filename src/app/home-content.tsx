@@ -84,7 +84,7 @@ export function HomeContent({
           <div>
             <p className="eyebrow">Monthly View</p>
             <h2>{calendarMonthLabel} 일정</h2>
-            <p className="panel-copy">일정이 없는 주말도 흐름을 읽기 쉽게 색만 약하게 구분했습니다.</p>
+            <p className="panel-copy">이번 달과 다음 달에 실제 일정이 있는 종목만 묶어서 보여주고 있습니다.</p>
           </div>
         </div>
 
@@ -153,7 +153,7 @@ export function HomeContent({
           <div>
             <p className="eyebrow">Tracked IPOs</p>
             <h2>종목 개요</h2>
-            <p className="panel-copy">청약 마감일과 공모가, 현재 판단 점수를 빠르게 훑는 영역입니다.</p>
+            <p className="panel-copy">이번 달과 다음 달 청약 기준으로 공모가와 현재 판단 점수를 빠르게 훑는 영역입니다.</p>
           </div>
         </div>
         <div className="ipo-list">

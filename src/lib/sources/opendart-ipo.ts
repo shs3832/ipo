@@ -1,5 +1,6 @@
 import type { SourceIpoRecord } from "@/lib/types";
 import { env } from "@/lib/env";
+import { fetchLatestFinancialSnapshot } from "@/lib/sources/opendart-financials";
 
 type OpendartListResponse = {
   status?: string;
@@ -41,10 +42,18 @@ type MonthWindow = {
   monthEnd: Date;
 };
 
+type DateRange = {
+  key: string;
+  label: string;
+  bgnDe: string;
+  endDe: string;
+  start: Date;
+  end: Date;
+};
+
 const OPENDART_OK_STATUS = "000";
 const PAGE_SIZE = 100;
-const MAX_LOOKBACK_MONTHS = 18;
-const MAX_DISCLOSURE_PAGES = 5;
+const MAX_DISCLOSURE_PAGES = 8;
 
 const buildUrl = (path: string, params: Record<string, string>) => {
   const baseUrl = env.opendartBaseUrl.replace(/\/+$/, "");
@@ -81,6 +90,37 @@ const shiftDay = (date: Date, offset: number) => {
 
 const toDateKey = (value: Date) =>
   `${value.getFullYear()}${String(value.getMonth() + 1).padStart(2, "0")}${String(value.getDate()).padStart(2, "0")}`;
+
+const toDateRange = (start: Date, end: Date, label: string, key: string): DateRange => ({
+  key,
+  label,
+  bgnDe: toDateKey(start),
+  endDe: toDateKey(end),
+  start,
+  end,
+});
+
+const getDisplayRange = () => {
+  const now = new Date();
+  const currentMonth = toMonthWindow(now);
+  const nextMonth = toMonthWindow(shiftMonth(now, 1));
+  const previousMonth = toMonthWindow(shiftMonth(now, -1));
+
+  return {
+    displayRange: toDateRange(
+      currentMonth.monthStart,
+      nextMonth.monthEnd,
+      `${currentMonth.label} ~ ${nextMonth.label}`,
+      `${currentMonth.key}_${nextMonth.key}`,
+    ),
+    disclosureRange: toDateRange(
+      previousMonth.monthStart,
+      currentMonth.monthEnd,
+      `${previousMonth.label} ~ ${currentMonth.label}`,
+      `${previousMonth.key}_${currentMonth.key}`,
+    ),
+  };
+};
 
 const parseNumber = (value: string | undefined) => {
   if (!value || value === "-") {
@@ -156,11 +196,20 @@ const byLatestReceipt = (left: { rcept_no: string }, right: { rcept_no: string }
 const byLatestReceiptRow = (left: Record<string, string>, right: Record<string, string>) =>
   (right.rcept_no ?? "").localeCompare(left.rcept_no ?? "");
 
-const fetchDisclosurePage = async (window: MonthWindow, pageNo: number) => {
+const isDateWithinRange = (dateKey: string | null | undefined, range: DateRange) => {
+  if (!dateKey) {
+    return false;
+  }
+
+  return dateKey >= `${range.start.getFullYear()}-${String(range.start.getMonth() + 1).padStart(2, "0")}-01`
+    && dateKey <= `${range.end.getFullYear()}-${String(range.end.getMonth() + 1).padStart(2, "0")}-${String(range.end.getDate()).padStart(2, "0")}`;
+};
+
+const fetchDisclosurePage = async (range: DateRange, pageNo: number) => {
   const endpoint = buildUrl("/api/list.json", {
     crtfc_key: env.opendartApiKey,
-    bgn_de: window.bgnDe,
-    end_de: window.endDe,
+    bgn_de: range.bgnDe,
+    end_de: range.endDe,
     pblntf_ty: "C",
     pblntf_detail_ty: "C001",
     last_reprt_at: "Y",
@@ -178,8 +227,8 @@ const fetchDisclosurePage = async (window: MonthWindow, pageNo: number) => {
   return body;
 };
 
-const fetchCandidateDisclosuresForMonth = async (window: MonthWindow): Promise<OpendartDisclosureItem[]> => {
-  const firstPage = await fetchDisclosurePage(window, 1);
+const fetchCandidateDisclosuresForRange = async (range: DateRange): Promise<OpendartDisclosureItem[]> => {
+  const firstPage = await fetchDisclosurePage(range, 1);
 
   if (firstPage.status && firstPage.status !== OPENDART_OK_STATUS) {
     if (firstPage.status === "013") {
@@ -193,29 +242,16 @@ const fetchCandidateDisclosuresForMonth = async (window: MonthWindow): Promise<O
   const disclosures = [...(firstPage.list ?? [])];
 
   for (let page = 2; page <= totalPages; page += 1) {
-    const nextPage = await fetchDisclosurePage(window, page);
+    const nextPage = await fetchDisclosurePage(range, page);
     disclosures.push(...(nextPage.list ?? []));
   }
 
   return disclosures.filter(isEquityIpoDisclosure);
 };
 
-const pickMonthWithIpoDisclosures = async () => {
-  for (let offset = 0; offset < MAX_LOOKBACK_MONTHS; offset += 1) {
-    const window = toMonthWindow(shiftMonth(new Date(), -offset));
-    const disclosures = await fetchCandidateDisclosuresForMonth(window);
-
-    if (disclosures.length > 0) {
-      return { window, disclosures, usedFallback: offset > 0 };
-    }
-  }
-
-  return null;
-};
-
-const fetchEquitySecurityInfo = async (corpCode: string, window: MonthWindow) => {
-  const detailBgnDe = toDateKey(shiftDay(window.monthStart, -365));
-  const detailEndDe = toDateKey(shiftDay(window.monthEnd, 62));
+const fetchEquitySecurityInfo = async (corpCode: string, range: DateRange) => {
+  const detailBgnDe = toDateKey(shiftDay(range.start, -365));
+  const detailEndDe = toDateKey(shiftDay(range.end, 62));
   const endpoint = buildUrl("/api/estkRs.json", {
     crtfc_key: env.opendartApiKey,
     corp_code: corpCode,
@@ -249,20 +285,20 @@ export const fetchOpendartCurrentMonthIpos = async (): Promise<SourceIpoRecord[]
     return [];
   }
 
-  const selected = await pickMonthWithIpoDisclosures();
-  if (!selected) {
+  const { displayRange, disclosureRange } = getDisplayRange();
+  const disclosures = await fetchCandidateDisclosuresForRange(disclosureRange);
+  if (disclosures.length === 0) {
     return [];
   }
-
-  const { window, disclosures, usedFallback } = selected;
   const uniqueDisclosures = [...new Map(disclosures.sort(byLatestReceipt).map((item) => [item.corp_code, item])).values()];
 
   const records: Array<SourceIpoRecord | null> = await Promise.all(
     uniqueDisclosures.map(async (disclosure) => {
-      const detail = await fetchEquitySecurityInfo(disclosure.corp_code, window);
+      const detail = await fetchEquitySecurityInfo(disclosure.corp_code, disclosureRange);
       if (!detail?.group?.length) {
         return null;
       }
+      const financials = await fetchLatestFinancialSnapshot(disclosure.corp_code);
 
       const generalRows = [...selectGroupRows(detail.group, "일반사항")].sort(byLatestReceiptRow);
       const securityRows = [...selectGroupRows(detail.group, "증권의종류")].sort(byLatestReceiptRow);
@@ -281,6 +317,13 @@ export const fetchOpendartCurrentMonthIpos = async (): Promise<SourceIpoRecord[]
         return null;
       }
 
+      if (
+        !isDateWithinRange(start, displayRange) &&
+        !isDateWithinRange(end, displayRange)
+      ) {
+        return null;
+      }
+
       const underwriters = [...new Set(underwriterRows.map((row) => row.actnmn).filter(Boolean))];
       const representative = underwriterRows.find((row) => row.actsen?.includes("대표"))?.actnmn ?? underwriters[0] ?? disclosure.flr_nm ?? disclosure.corp_name;
       const coManagers = underwriters.filter((name) => name !== representative);
@@ -290,13 +333,14 @@ export const fetchOpendartCurrentMonthIpos = async (): Promise<SourceIpoRecord[]
         totalOfferedShares && insiderSalesShares ? Number(((insiderSalesShares / totalOfferedShares) * 100).toFixed(1)) : null;
 
       const notes = [
-        `OpenDART ${window.label} 증권신고서 기준`,
-        usedFallback ? `현재달 공시가 없어 가장 최근 월(${window.label}) 데이터를 표시합니다.` : null,
+        `OpenDART ${disclosureRange.label} 공시 기준`,
+        `표시 범위 ${displayRange.label}`,
         `접수일 ${disclosure.rcept_dt.slice(0, 4)}-${disclosure.rcept_dt.slice(4, 6)}-${disclosure.rcept_dt.slice(6, 8)}`,
+        financials?.reportLabel ? `재무지표 기준 ${financials.reportLabel}` : null,
       ].filter((value): value is string => Boolean(value));
 
       return {
-        sourceKey: `opendart-estk:${window.key}:${disclosure.corp_code}`,
+        sourceKey: `opendart-estk:${displayRange.key}:${disclosure.corp_code}`,
         name: disclosure.corp_name,
         market: mapMarket(general.corp_cls || disclosure.corp_cls),
         leadManager: representative,
@@ -316,6 +360,19 @@ export const fetchOpendartCurrentMonthIpos = async (): Promise<SourceIpoRecord[]
         floatRatio: null,
         insiderSalesRatio,
         marketMoodScore: null,
+        financialReportLabel: financials?.reportLabel ?? null,
+        revenue: financials?.revenue ?? null,
+        previousRevenue: financials?.previousRevenue ?? null,
+        revenueGrowthRate: financials?.revenueGrowthRate ?? null,
+        operatingIncome: financials?.operatingIncome ?? null,
+        previousOperatingIncome: financials?.previousOperatingIncome ?? null,
+        operatingMarginRate: financials?.operatingMarginRate ?? null,
+        netIncome: financials?.netIncome ?? null,
+        previousNetIncome: financials?.previousNetIncome ?? null,
+        totalAssets: financials?.totalAssets ?? null,
+        totalLiabilities: financials?.totalLiabilities ?? null,
+        totalEquity: financials?.totalEquity ?? null,
+        debtRatio: financials?.debtRatio ?? null,
         notes,
       } satisfies SourceIpoRecord;
     }),

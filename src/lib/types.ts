@@ -29,6 +29,19 @@ export type SourceIpoRecord = {
   floatRatio?: number | null;
   insiderSalesRatio?: number | null;
   marketMoodScore?: number | null;
+  financialReportLabel?: string | null;
+  revenue?: number | null;
+  previousRevenue?: number | null;
+  revenueGrowthRate?: number | null;
+  operatingIncome?: number | null;
+  previousOperatingIncome?: number | null;
+  operatingMarginRate?: number | null;
+  netIncome?: number | null;
+  previousNetIncome?: number | null;
+  totalAssets?: number | null;
+  totalLiabilities?: number | null;
+  totalEquity?: number | null;
+  debtRatio?: number | null;
   notes?: string[];
 };
 

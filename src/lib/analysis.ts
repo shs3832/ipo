@@ -2,6 +2,7 @@ import { formatMoney } from "@/lib/date";
 import type { IpoAnalysisRecord, SourceIpoRecord } from "@/lib/types";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const formatSignedRate = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 
 export const buildAnalysis = (record: SourceIpoRecord): IpoAnalysisRecord => {
   let score = 50;
@@ -75,7 +76,55 @@ export const buildAnalysis = (record: SourceIpoRecord): IpoAnalysisRecord => {
     }
   }
 
-  if (record.notes?.length) {
+  if (record.revenueGrowthRate != null) {
+    if (record.revenueGrowthRate >= 20) {
+      score += 8;
+      keyPoints.push(`최근 매출 성장률이 ${formatSignedRate(record.revenueGrowthRate)}로 높아 외형 확장이 확인됩니다.`);
+    } else if (record.revenueGrowthRate >= 5) {
+      score += 4;
+      keyPoints.push(`최근 매출이 ${formatSignedRate(record.revenueGrowthRate)} 성장해 실적 흐름이 무난합니다.`);
+    } else if (record.revenueGrowthRate <= -10) {
+      score -= 8;
+      warnings.push(`최근 매출 성장률이 ${formatSignedRate(record.revenueGrowthRate)}로 둔화돼 수요 지속성을 점검할 필요가 있습니다.`);
+    }
+  }
+
+  if (record.operatingIncome != null) {
+    if (record.operatingIncome > 0) {
+      score += 8;
+      keyPoints.push("최근 영업이익이 흑자라 본업 수익성이 확인됩니다.");
+    } else if (record.operatingIncome < 0) {
+      score -= 10;
+      warnings.push("최근 영업이익이 적자라 상장 후 기대감만으로 보기엔 부담이 있습니다.");
+    }
+  }
+
+  if (record.netIncome != null) {
+    if (record.netIncome > 0) {
+      score += 5;
+      keyPoints.push("당기순이익이 흑자로 순이익 기준 체력이 나쁘지 않습니다.");
+    } else if (record.netIncome < 0) {
+      score -= 7;
+      warnings.push("당기순이익이 적자라 밸류에이션 해석에 보수적인 접근이 필요합니다.");
+    }
+  }
+
+  if (record.debtRatio != null) {
+    if (record.debtRatio <= 100) {
+      score += 6;
+      keyPoints.push(`부채비율이 ${record.debtRatio.toFixed(1)}%로 재무 안정성이 양호한 편입니다.`);
+    } else if (record.debtRatio >= 200) {
+      score -= 8;
+      warnings.push(`부채비율이 ${record.debtRatio.toFixed(1)}%로 높아 재무 부담을 함께 확인할 필요가 있습니다.`);
+    }
+  }
+
+  if (record.totalEquity != null && record.totalEquity <= 0) {
+    score -= 12;
+    warnings.push("자본총계가 낮거나 음수 구간이라 재무 구조를 특히 주의해서 봐야 합니다.");
+  }
+
+  if (record.notes?.length && keyPoints.length < 3) {
     keyPoints.push(...record.notes.slice(0, 1));
   }
 
@@ -87,6 +136,8 @@ export const buildAnalysis = (record: SourceIpoRecord): IpoAnalysisRecord => {
     `공모가 ${formatMoney(record.offerPrice)}`,
     record.demandCompetitionRate ? `기관 경쟁률 ${record.demandCompetitionRate.toFixed(1)}:1` : null,
     record.floatRatio != null ? `유통 가능 물량 ${record.floatRatio}%` : null,
+    record.revenueGrowthRate != null ? `매출 성장 ${formatSignedRate(record.revenueGrowthRate)}` : null,
+    record.debtRatio != null ? `부채비율 ${record.debtRatio.toFixed(1)}%` : null,
   ].filter(Boolean);
 
   return {
@@ -94,7 +145,7 @@ export const buildAnalysis = (record: SourceIpoRecord): IpoAnalysisRecord => {
     ratingLabel,
     summary: `${ratingLabel} 의견. ${summaryParts.join(" / ")}`,
     keyPoints: keyPoints.slice(0, 3),
-    warnings: warnings.slice(0, 2),
+    warnings: warnings.slice(0, 3),
     generatedAt: new Date(),
   };
 };
