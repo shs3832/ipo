@@ -36,6 +36,12 @@ export const hasAdminSessionSecret = () => Boolean(getSessionSecret());
 
 export const isAdminAuthConfigured = () => hasAdminPassword() && hasAdminSessionSecret();
 
+export const getAdminAuthMissingEnvKeys = () =>
+  [
+    hasAdminPassword() ? null : "ADMIN_ACCESS_PASSWORD",
+    hasAdminSessionSecret() ? null : "ADMIN_SESSION_SECRET",
+  ].filter((value): value is string => value !== null);
+
 export const verifyAdminSession = (token: string | undefined | null) => {
   if (!hasAdminSessionSecret()) {
     return false;

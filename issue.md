@@ -355,3 +355,37 @@
   - `Type 'PreparedJobSeed[]' is not assignable to type 'NotificationJobRecord[]'`
   - 원인: fallback 경로 `jobs` 배열에 `id`가 없어 `NotificationJobRecord` 타입을 만족하지 못함
   - 수정 후 build 통과 확인
+
+### Follow-up: Deployment Admin Env Diagnosis / Secret Guidance
+
+배포 후 웹 로그인 화면에서 관리자 설정 미완료 메시지가 보인다는 점을 다시 확인했고, 로컬 코드는 정상적으로 env를 읽고 있음을 검증했다. 이 스레드에서는 런타임에서 어떤 키가 비어 있는지 더 구체적으로 보이게 진단 메시지를 보강하고, `JOB_SECRET` / `ADMIN_SESSION_SECRET` / `ADMIN_ACCESS_PASSWORD` 운영 가이드를 정리했다.
+
+### What Changed In This Follow-up
+
+1. 로컬 런타임에서 `ADMIN_ACCESS_PASSWORD`, `ADMIN_SESSION_SECRET` 모두 정상 인식되는지 길이/존재 여부 기준으로 확인했다.
+2. 로그인 페이지에서 관리자 env가 빠졌을 때 단순 공통 문구 대신 실제로 비어 있는 키 이름을 표시하도록 개선했다.
+3. 배포 환경에서 문제가 날 경우 원인이 코드보다 `Vercel Production env 적용 / redeploy 여부 / 최신 배포 확인` 쪽일 가능성이 높다는 점을 정리했다.
+4. `JOB_SECRET`는 배포 환경에서도 `.env`와 같은 값을 사용해도 되지만, 로컬/배포 모두 동일한 강한 랜덤 secret으로 관리해야 한다는 운영 원칙을 남겼다.
+5. `JOB_SECRET`, `ADMIN_SESSION_SECRET`, `ADMIN_ACCESS_PASSWORD`에 대해 길이와 난수성 기준을 포함한 권장 강도를 정리했다.
+
+### Main Code Changes In This Follow-up
+
+- 관리자 env 진단
+  - `src/lib/admin-auth.ts`
+  - `src/app/login/page.tsx`
+
+### Verification In This Follow-up
+
+- `npx tsx`로 로컬 런타임 env 인식 여부 확인:
+  - `ADMIN_ACCESS_PASSWORD` 존재 / 길이 확인
+  - `ADMIN_SESSION_SECRET` 존재 / 길이 확인
+  - `isAdminAuthConfigured() === true` 확인
+- `npm run lint`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- Vercel Project Settings에 `ADMIN_ACCESS_PASSWORD`, `ADMIN_SESSION_SECRET`, `JOB_SECRET`를 환경변수로 저장하는 것은 일반적인 운영 방식이며, 코드에 하드코딩하거나 `.env`를 커밋하는 것보다 안전하다.
+- 다만 반드시 `Production` 적용 여부와 redeploy 여부를 함께 확인해야 한다.
+- `JOB_SECRET`는 최소 32자 이상 랜덤 문자열, `ADMIN_SESSION_SECRET`는 최소 32자 이상이며 가능하면 64자 수준의 랜덤 문자열을 권장한다.
+- `ADMIN_ACCESS_PASSWORD`는 사람이 입력하는 값이므로 길고 예측 어려운 passphrase 형태를 권장한다.

@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { hasAdminPassword, hasAdminSessionSecret, isAdminAuthenticated } from "@/lib/admin-auth";
+import {
+  getAdminAuthMissingEnvKeys,
+  isAdminAuthenticated,
+} from "@/lib/admin-auth";
 import { loginAction } from "@/app/login/actions";
 import styles from "@/app/login/page.module.scss";
 
@@ -24,6 +27,8 @@ export default async function LoginPage({
   const params = await searchParams;
   const next = params.next?.startsWith("/") ? params.next : "/admin";
   const error = params.error ? errorMessage[params.error] : null;
+  const missingEnvKeys = getAdminAuthMissingEnvKeys();
+  const hasMissingAdminEnv = missingEnvKeys.length > 0;
 
   return (
     <main className="page-shell">
@@ -43,9 +48,10 @@ export default async function LoginPage({
           </div>
 
           {error ? <p className={styles.error}>{error}</p> : null}
-          {!hasAdminPassword() || !hasAdminSessionSecret() ? (
+          {hasMissingAdminEnv ? (
             <p className={styles.help}>
-              `.env` 또는 Vercel 환경변수에 `ADMIN_ACCESS_PASSWORD`와 `ADMIN_SESSION_SECRET`을 모두 설정해 주세요.
+              현재 런타임에서 {missingEnvKeys.join(", ")} 값이 비어 있습니다. `.env` 또는 Vercel
+              환경변수의 적용 환경(Production / Preview / Development)과 최근 redeploy 여부를 함께 확인해 주세요.
             </p>
           ) : null}
 
