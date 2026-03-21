@@ -31,6 +31,10 @@ const reviveIpoRecord = <T extends IpoRecord | PublicIpoDetailRecord>(ipo: T): T
   ...ipo,
   subscriptionStart: toDate(ipo.subscriptionStart) ?? new Date(),
   subscriptionEnd: toDate(ipo.subscriptionEnd) ?? new Date(),
+  irStart: toDate(ipo.irStart),
+  irEnd: toDate(ipo.irEnd),
+  demandForecastStart: toDate(ipo.demandForecastStart),
+  demandForecastEnd: toDate(ipo.demandForecastEnd),
   refundDate: toDate(ipo.refundDate),
   listingDate: toDate(ipo.listingDate),
   events: ipo.events.map((event) => ({

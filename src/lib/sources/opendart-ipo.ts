@@ -3,6 +3,7 @@ import { getKstMonthRange, getKstTodayKey } from "@/lib/date";
 import { env } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { fetchLatestFinancialSnapshot } from "@/lib/sources/opendart-financials";
+import { fetchOpendartProspectusDetails } from "@/lib/sources/opendart-prospectus";
 
 type OpendartListResponse = {
   status?: string;
@@ -124,6 +125,19 @@ const parseSubscriptionRange = (value: string | undefined) => {
   const first = `${matches[0][1]}-${matches[0][2]}-${matches[0][3]}`;
   const last = `${matches[matches.length - 1][1]}-${matches[matches.length - 1][2]}-${matches[matches.length - 1][3]}`;
   return { start: first, end: last };
+};
+
+const parseSingleDate = (value: string | undefined) => {
+  if (!value || value === "-") {
+    return null;
+  }
+
+  const match = value.match(/(\d{4})년\s*(\d{2})월\s*(\d{2})일/);
+  if (!match) {
+    return null;
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
 };
 
 const mapMarket = (corpCls: string) => {
@@ -253,6 +267,7 @@ const selectGroupRows = (groups: OpendartEquityResponse["group"], title: string)
 const fetchOpendartCurrentMonthIposUncached = async (
   displayRange: DateRange,
   disclosureRange: DateRange,
+  { forceRefresh = false }: FetchOpendartCurrentMonthIposOptions = {},
 ): Promise<SourceIpoRecord[]> => {
   const disclosures = await fetchCandidateDisclosuresForRange(disclosureRange);
   if (disclosures.length === 0) {
@@ -266,7 +281,10 @@ const fetchOpendartCurrentMonthIposUncached = async (
       if (!detail?.group?.length) {
         return null;
       }
-      const financials = await fetchLatestFinancialSnapshot(disclosure.corp_code);
+      const [financials, prospectus] = await Promise.all([
+        fetchLatestFinancialSnapshot(disclosure.corp_code),
+        fetchOpendartProspectusDetails(disclosure.rcept_no, { forceRefresh }).catch(() => null),
+      ]);
 
       const generalRows = [...selectGroupRows(detail.group, "일반사항")].sort(byLatestReceiptRow);
       const securityRows = [...selectGroupRows(detail.group, "증권의종류")].sort(byLatestReceiptRow);
@@ -285,9 +303,14 @@ const fetchOpendartCurrentMonthIposUncached = async (
         return null;
       }
 
+      const refundDate = parseSingleDate(general.pymd);
+      const listingDate = null;
+
       if (
         !isDateWithinRange(start, displayRange) &&
-        !isDateWithinRange(end, displayRange)
+        !isDateWithinRange(end, displayRange) &&
+        !isDateWithinRange(refundDate, displayRange) &&
+        !isDateWithinRange(listingDate, displayRange)
       ) {
         return null;
       }
@@ -313,15 +336,17 @@ const fetchOpendartCurrentMonthIposUncached = async (
         market: mapMarket(general.corp_cls || disclosure.corp_cls),
         leadManager: representative,
         coManagers,
-        priceBandLow: null,
-        priceBandHigh: null,
+        priceBandLow: prospectus?.priceBandLow ?? null,
+        priceBandHigh: prospectus?.priceBandHigh ?? null,
         offerPrice: parseNumber(security.slprc),
-        minimumSubscriptionShares: null,
-        depositRate: null,
+        minimumSubscriptionShares: prospectus?.minimumSubscriptionShares ?? null,
+        depositRate: prospectus?.depositRate ?? null,
         subscriptionStart: start,
         subscriptionEnd: end,
-        refundDate: null,
-        listingDate: null,
+        // OpenDART estkRs exposes payment date (`pymd`) but not a stable refund date field.
+        // We refresh this daily and use it as the closest available refund schedule until a better source is added.
+        refundDate,
+        listingDate,
         status: buildStatus(start, end),
         demandCompetitionRate: null,
         lockupRate: null,
@@ -365,6 +390,6 @@ export const fetchOpendartCurrentMonthIpos = async ({
       ttlMs: OPENDART_SOURCE_CACHE_TTL_MS,
       bypass: forceRefresh,
     },
-    async () => fetchOpendartCurrentMonthIposUncached(displayRange, disclosureRange),
+    async () => fetchOpendartCurrentMonthIposUncached(displayRange, disclosureRange, { forceRefresh }),
   );
 };

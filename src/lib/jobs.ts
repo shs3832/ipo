@@ -27,12 +27,16 @@ import {
   getKstTodayKey,
   isSameKstDate,
   parseKstDate,
+  shiftKstDateKey,
 } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { buildFallbackDashboard, buildFallbackPublicHomeSnapshot } from "@/lib/fallback-data";
 import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
+import { fetchKindListingDates } from "@/lib/sources/kind-listings";
+import { fetchKindOfferDetails } from "@/lib/sources/kind-offer-details";
+import { fetchKindStockPriceSnapshot } from "@/lib/sources/kind-stock-prices";
 import { fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
 import nodemailer from "nodemailer";
 
@@ -59,21 +63,25 @@ const getDisplayRange = (date = new Date()) => {
 
 const getDisplayRangeWhere = (date = new Date()) => {
   const range = getDisplayRange(date);
+  const inDisplayRange = {
+    gte: range.start,
+    lte: range.end,
+  };
 
   return {
     status: { not: "WITHDRAWN" as const },
     OR: [
       {
-        subscriptionStart: {
-          gte: range.start,
-          lte: range.end,
-        },
+        subscriptionStart: inDisplayRange,
       },
       {
-        subscriptionEnd: {
-          gte: range.start,
-          lte: range.end,
-        },
+        subscriptionEnd: inDisplayRange,
+      },
+      {
+        refundDate: inDisplayRange,
+      },
+      {
+        listingDate: inDisplayRange,
       },
     ],
   };
@@ -86,6 +94,168 @@ const slugify = (value: string) =>
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9가-힣-]/g, "")
     .replace(/-+/g, "-");
+
+const normalizeCompanyNameForMatching = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/주식회사|\(주\)|㈜/g, "")
+    .replace(/기업인수목적|스팩|spac/gi, "")
+    .replace(/제(?=\d+호)/g, "")
+    .replace(/[^a-z0-9가-힣]/g, "");
+
+const toListingOpenReturnRate = (offerPrice: number | null | undefined, listingOpenPrice: number | null | undefined) => {
+  if (offerPrice == null || listingOpenPrice == null || offerPrice <= 0) {
+    return null;
+  }
+
+  return Number((((listingOpenPrice - offerPrice) / offerPrice) * 100).toFixed(1));
+};
+
+const mergeKindListingMetadata = async (
+  records: SourceIpoRecord[],
+  { forceRefresh = false }: SyncOptions = {},
+): Promise<SourceIpoRecord[]> => {
+  if (records.length === 0) {
+    return records;
+  }
+
+  const kindListings = await fetchKindListingDates({ forceRefresh });
+  if (kindListings.length === 0) {
+    return records;
+  }
+
+  const listingDateByName = new Map(
+    kindListings.map(
+      (listing) => [normalizeCompanyNameForMatching(listing.name), listing] as const,
+    ),
+  );
+
+  return records.map((record) => {
+    const kindListing = listingDateByName.get(normalizeCompanyNameForMatching(record.name));
+    if (!kindListing) {
+      return record;
+    }
+
+    const notes = record.notes ?? [];
+    const kindNote = `KIND 신규상장기업현황 기준 상장예정일 ${kindListing.listingDate}`;
+
+    return {
+      ...record,
+      kindIssueCode: kindListing.isurCd,
+      kindBizProcessNo: kindListing.bzProcsNo,
+      listingDate: kindListing.listingDate,
+      notes: notes.includes(kindNote) ? notes : [...notes, kindNote],
+    };
+  });
+};
+
+const enrichKindOfferMetadata = async (
+  records: SourceIpoRecord[],
+  { forceRefresh = false }: SyncOptions = {},
+): Promise<SourceIpoRecord[]> => {
+  if (records.length === 0) {
+    return records;
+  }
+
+  return Promise.all(
+    records.map(async (record) => {
+      if (!record.kindIssueCode || !record.kindBizProcessNo) {
+        return record;
+      }
+
+      const kindDetails = await fetchKindOfferDetails(record.kindIssueCode, record.kindBizProcessNo, { forceRefresh })
+        .catch(() => null);
+      if (!kindDetails) {
+        return record;
+      }
+
+      const notes = record.notes ?? [];
+      const nextNotes = [...notes];
+
+      if (kindDetails.offerPrice != null) {
+        const kindNote = `KIND 신규상장기업 상세 기준 확정 공모가 ${kindDetails.offerPrice.toLocaleString("ko-KR")}원`;
+        if (!nextNotes.includes(kindNote)) {
+          nextNotes.push(kindNote);
+        }
+      }
+
+      if (kindDetails.generalSubscriptionCompetitionRate != null) {
+        const kindNote = `KIND 공모정보 기준 일반청약 경쟁률 ${kindDetails.generalSubscriptionCompetitionRate}:1`;
+        if (!nextNotes.includes(kindNote)) {
+          nextNotes.push(kindNote);
+        }
+      }
+
+      if (kindDetails.floatRatio != null) {
+        const kindNote = `KIND 회사개요 기준 유통가능물량 ${kindDetails.floatRatio}%`;
+        if (!nextNotes.includes(kindNote)) {
+          nextNotes.push(kindNote);
+        }
+      }
+
+      return {
+        ...record,
+        offerPrice: kindDetails.offerPrice ?? record.offerPrice ?? null,
+        generalSubscriptionCompetitionRate:
+          kindDetails.generalSubscriptionCompetitionRate ?? record.generalSubscriptionCompetitionRate ?? null,
+        irStart: kindDetails.irStart ?? record.irStart ?? null,
+        irEnd: kindDetails.irEnd ?? record.irEnd ?? null,
+        demandForecastStart: kindDetails.demandForecastStart ?? record.demandForecastStart ?? null,
+        demandForecastEnd: kindDetails.demandForecastEnd ?? record.demandForecastEnd ?? null,
+        tradableShares: kindDetails.tradableShares ?? record.tradableShares ?? null,
+        floatRatio: kindDetails.floatRatio ?? record.floatRatio ?? null,
+        refundDate: kindDetails.refundDate ?? record.refundDate ?? null,
+        listingDate: kindDetails.listingDate ?? record.listingDate ?? null,
+        notes: nextNotes,
+      } satisfies SourceIpoRecord;
+    }),
+  );
+};
+
+const enrichListingOpenMetrics = async (
+  records: SourceIpoRecord[],
+  { forceRefresh = false }: SyncOptions = {},
+): Promise<SourceIpoRecord[]> => {
+  if (records.length === 0) {
+    return records;
+  }
+
+  const todayKey = getKstTodayKey();
+  const captureWindowStartKey = shiftKstDateKey(todayKey, -5);
+
+  const enrichedRecords = await Promise.all(
+    records.map(async (record) => {
+      if (
+        !record.kindIssueCode ||
+        !record.listingDate ||
+        record.listingDate >= todayKey ||
+        record.listingDate < captureWindowStartKey
+      ) {
+        return record;
+      }
+
+      const snapshot = await fetchKindStockPriceSnapshot(record.kindIssueCode, { forceRefresh });
+      if (snapshot.priceDate !== record.listingDate || snapshot.openingPrice == null) {
+        return record;
+      }
+
+      const listingOpenReturnRate = toListingOpenReturnRate(record.offerPrice, snapshot.openingPrice);
+      const notes = record.notes ?? [];
+      const kindNote = `KIND 종가 기준(${snapshot.priceDate}) 시초가 ${snapshot.openingPrice.toLocaleString("ko-KR")}원`;
+
+      return {
+        ...record,
+        listingOpenPrice: snapshot.openingPrice,
+        listingOpenReturnRate,
+        notes: notes.includes(kindNote) ? notes : [...notes, kindNote],
+      };
+    }),
+  );
+
+  return enrichedRecords;
+};
 
 const buildEvents = (record: SourceIpoRecord, ipoName: string) => [
   {
@@ -214,6 +384,45 @@ const buildMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
 const toChecksum = (record: SourceIpoRecord) =>
   createHash("sha256").update(JSON.stringify(record)).digest("hex");
 
+const parseSnapshotNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const parseSnapshotString = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+const parseSnapshotDate = (value: unknown) => {
+  const dateKey = parseSnapshotString(value);
+  return dateKey ? parseKstDate(dateKey) : null;
+};
+
+const getLatestSnapshotFields = (payload: unknown) => {
+  if (!payload || typeof payload !== "object") {
+    return {
+      kindBizProcessNo: null,
+      generalSubscriptionCompetitionRate: null,
+      irStart: null,
+      irEnd: null,
+      demandForecastStart: null,
+      demandForecastEnd: null,
+      tradableShares: null,
+      floatRatio: null,
+    };
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  return {
+    kindBizProcessNo: parseSnapshotString(record.kindBizProcessNo),
+    generalSubscriptionCompetitionRate: parseSnapshotNumber(record.generalSubscriptionCompetitionRate),
+    irStart: parseSnapshotDate(record.irStart),
+    irEnd: parseSnapshotDate(record.irEnd),
+    demandForecastStart: parseSnapshotDate(record.demandForecastStart),
+    demandForecastEnd: parseSnapshotDate(record.demandForecastEnd),
+    tradableShares: parseSnapshotNumber(record.tradableShares),
+    floatRatio: parseSnapshotNumber(record.floatRatio),
+  };
+};
+
 const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
   const analysis = buildAnalysis(record);
 
@@ -224,11 +433,22 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
     market: record.market,
     leadManager: record.leadManager,
     coManagers: record.coManagers ?? [],
+    kindIssueCode: record.kindIssueCode ?? null,
+    kindBizProcessNo: record.kindBizProcessNo ?? null,
     priceBandLow: record.priceBandLow ?? null,
     priceBandHigh: record.priceBandHigh ?? null,
     offerPrice: record.offerPrice ?? null,
+    listingOpenPrice: record.listingOpenPrice ?? null,
+    listingOpenReturnRate: record.listingOpenReturnRate ?? null,
     minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
     depositRate: record.depositRate ?? null,
+    generalSubscriptionCompetitionRate: record.generalSubscriptionCompetitionRate ?? null,
+    irStart: record.irStart ? parseKstDate(record.irStart) : null,
+    irEnd: record.irEnd ? parseKstDate(record.irEnd) : null,
+    demandForecastStart: record.demandForecastStart ? parseKstDate(record.demandForecastStart) : null,
+    demandForecastEnd: record.demandForecastEnd ? parseKstDate(record.demandForecastEnd) : null,
+    tradableShares: record.tradableShares ?? null,
+    floatRatio: record.floatRatio ?? null,
     subscriptionStart: parseKstDate(record.subscriptionStart),
     subscriptionEnd: parseKstDate(record.subscriptionEnd),
     refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
@@ -245,10 +465,12 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
 };
 
 const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SourceIpoRecord[]> => {
+  let sourceRecords: SourceIpoRecord[];
+
   if (env.ipoSourceUrl) {
     const cacheKey = createHash("sha256").update(env.ipoSourceUrl).digest("hex");
 
-    return getCachedExternalData(
+    sourceRecords = await getCachedExternalData(
       {
         key: `ipo-source-url:${cacheKey}`,
         source: "ipo-source-url",
@@ -264,13 +486,15 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
         return (await response.json()) as SourceIpoRecord[];
       },
     );
+  } else if (env.opendartApiKey) {
+    sourceRecords = await fetchOpendartCurrentMonthIpos({ forceRefresh });
+  } else {
+    return [];
   }
 
-  if (env.opendartApiKey) {
-    return await fetchOpendartCurrentMonthIpos({ forceRefresh });
-  }
-
-  return [];
+  const recordsWithListingMetadata = await mergeKindListingMetadata(sourceRecords, { forceRefresh });
+  const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(recordsWithListingMetadata, { forceRefresh });
+  return enrichListingOpenMetrics(recordsWithKindOfferMetadata, { forceRefresh });
 };
 
 const isSameAnalysis = (
@@ -294,6 +518,12 @@ const isSameAnalysis = (
   && left.summary === right.summary
   && JSON.stringify(left.keyPoints) === JSON.stringify(right.keyPoints)
   && JSON.stringify(left.warnings) === JSON.stringify(right.warnings);
+
+const isMissingSchemaError = (error: unknown) =>
+  typeof error === "object"
+  && error !== null
+  && "code" in error
+  && (error as { code?: string }).code === "P2022";
 
 const canUseDatabase = async () => {
   if (!isDatabaseEnabled()) {
@@ -329,9 +559,12 @@ const toIpoRecord = (ipo: {
   market: string;
   leadManager: string | null;
   coManagers: unknown;
+  kindIssueCode: string | null;
   priceBandLow: number | null;
   priceBandHigh: number | null;
   offerPrice: number | null;
+  listingOpenPrice: number | null;
+  listingOpenReturnRate: number | null;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
   subscriptionStart: Date | null;
@@ -356,17 +589,22 @@ const toIpoRecord = (ipo: {
   sourceSnapshots: Array<{
     sourceKey: string;
     fetchedAt: Date;
+    payload: unknown;
   }>;
 }): IpoRecord => ({
+  ...getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload),
   id: ipo.id,
   slug: ipo.slug,
   name: ipo.name,
   market: ipo.market,
   leadManager: ipo.leadManager ?? "-",
   coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
+  kindIssueCode: ipo.kindIssueCode,
   priceBandLow: ipo.priceBandLow,
   priceBandHigh: ipo.priceBandHigh,
   offerPrice: ipo.offerPrice,
+  listingOpenPrice: ipo.listingOpenPrice,
+  listingOpenReturnRate: ipo.listingOpenReturnRate,
   minimumSubscriptionShares: ipo.minimumSubscriptionShares,
   depositRate: ipo.depositRate,
   subscriptionStart: ipo.subscriptionStart ?? new Date(),
@@ -399,9 +637,12 @@ const toPublicIpoDetailRecord = (ipo: {
   market: string;
   leadManager: string | null;
   coManagers: unknown;
+  kindIssueCode: string | null;
   priceBandLow: number | null;
   priceBandHigh: number | null;
   offerPrice: number | null;
+  listingOpenPrice: number | null;
+  listingOpenReturnRate: number | null;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
   subscriptionStart: Date | null;
@@ -423,16 +664,23 @@ const toPublicIpoDetailRecord = (ipo: {
     warnings: unknown;
     generatedAt: Date;
   }>;
+  sourceSnapshots: Array<{
+    payload: unknown;
+  }>;
 }): PublicIpoDetailRecord => ({
+  ...getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload),
   id: ipo.id,
   slug: ipo.slug,
   name: ipo.name,
   market: ipo.market,
   leadManager: ipo.leadManager ?? "-",
   coManagers: Array.isArray(ipo.coManagers) ? (ipo.coManagers as string[]) : [],
+  kindIssueCode: ipo.kindIssueCode,
   priceBandLow: ipo.priceBandLow,
   priceBandHigh: ipo.priceBandHigh,
   offerPrice: ipo.offerPrice,
+  listingOpenPrice: ipo.listingOpenPrice,
+  listingOpenReturnRate: ipo.listingOpenReturnRate,
   minimumSubscriptionShares: ipo.minimumSubscriptionShares,
   depositRate: ipo.depositRate,
   subscriptionStart: ipo.subscriptionStart ?? new Date(),
@@ -792,8 +1040,6 @@ const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) 
 
 const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
   const slug = slugify(record.name);
-  const checksum = toChecksum(record);
-  const analysis = buildAnalysis(record);
   const latestSnapshot = await prisma.ipo.findUnique({
     where: { slug },
     include: {
@@ -808,8 +1054,24 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
     },
   });
 
+  const effectiveOfferPrice = record.offerPrice ?? latestSnapshot?.offerPrice ?? null;
+  const listingOpenPrice = record.listingOpenPrice ?? latestSnapshot?.listingOpenPrice ?? null;
+  const persistedRecord = {
+    ...record,
+    kindIssueCode: record.kindIssueCode ?? latestSnapshot?.kindIssueCode ?? null,
+    offerPrice: effectiveOfferPrice,
+    listingOpenPrice,
+    listingOpenReturnRate:
+      record.listingOpenReturnRate
+      ?? toListingOpenReturnRate(effectiveOfferPrice, listingOpenPrice)
+      ?? latestSnapshot?.listingOpenReturnRate
+      ?? null,
+  } satisfies SourceIpoRecord;
+  const checksum = toChecksum(persistedRecord);
+  const analysis = buildAnalysis(persistedRecord);
+
   if (
-    latestSnapshot?.sourceSnapshots[0]?.sourceKey === record.sourceKey &&
+    latestSnapshot?.sourceSnapshots[0]?.sourceKey === persistedRecord.sourceKey &&
     latestSnapshot.sourceSnapshots[0]?.checksum === checksum
   ) {
     const latestAnalysis = latestSnapshot.analyses[0];
@@ -848,37 +1110,43 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
   const ipo = await prisma.ipo.upsert({
     where: { slug },
     update: {
-      name: record.name,
-      market: record.market,
-      leadManager: record.leadManager,
-      coManagers: record.coManagers ?? [],
-      priceBandLow: record.priceBandLow ?? null,
-      priceBandHigh: record.priceBandHigh ?? null,
-      offerPrice: record.offerPrice ?? null,
-      minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
-      depositRate: record.depositRate ?? null,
-      subscriptionStart: parseKstDate(record.subscriptionStart),
-      subscriptionEnd: parseKstDate(record.subscriptionEnd),
-      refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
-      listingDate: record.listingDate ? parseKstDate(record.listingDate) : null,
-      status: record.status ?? "UPCOMING",
+      name: persistedRecord.name,
+      market: persistedRecord.market,
+      leadManager: persistedRecord.leadManager,
+      coManagers: persistedRecord.coManagers ?? [],
+      kindIssueCode: persistedRecord.kindIssueCode ?? null,
+      priceBandLow: persistedRecord.priceBandLow ?? null,
+      priceBandHigh: persistedRecord.priceBandHigh ?? null,
+      offerPrice: persistedRecord.offerPrice ?? null,
+      listingOpenPrice: persistedRecord.listingOpenPrice ?? null,
+      listingOpenReturnRate: persistedRecord.listingOpenReturnRate ?? null,
+      minimumSubscriptionShares: persistedRecord.minimumSubscriptionShares ?? null,
+      depositRate: persistedRecord.depositRate ?? null,
+      subscriptionStart: parseKstDate(persistedRecord.subscriptionStart),
+      subscriptionEnd: parseKstDate(persistedRecord.subscriptionEnd),
+      refundDate: persistedRecord.refundDate ? parseKstDate(persistedRecord.refundDate) : null,
+      listingDate: persistedRecord.listingDate ? parseKstDate(persistedRecord.listingDate) : null,
+      status: persistedRecord.status ?? "UPCOMING",
     },
     create: {
       slug,
-      name: record.name,
-      market: record.market,
-      leadManager: record.leadManager,
-      coManagers: record.coManagers ?? [],
-      priceBandLow: record.priceBandLow ?? null,
-      priceBandHigh: record.priceBandHigh ?? null,
-      offerPrice: record.offerPrice ?? null,
-      minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
-      depositRate: record.depositRate ?? null,
-      subscriptionStart: parseKstDate(record.subscriptionStart),
-      subscriptionEnd: parseKstDate(record.subscriptionEnd),
-      refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
-      listingDate: record.listingDate ? parseKstDate(record.listingDate) : null,
-      status: record.status ?? "UPCOMING",
+      name: persistedRecord.name,
+      market: persistedRecord.market,
+      leadManager: persistedRecord.leadManager,
+      coManagers: persistedRecord.coManagers ?? [],
+      kindIssueCode: persistedRecord.kindIssueCode ?? null,
+      priceBandLow: persistedRecord.priceBandLow ?? null,
+      priceBandHigh: persistedRecord.priceBandHigh ?? null,
+      offerPrice: persistedRecord.offerPrice ?? null,
+      listingOpenPrice: persistedRecord.listingOpenPrice ?? null,
+      listingOpenReturnRate: persistedRecord.listingOpenReturnRate ?? null,
+      minimumSubscriptionShares: persistedRecord.minimumSubscriptionShares ?? null,
+      depositRate: persistedRecord.depositRate ?? null,
+      subscriptionStart: parseKstDate(persistedRecord.subscriptionStart),
+      subscriptionEnd: parseKstDate(persistedRecord.subscriptionEnd),
+      refundDate: persistedRecord.refundDate ? parseKstDate(persistedRecord.refundDate) : null,
+      listingDate: persistedRecord.listingDate ? parseKstDate(persistedRecord.listingDate) : null,
+      status: persistedRecord.status ?? "UPCOMING",
     },
   });
 
@@ -887,7 +1155,7 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
   });
 
   await prisma.ipoEvent.createMany({
-    data: buildEvents(record, record.name).map((event) => ({
+    data: buildEvents(persistedRecord, persistedRecord.name).map((event) => ({
       ipoId: ipo.id,
       type: event.type,
       title: event.title,
@@ -898,9 +1166,9 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
   await prisma.ipoSourceSnapshot.create({
     data: {
       ipoId: ipo.id,
-      sourceKey: record.sourceKey,
+      sourceKey: persistedRecord.sourceKey,
       checksum,
-      payload: record,
+      payload: persistedRecord,
     },
   });
 
@@ -924,50 +1192,59 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
     return buildFallbackDashboard();
   }
 
-  const displayRange = getDisplayRange();
+  try {
+    const displayRange = getDisplayRange();
 
-  const [ipos, recipients, jobs, deliveries, overrides] = await Promise.all([
-    prisma.ipo.findMany({
-      where: getDisplayRangeWhere(),
-      orderBy: { subscriptionEnd: "asc" },
-      include: {
-        events: { orderBy: { eventDate: "asc" } },
-        analyses: { orderBy: { generatedAt: "desc" }, take: 1 },
-        sourceSnapshots: { orderBy: { fetchedAt: "desc" }, take: 1 },
-      },
-    }),
-    prisma.recipient.findMany({
-      orderBy: { createdAt: "asc" },
-      include: { channels: true },
-    }),
-    prisma.notificationJob.findMany({
-      orderBy: { scheduledFor: "desc" },
-      take: 12,
-      include: { ipo: true },
-    }),
-    prisma.notificationDelivery.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 12,
-    }),
-    prisma.adminOverride.findMany({
-      where: { isActive: true },
-      orderBy: { updatedAt: "desc" },
-    }),
-  ]);
+    const [ipos, recipients, jobs, deliveries, overrides] = await Promise.all([
+      prisma.ipo.findMany({
+        where: getDisplayRangeWhere(),
+        orderBy: { subscriptionEnd: "asc" },
+        include: {
+          events: { orderBy: { eventDate: "asc" } },
+          analyses: { orderBy: { generatedAt: "desc" }, take: 1 },
+          sourceSnapshots: { orderBy: { fetchedAt: "desc" }, take: 1 },
+        },
+      }),
+      prisma.recipient.findMany({
+        orderBy: { createdAt: "asc" },
+        include: { channels: true },
+      }),
+      prisma.notificationJob.findMany({
+        orderBy: { scheduledFor: "desc" },
+        take: 12,
+        include: { ipo: true },
+      }),
+      prisma.notificationDelivery.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 12,
+      }),
+      prisma.adminOverride.findMany({
+        where: { isActive: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+    ]);
 
-  const operationLogs = await getRecentOperationLogs(24);
+    const operationLogs = await getRecentOperationLogs(24);
 
-  return {
-    mode: "database",
-    generatedAt: new Date(),
-    calendarMonth: displayRange.currentMonth.start,
-    ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
-    recipients: recipients.map(toRecipientRecord),
-    jobs: jobs.map(toNotificationJobRecord),
-    deliveries: deliveries.map(toNotificationDeliveryRecord),
-    overrides: overrides.map(toAdminOverrideRecord),
-    operationLogs,
-  };
+    return {
+      mode: "database",
+      generatedAt: new Date(),
+      calendarMonth: displayRange.currentMonth.start,
+      ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
+      recipients: recipients.map(toRecipientRecord),
+      jobs: jobs.map(toNotificationJobRecord),
+      deliveries: deliveries.map(toNotificationDeliveryRecord),
+      overrides: overrides.map(toAdminOverrideRecord),
+      operationLogs,
+    };
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn("Database schema is behind the Prisma model, falling back to dashboard fallback state.");
+      return buildFallbackDashboard();
+    }
+
+    throw error;
+  }
 };
 
 export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
@@ -975,39 +1252,48 @@ export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
     return buildFallbackPublicHomeSnapshot();
   }
 
-  const displayRange = getDisplayRange();
+  try {
+    const displayRange = getDisplayRange();
 
-  const [ipos, recipientCount, jobCount] = await Promise.all([
-    prisma.ipo.findMany({
-      where: getDisplayRangeWhere(),
-      orderBy: { subscriptionEnd: "asc" },
-      include: {
-        events: { orderBy: { eventDate: "asc" } },
-        analyses: { orderBy: { generatedAt: "desc" }, take: 1 },
-        sourceSnapshots: { orderBy: { fetchedAt: "desc" }, take: 1 },
-      },
-    }),
-    prisma.recipient.count({
-      where: {
-        status: "ACTIVE",
-        unsubscribedAt: null,
-      },
-    }),
-    prisma.notificationJob.count({
-      where: {
-        status: "READY",
-      },
-    }),
-  ]);
+    const [ipos, recipientCount, jobCount] = await Promise.all([
+      prisma.ipo.findMany({
+        where: getDisplayRangeWhere(),
+        orderBy: { subscriptionEnd: "asc" },
+        include: {
+          events: { orderBy: { eventDate: "asc" } },
+          analyses: { orderBy: { generatedAt: "desc" }, take: 1 },
+          sourceSnapshots: { orderBy: { fetchedAt: "desc" }, take: 1 },
+        },
+      }),
+      prisma.recipient.count({
+        where: {
+          status: "ACTIVE",
+          unsubscribedAt: null,
+        },
+      }),
+      prisma.notificationJob.count({
+        where: {
+          status: "READY",
+        },
+      }),
+    ]);
 
-  return {
-    mode: "database",
-    generatedAt: new Date(),
-    calendarMonth: displayRange.currentMonth.start,
-    ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
-    recipientCount,
-    jobCount,
-  };
+    return {
+      mode: "database",
+      generatedAt: new Date(),
+      calendarMonth: displayRange.currentMonth.start,
+      ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
+      recipientCount,
+      jobCount,
+    };
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn("Database schema is behind the Prisma model, falling back to public home fallback state.");
+      return buildFallbackPublicHomeSnapshot();
+    }
+
+    throw error;
+  }
 };
 
 export const buildAdminStatusSummary = (dashboard: DashboardSnapshot): AdminStatusSummary => {
@@ -1033,18 +1319,32 @@ export const getPublicIpoBySlug = async (slug: string): Promise<PublicIpoDetailR
     return null;
   }
 
-  const ipo = await prisma.ipo.findUnique({
-    where: { slug: normalizedSlug },
-    include: {
-      events: {
-        orderBy: { eventDate: "asc" },
+  let ipo;
+  try {
+    ipo = await prisma.ipo.findUnique({
+      where: { slug: normalizedSlug },
+      include: {
+        events: {
+          orderBy: { eventDate: "asc" },
+        },
+        analyses: {
+          orderBy: { generatedAt: "desc" },
+          take: 1,
+        },
+        sourceSnapshots: {
+          orderBy: { fetchedAt: "desc" },
+          take: 1,
+        },
       },
-      analyses: {
-        orderBy: { generatedAt: "desc" },
-        take: 1,
-      },
-    },
-  });
+    });
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn("Database schema is behind the Prisma model, returning no public IPO detail.");
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!ipo || ipo.analyses.length === 0) {
     return null;
@@ -1060,20 +1360,30 @@ export const getIpoAdminMetadataBySlug = async (slug: string): Promise<IpoAdminM
     return null;
   }
 
-  const latestSnapshot = await prisma.ipoSourceSnapshot.findFirst({
-    where: {
-      ipo: {
-        slug: normalizedSlug,
+  let latestSnapshot;
+  try {
+    latestSnapshot = await prisma.ipoSourceSnapshot.findFirst({
+      where: {
+        ipo: {
+          slug: normalizedSlug,
+        },
       },
-    },
-    orderBy: {
-      fetchedAt: "desc",
-    },
-    select: {
-      sourceKey: true,
-      fetchedAt: true,
-    },
-  });
+      orderBy: {
+        fetchedAt: "desc",
+      },
+      select: {
+        sourceKey: true,
+        fetchedAt: true,
+      },
+    });
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn("Database schema is behind the Prisma model, returning no admin metadata.");
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!latestSnapshot) {
     return null;
@@ -1092,7 +1402,16 @@ export const getIpoBySlug = async (slug: string): Promise<IpoRecord | null> => {
     return null;
   }
 
-  return toIpoRecordFromDb(normalizedSlug);
+  try {
+    return await toIpoRecordFromDb(normalizedSlug);
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      console.warn("Database schema is behind the Prisma model, returning no IPO detail.");
+      return null;
+    }
+
+    throw error;
+  }
 };
 
 export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SyncResult> => {

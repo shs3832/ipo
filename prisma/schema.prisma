@@ -62,9 +62,12 @@ model Ipo {
   market            String
   leadManager       String?
   coManagers        Json?
+  kindIssueCode     String?
   priceBandLow      Int?
   priceBandHigh     Int?
   offerPrice        Int?
+  listingOpenPrice  Int?
+  listingOpenReturnRate Float?
   minimumSubscriptionShares Int?
   depositRate       Float?
   subscriptionStart DateTime?

@@ -58,11 +58,22 @@ const readMemoryCache = <T>(key: string, now = Date.now()): T | null => {
 };
 
 const isMissingCacheTableError = (error: unknown) => {
-  if (!(error instanceof Error)) {
-    return false;
-  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : String(error);
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : null;
 
-  return error.message.includes("ExternalDataCache") || error.message.includes("external_data_cache");
+  return (
+    code === "P2021" ||
+    message.includes("ExternalDataCache") ||
+    message.includes("external_data_cache")
+  );
 };
 
 const writeMemoryCache = <T>(key: string, value: T, expiresAt: Date) => {

@@ -22,6 +22,10 @@
   min-width: 0;
 }
 
+.heroBrokerList {
+  margin-top: -4px;
+}
+
 .metaRow {
   display: flex;
   flex-wrap: wrap;
@@ -96,6 +100,11 @@
   text-align: right;
   font-weight: 700;
   word-break: break-word;
+}
+
+.unavailableValue {
+  color: var(--text-tertiary);
+  font-weight: 600;
 }
 
 .analysisSummary {

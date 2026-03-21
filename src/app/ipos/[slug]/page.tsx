@@ -1,13 +1,26 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
+import { BrokerChipList } from "@/components/broker-chip";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
-import { formatDate, formatDateTime, formatMoney, formatPercent } from "@/lib/date";
+import {
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatPercent,
+  formatSignedPercentValue,
+  getKstTodayKey,
+  kstDateKey,
+} from "@/lib/date";
 import { getIpoAdminMetadataBySlug } from "@/lib/jobs";
 import { getCachedIpoDetail } from "@/lib/page-data";
 import styles from "@/app/ipos/[slug]/page.module.scss";
 
 export const dynamic = "force-dynamic";
+
+const unavailableLabel = "데이터 미확보";
+const pendingListingLabel = "상장 후 반영";
 
 const getMinimumDepositAmount = ({
   offerPrice,
@@ -26,9 +39,55 @@ const getMinimumDepositAmount = ({
 };
 
 const eventLabel = {
-  SUBSCRIPTION: "청약마감",
+  SUBSCRIPTION: "청약",
   REFUND: "환불",
   LISTING: "상장",
+};
+
+const renderValue = (value: string | null | undefined, className?: string) =>
+  value ? value : <span className={className}>{unavailableLabel}</span>;
+
+const renderDateValue = (date: Date | null, className?: string) =>
+  date ? formatDate(date) : <span className={className}>{unavailableLabel}</span>;
+
+const renderDateRangeValue = (
+  start: Date | null,
+  end: Date | null,
+  className?: string,
+): ReactNode => {
+  if (start && end) {
+    return `${formatDate(start)} ~ ${formatDate(end)}`;
+  }
+
+  if (start) {
+    return `${formatDate(start)} ~ ${unavailableLabel}`;
+  }
+
+  if (end) {
+    return `${unavailableLabel} ~ ${formatDate(end)}`;
+  }
+
+  return <span className={className}>{unavailableLabel}</span>;
+};
+
+const renderPriceBandValue = (
+  low: number | null,
+  high: number | null,
+  className?: string,
+) => {
+  if (low != null && high != null) {
+    return `${formatMoney(low)} ~ ${formatMoney(high)}`;
+  }
+
+  if (low != null) {
+    return `${formatMoney(low)} ~ ${unavailableLabel}`;
+  }
+
+  if (high != null) {
+    return `${unavailableLabel} ~ ${formatMoney(high)}`;
+  }
+
+  return <span className={className}>{unavailableLabel}</span>;
 };
 
 export default async function IpoDetailPage({
@@ -45,6 +104,21 @@ export default async function IpoDetailPage({
   }
 
   const adminMetadata = isAdmin ? await getIpoAdminMetadataBySlug(slug) : null;
+  const isListedYet = ipo.listingDate ? kstDateKey(ipo.listingDate) < getKstTodayKey() : false;
+  const listingOpenValue = ipo.listingOpenPrice != null
+    ? formatMoney(ipo.listingOpenPrice)
+    : (
+        <span className={styles.unavailableValue}>
+          {isListedYet ? unavailableLabel : pendingListingLabel}
+        </span>
+      );
+  const listingReturnValue = ipo.listingOpenReturnRate != null
+    ? formatSignedPercentValue(ipo.listingOpenReturnRate)
+    : (
+        <span className={styles.unavailableValue}>
+          {isListedYet ? unavailableLabel : pendingListingLabel}
+        </span>
+      );
 
   return (
     <main className="page-shell">
@@ -57,10 +131,7 @@ export default async function IpoDetailPage({
           <div className={styles.heroBody}>
             <p className="page-eyebrow">{ipo.market}</p>
             <h1 className="page-title">{ipo.name}</h1>
-            <p className="page-copy">
-              {ipo.leadManager}
-              {ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}
-            </p>
+            <BrokerChipList className={styles.heroBrokerList} names={[ipo.leadManager, ...ipo.coManagers]} />
             <div className={styles.metaRow}>
               <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
               <span className="status-pill status-pill-soft">
@@ -93,42 +164,89 @@ export default async function IpoDetailPage({
               </div>
               <div>
                 <dt>환불일</dt>
-                <dd>{ipo.refundDate ? formatDate(ipo.refundDate) : "-"}</dd>
+                <dd>{renderDateValue(ipo.refundDate, styles.unavailableValue)}</dd>
               </div>
               <div>
                 <dt>상장 예정일</dt>
-                <dd>{ipo.listingDate ? formatDate(ipo.listingDate) : "-"}</dd>
+                <dd>{renderDateValue(ipo.listingDate, styles.unavailableValue)}</dd>
+              </div>
+              <div>
+                <dt>수요예측 일정</dt>
+                <dd>{renderDateRangeValue(ipo.demandForecastStart, ipo.demandForecastEnd, styles.unavailableValue)}</dd>
+              </div>
+              <div>
+                <dt>IR 일정</dt>
+                <dd>{renderDateRangeValue(ipo.irStart, ipo.irEnd, styles.unavailableValue)}</dd>
               </div>
             </dl>
           </article>
 
           <article className={styles.card}>
             <div className={styles.cardHeader}>
-              <h2 className="section-title">가격 정보</h2>
-              <p className="section-copy">청약 최소금액까지 한 번에 읽을 수 있게 묶었습니다.</p>
+              <h2 className="section-title">공모 정보</h2>
+              <p className="section-copy">공모가, 경쟁률, 유통가능물량까지 한 번에 읽을 수 있게 묶었습니다.</p>
             </div>
             <dl className={styles.statList}>
               <div>
                 <dt>희망 공모가</dt>
-                <dd>
-                  {formatMoney(ipo.priceBandLow)} ~ {formatMoney(ipo.priceBandHigh)}
-                </dd>
+                <dd>{renderPriceBandValue(ipo.priceBandLow, ipo.priceBandHigh, styles.unavailableValue)}</dd>
               </div>
               <div>
                 <dt>확정 공모가</dt>
-                <dd>{formatMoney(ipo.offerPrice)}</dd>
+                <dd>{renderValue(ipo.offerPrice != null ? formatMoney(ipo.offerPrice) : null, styles.unavailableValue)}</dd>
+              </div>
+              <div>
+                <dt>상장일 시초가</dt>
+                <dd>{listingOpenValue}</dd>
+              </div>
+              <div>
+                <dt>공모가 대비 수익률</dt>
+                <dd>{listingReturnValue}</dd>
               </div>
               <div>
                 <dt>최소청약주수</dt>
-                <dd>{ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주</dd>
+                <dd>
+                  {renderValue(
+                    ipo.minimumSubscriptionShares != null
+                      ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주`
+                      : null,
+                    styles.unavailableValue,
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>최소청약금액</dt>
-                <dd>{formatMoney(getMinimumDepositAmount(ipo))}</dd>
+                <dd>{renderValue(formatMoney(getMinimumDepositAmount(ipo)) !== "-" ? formatMoney(getMinimumDepositAmount(ipo)) : null, styles.unavailableValue)}</dd>
               </div>
               <div>
                 <dt>증거금률</dt>
-                <dd>{formatPercent(ipo.depositRate)}</dd>
+                <dd>{renderValue(formatPercent(ipo.depositRate) !== "-" ? formatPercent(ipo.depositRate) : null, styles.unavailableValue)}</dd>
+              </div>
+              <div>
+                <dt>일반청약 경쟁률</dt>
+                <dd>
+                  {renderValue(
+                    ipo.generalSubscriptionCompetitionRate != null
+                      ? `${ipo.generalSubscriptionCompetitionRate.toLocaleString("ko-KR")}:1`
+                      : null,
+                    styles.unavailableValue,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>유통가능주식수</dt>
+                <dd>
+                  {renderValue(
+                    ipo.tradableShares != null
+                      ? `${ipo.tradableShares.toLocaleString("ko-KR")}주`
+                      : null,
+                    styles.unavailableValue,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>유통가능물량</dt>
+                <dd>{renderValue(formatPercent(ipo.floatRatio) !== "-" ? formatPercent(ipo.floatRatio) : null, styles.unavailableValue)}</dd>
               </div>
               {isAdmin ? (
                 <>

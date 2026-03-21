@@ -161,3 +161,107 @@
 - `npx tsc --noEmit`
 - `npm run lint`
 - `npm run build`
+
+### Follow-up: Calendar Event Data / Listing Source / Preference Direction
+
+캘린더에서 `청약마감`만 보이고 `환불/상장`이 비어 있던 문제를 확인하고, 소스 정규화와 사용자 필터 유지 동작까지 정리했다.
+
+### What Changed In This Follow-up
+
+1. OpenDART `estkRs` 응답에서 `pymd`를 읽어 현재 구조에서 가장 가까운 `환불` 일정으로 정규화했다.
+2. 공개 홈/관리자 조회 범위가 `subscriptionStart/subscriptionEnd`만 보던 구조를 `refundDate/listingDate`까지 포함하도록 확장했다.
+3. KIND `신규상장기업현황` 보조 소스를 추가해 `listingDate`를 보강할 수 있게 했다.
+4. 현재 표시 범위(`현재월 + 다음월`) 기준 KIND 상장 데이터와 OpenDART 종목명을 정규화 매칭해 `listingDate`를 덧입히도록 구성했다.
+5. 강제 sync를 다시 실행해 DB 기준 `REFUND` 이벤트가 실제로 생성되고, `아이엠바이오로직스`에 `LISTING` 이벤트 1건이 생성된 것을 확인했다.
+6. 캘린더 상단에 `매일 오전 6시 갱신` 및 `증권사/거래소 사정에 따른 일정 변동 가능` 안내 문구를 추가했다.
+7. 캘린더 필터 체크박스 상태는 브라우저 `localStorage`에 저장해 새로고침/재방문 시 마지막 선택을 복원하도록 바꿨다.
+8. 향후 개인화/크로스플랫폼 확장을 고려할 때, 현재 필터 저장은 `localStorage`가 맞지만 로그인 기반 사용자 식별이 생기면 DB preference로 승격하는 방향이 적절하다는 판단을 남겼다.
+
+### Main Code Changes In This Follow-up
+
+- 일정 정규화 / 보조 소스
+  - `src/lib/sources/opendart-ipo.ts`
+  - `src/lib/sources/kind-listings.ts` 추가
+  - `src/lib/jobs.ts`
+- 캐시/운영 안정성
+  - `src/lib/external-cache.ts`
+- 홈 캘린더 UX
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+
+### Verification In This Follow-up
+
+- `npm run lint`
+- `npm run job:daily-sync -- --force-refresh`
+- DB 확인 결과:
+  - `SUBSCRIPTION 18`
+  - `REFUND 16`
+  - `LISTING 1`
+
+### Current Decisions To Remember In This Follow-up
+
+- `환불`은 현재 OpenDART `pymd`를 임시/실용적 기준값으로 사용한다.
+- `상장`은 OpenDART 단독으로는 불안정하므로 KIND `신규상장기업현황`으로 보강한다.
+- 캘린더 상단에는 데이터 갱신 주기와 일정 변동 가능성을 항상 명시한다.
+- 필터 토글 기억은 현재 `localStorage` 기반이다.
+- 향후 개인화가 본격화되면 사용자별 DB preference 저장으로 확장하되, 읽기 경로에서 자동 write는 피하고 사용자 액션 기반 저장으로 설계한다.
+
+### Follow-up: IPO Data Enrichment / Detail Field Expansion / Schema Sync
+
+공모주 상세에서 비어 있던 필드를 줄이기 위해 OpenDART 원문과 KIND 상세를 함께 사용하도록 수집 파이프라인을 확장했고, DB 스키마 반영 및 재동기화까지 완료했다.
+
+### What Changed In This Follow-up
+
+1. OpenDART `estkRs` 요약값만 쓰지 않고, 증권신고서 원문 viewer를 파싱해 `희망 공모가 밴드`, `최소청약주수`, `증거금률`을 추가 수집하도록 만들었다.
+2. KIND `신규상장기업현황` 목록에서 `isurCd`뿐 아니라 `bzProcsNo`도 함께 확보하도록 바꿨다.
+3. KIND 상세 `회사개요/공모정보`를 파싱해 `확정 공모가`, `일반청약 경쟁률`, `IR 일정`, `수요예측 일정`, `유통가능주식수`, `유통가능물량 비율`, `상장일`, `납입일`을 보강하도록 추가했다.
+4. OpenDART 값과 KIND 값이 충돌할 때는 KIND 상세의 확정 공모가를 우선 반영하도록 해, 아이엠바이오로직스처럼 OpenDART가 하단 희망가를 들고 오던 케이스를 바로잡았다.
+5. 상세 페이지에서 새로 수집한 `수요예측 일정`, `IR 일정`, `일반청약 경쟁률`, `유통가능주식수`, `유통가능물량`을 표시하도록 확장했다.
+6. `Ipo.kindIssueCode` 등 이미 코드에 추가돼 있던 필드와 새 수집 경로가 실제 DB에 저장되도록 `prisma db push`를 실행해 스키마를 현재 코드 기준으로 맞췄다.
+7. `daily-sync`를 다시 실행해 DB 저장 경로까지 확인했고, 아이엠바이오로직스에 대해 실제 값 적재를 검증했다.
+
+### Main Code Changes In This Follow-up
+
+- 수집 소스 확장
+  - `src/lib/sources/opendart-ipo.ts`
+  - `src/lib/sources/opendart-prospectus.ts` 추가
+  - `src/lib/sources/kind-listings.ts`
+  - `src/lib/sources/kind-offer-details.ts` 추가
+  - `src/lib/sources/kind-stock-prices.ts`
+- 동기화 / read model
+  - `src/lib/jobs.ts`
+  - `src/lib/page-data.ts`
+  - `src/lib/types.ts`
+- 상세 UI
+  - `src/app/ipos/[slug]/page.tsx`
+- 스키마
+  - `prisma/schema.prisma`
+
+### Verification In This Follow-up
+
+- `npm run lint`
+- `npx prisma generate`
+- `npx prisma db push`
+- `npm run job:daily-sync`
+- `npm run build`
+
+### Verified Result Sample
+
+- `아이엠바이오로직스`
+  - 희망 공모가 `19,000원 ~ 26,000원`
+  - 확정 공모가 `26,000원`
+  - 상장일 시초가 `104,000원`
+  - 공모가 대비 수익률 `+300%`
+  - 최소청약주수 `20주`
+  - 증거금률 `50%`
+  - 일반청약 경쟁률 `1805.8:1`
+  - 유통가능주식수 `2,075,047주`
+  - 유통가능물량 `14%`
+  - IR 일정 / 수요예측 일정 / 상장일 / 환불일 채움 확인
+
+### Current Decisions To Remember In This Follow-up
+
+- 현재 수집 우선순위는 `OpenDART 요약 + OpenDART 원문 + KIND 목록 + KIND 상세` 조합이다.
+- `희망 공모가`, `최소청약주수`, `증거금률`은 OpenDART 원문 파싱 결과를 우선 사용한다.
+- `확정 공모가`, `일반청약 경쟁률`, `유통가능주식수/비율`, `IR/수요예측 일정`은 KIND 상세를 우선 사용한다.
+- 여전히 `기관 수요예측 경쟁률`, `의무보유확약률`은 안정적으로 채우지 못하는 종목이 있을 수 있다.

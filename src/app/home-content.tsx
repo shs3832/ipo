@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { formatDate, formatMoney, getKstDayOfWeek, kstDateKey } from "@/lib/date";
+import { BrokerChipList } from "@/components/broker-chip";
+import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, kstDateKey } from "@/lib/date";
 import styles from "@/app/home-content.module.scss";
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
@@ -23,6 +24,8 @@ type HomeIpoSummary = {
   score: number;
   subscriptionEnd: string;
   offerPrice: number | null;
+  listingOpenPrice: number | null;
+  listingOpenReturnRate: number | null;
   ratingLabel: string;
 };
 
@@ -35,13 +38,13 @@ type Props = {
 };
 
 const eventLabel: Record<EventType, string> = {
-  SUBSCRIPTION: "청약마감",
+  SUBSCRIPTION: "청약",
   REFUND: "환불",
   LISTING: "상장",
 };
 
 const filterItems: Array<{ type: EventType; label: string }> = [
-  { type: "SUBSCRIPTION", label: "청약마감" },
+  { type: "SUBSCRIPTION", label: "청약" },
   { type: "REFUND", label: "환불" },
   { type: "LISTING", label: "상장" },
 ];
@@ -61,6 +64,22 @@ const chipClassNames: Record<EventType, string> = {
   LISTING: styles.eventChipListing,
 };
 
+const calendarNotice =
+  "일정 데이터는 매일 오전 6시(Asia/Seoul) 기준으로 갱신됩니다. 환불·상장 일정은 증권사와 거래소 사정에 따라 변동될 수 있으니 최종 공고를 함께 확인해 주세요.";
+const calendarFilterStorageKey = "ipo-calendar-event-filters";
+const defaultFilters: Record<EventType, boolean> = {
+  SUBSCRIPTION: true,
+  REFUND: true,
+  LISTING: true,
+};
+
+const isStoredFilters = (value: unknown): value is Record<EventType, boolean> =>
+  typeof value === "object"
+  && value !== null
+  && ["SUBSCRIPTION", "REFUND", "LISTING"].every(
+    (type) => typeof (value as Record<string, unknown>)[type] === "boolean",
+  );
+
 export function HomeContent({
   calendarMonthLabel,
   currentMonthKey,
@@ -68,11 +87,35 @@ export function HomeContent({
   eventsByDate,
   ipos,
 }: Props) {
-  const [filters, setFilters] = useState<Record<EventType, boolean>>({
-    SUBSCRIPTION: true,
-    REFUND: true,
-    LISTING: true,
-  });
+  const [filters, setFilters] = useState<Record<EventType, boolean>>(defaultFilters);
+  const [hasRestoredFilters, setHasRestoredFilters] = useState(false);
+
+  useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(calendarFilterStorageKey);
+      if (!storedValue) {
+        setHasRestoredFilters(true);
+        return;
+      }
+
+      const parsed = JSON.parse(storedValue) as unknown;
+      if (isStoredFilters(parsed)) {
+        setFilters(parsed);
+      }
+    } catch {
+      window.localStorage.removeItem(calendarFilterStorageKey);
+    } finally {
+      setHasRestoredFilters(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasRestoredFilters) {
+      return;
+    }
+
+    window.localStorage.setItem(calendarFilterStorageKey, JSON.stringify(filters));
+  }, [filters, hasRestoredFilters]);
 
   const eventCounts: Record<EventType, number> = {
     SUBSCRIPTION: 0,
@@ -126,19 +169,35 @@ export function HomeContent({
           <span className="status-pill">{visibleEventCount}개 이벤트</span>
         </div>
 
+        <p className={styles.calendarNotice}>{calendarNotice}</p>
+
         <div className={styles.filterRow} aria-label="캘린더 일정 필터">
           {filterItems.map((item) => (
             <label
               className={`${styles.filterChip} ${filters[item.type] ? styles.filterChipActive : ""}`}
+              data-type={item.type}
               key={item.type}
             >
               <input
+                className={styles.filterInput}
                 checked={filters[item.type]}
                 onChange={() => toggleFilter(item.type)}
                 type="checkbox"
               />
-              <span className={`${styles.eventBadge} ${badgeClassNames[item.type]}`}>{item.label}</span>
-              <strong>{eventCounts[item.type]}</strong>
+              <span aria-hidden="true" className={styles.filterCheck}>
+                <svg
+                  className={styles.filterCheckIcon}
+                  fill="none"
+                  viewBox="0 0 16 16"
+                >
+                  <path
+                    className={styles.filterCheckIconPath}
+                    d="M3.5 8.5 6.6 11.4 12.5 4.9"
+                  />
+                </svg>
+              </span>
+              <span className={styles.filterChipLabel}>{item.label}</span>
+              <strong className={styles.filterChipCount}>{eventCounts[item.type]}</strong>
             </label>
           ))}
         </div>
@@ -210,9 +269,8 @@ export function HomeContent({
               <div className={styles.ipoCardHead}>
                 <div>
                   <h3>{ipo.name}</h3>
-                  <p>
-                    {ipo.market} · {ipo.leadManager}
-                  </p>
+                  <p>{ipo.market}</p>
+                  <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
                 </div>
                 <span className={styles.scoreBadge}>{ipo.score}점</span>
               </div>
@@ -225,10 +283,23 @@ export function HomeContent({
                   <dt>공모가</dt>
                   <dd>{formatMoney(ipo.offerPrice)}</dd>
                 </div>
-                <div>
-                  <dt>판단</dt>
-                  <dd>{ipo.ratingLabel}</dd>
-                </div>
+                {ipo.listingOpenPrice != null ? (
+                  <>
+                    <div>
+                      <dt>시초가</dt>
+                      <dd>{formatMoney(ipo.listingOpenPrice)}</dd>
+                    </div>
+                    <div>
+                      <dt>공모가 대비</dt>
+                      <dd>{formatSignedPercentValue(ipo.listingOpenReturnRate)}</dd>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <dt>판단</dt>
+                    <dd>{ipo.ratingLabel}</dd>
+                  </div>
+                )}
               </dl>
             </Link>
           ))}

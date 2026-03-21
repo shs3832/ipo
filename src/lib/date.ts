@@ -60,6 +60,12 @@ export const parseKstDate = (value: string) => new Date(`${value}T09:00:00+09:00
 export const atKstTime = (value: string, hour: number, minute = 0) =>
   new Date(`${value}T${pad(hour)}:${pad(minute)}:00+09:00`);
 
+export const shiftKstDateKey = (value: string, offset: number) => {
+  const date = parseKstDate(value);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return kstDateKey(date);
+};
+
 export const formatDate = (date: Date, pattern = "yyyy.MM.dd") =>
   formatInTimeZone(date, TIME_ZONE, pattern);
 
@@ -98,4 +104,17 @@ export const formatPercent = (value: number | null | undefined) => {
   }
 
   return `${Math.round(value * 100)}%`;
+};
+
+export const formatSignedPercentValue = (value: number | null | undefined) => {
+  if (value == null) {
+    return "-";
+  }
+
+  const formatted = new Intl.NumberFormat("ko-KR", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
+  }).format(value);
+
+  return `${value > 0 ? "+" : ""}${formatted}%`;
 };
