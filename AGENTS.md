@@ -54,6 +54,7 @@ Currently implemented in:
 
 - [src/lib/sources/opendart-ipo.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-ipo.ts)
 - [src/lib/sources/opendart-financials.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-financials.ts)
+- [src/lib/sources/opendart-prospectus.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-prospectus.ts)
 
 Behavior:
 
@@ -72,16 +73,17 @@ OpenDART currently provides:
 - insider sales ratio (partial)
 - financial metrics (if available)
 
+Additional enrichment notes:
+
+- prospectus fallback now parses official `document.xml` zip, not the DART viewer HTML
+- field-level fallback merge is used so older filings can fill blanks left in later amendments
+- prospectus financial fallback values are normalized to KRW units to match the API path
+
 OpenDART still does not reliably provide:
 
-- demand competition rate
-- lockup rate
 - float ratio
-- minimum subscription shares
-- deposit rate
 - reliable refund date
 - reliable listing date
-- price band in a stable way
 
 ## Scoring Reality
 
@@ -118,6 +120,10 @@ Treat it as a structured heuristic.
 - Calendar has checkbox filters for those event types
 - Calendar event titles are clamped to 2 lines with ellipsis
 - Detail page hides source metadata unless admin
+- Detail page prioritizes `지금 판단용` quick facts before analysis and lower-priority detail
+- Current top quick facts are `확정 공모가`, `최소청약금액`, `환불일`, `상장예정일`, `유통가능물량`, `주관사`
+- Public detail event timeline has been removed
+- `유통가능물량`(`floatRatio`) is already stored as a percent value, so UI must not multiply it again
 - Admin page is protected by login
 
 ## Admin / Security

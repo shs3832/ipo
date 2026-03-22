@@ -259,6 +259,60 @@
   - 유통가능물량 `14%`
   - IR 일정 / 수요예측 일정 / 상장일 / 환불일 채움 확인
 
+## 2026-03-22
+
+### Thread Summary
+
+이번 스레드에서는 점수 노출 기준 강화, 근거 부족 시 평가 보류 처리, OpenDART 증권신고서 기반 보강 수집, 상세페이지 정보 재배치, 그리고 퍼센트 표기 오류 수정까지 이어서 정리했다.
+
+### What Happened
+
+1. 점수는 근거가 충분할 때만 보이도록 `scoreDisplay` 정책을 추가하고, 근거 부족 종목은 `평가 보류`로 노출하도록 변경했다.
+2. 홈/상세/알림 메시지에서 점수 옆에 근거 문구와 참고용 안내를 함께 표시하도록 맞췄다.
+3. 캐시된 예전 `latestAnalysis`에 `scoreDisplay`가 없어 홈에서 크래시 나던 문제를 방어 로직으로 복구했다.
+4. 아이엠바이오로직스처럼 상장은 끝났지만 평가 보류로 보이던 종목을 추적한 결과, 핵심 수급/재무 지표 부족이 원인이었음을 확인했다.
+5. OpenDART 증권신고서 수집 경로를 viewer 스크래핑에서 공식 `document.xml` 원문 zip 파싱으로 교체했다.
+6. 이 경로를 통해 `희망 공모가 밴드`, `최소청약주수`, `증거금률`, 일부 재무 fallback을 점수 계산용으로 보강하도록 연결했다.
+7. `fallback prospectus`는 이제 접수번호 단위가 아니라 필드 단위 병합으로 동작해, 최신 정정신고서에 일부 값이 비어 있어도 이전 접수 문서의 보강값을 함께 살릴 수 있게 했다.
+8. 외부 원본 + OpenDART 보강이 실패할 때는 조용히 무시하지 않고 `job:daily-sync` WARN 로그를 남기도록 운영 신호를 추가했다.
+9. 증권신고서 재무 fallback은 `백만원` 단위를 원단위로 정규화해 기존 OpenDART API 재무 필드와 스케일을 맞췄다.
+10. 상세페이지는 `지금 판단용 -> 분석 요약 -> 청약 일정 -> 상세 데이터` 순서로 재배치하고, 중복감이 큰 타임라인은 제거했다.
+11. 상세 상단 `지금 판단용` 카드는 데스크톱에서 가로로 길게 펼쳐 보이도록 조정했다.
+12. `유통가능물량`은 이미 퍼센트 값으로 저장되고 있었는데 상세에서 다시 `formatPercent()`를 적용해 `1400%`처럼 보이던 표시 버그를 수정했다.
+
+### Main Code Changes
+
+- 점수 노출 / 캐시 호환 / 알림 반영
+  - `src/lib/analysis.ts`
+  - `src/lib/types.ts`
+  - `src/lib/jobs.ts`
+  - `src/lib/page-data.ts`
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+  - `src/app/ipos/[slug]/page.tsx`
+  - `src/app/ipos/[slug]/page.module.scss`
+- OpenDART 증권신고서 보강
+  - `src/lib/sources/opendart-prospectus.ts`
+  - `src/lib/sources/opendart-ipo.ts`
+- 문서
+  - `issue.md`
+  - `README.md`
+  - `AGENTS.md`
+
+### Verification
+
+- `npx tsc --noEmit`
+- `npm run build`
+- `npm run job:daily-sync -- --force-refresh`
+
+### Current Decisions To Remember
+
+- 숫자 점수는 `총 4개 이상 지표`, `수급 2개 이상`, `재무 1개 이상`일 때만 공개 노출한다.
+- 근거 부족 종목은 `평가 보류`로 표시하고, 숨긴 이유를 함께 보여준다.
+- 상세페이지는 이제 모든 데이터를 동일 비중으로 나열하지 않고 `지금 판단용 정보`를 최상단에 우선 배치한다.
+- `유통가능물량`은 내부적으로 이미 `% 값`으로 저장되므로 UI에서는 추가로 `*100` 성격의 포맷을 다시 적용하면 안 된다.
+- OpenDART 증권신고서 보강은 공식 `document.xml` 원문 zip 파싱을 기준으로 유지한다.
+
 ### Current Decisions To Remember In This Follow-up
 
 - 현재 수집 우선순위는 `OpenDART 요약 + OpenDART 원문 + KIND 목록 + KIND 상세` 조합이다.
