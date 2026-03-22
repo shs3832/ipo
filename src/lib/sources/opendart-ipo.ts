@@ -3,7 +3,10 @@ import { getKstMonthRange, getKstTodayKey } from "@/lib/date";
 import { env } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { fetchLatestFinancialSnapshot } from "@/lib/sources/opendart-financials";
-import { fetchOpendartProspectusDetails } from "@/lib/sources/opendart-prospectus";
+import {
+  fetchOpendartProspectusDetails,
+  type OpendartProspectusDetails,
+} from "@/lib/sources/opendart-prospectus";
 
 type OpendartListResponse = {
   status?: string;
@@ -264,6 +267,35 @@ const fetchEquitySecurityInfo = async (corpCode: string, range: DateRange) => {
 const selectGroupRows = (groups: OpendartEquityResponse["group"], title: string) =>
   groups?.find((group) => group.title === title)?.list ?? [];
 
+const hasCoreProspectusDetails = (prospectus: OpendartProspectusDetails | null) =>
+  Boolean(
+    prospectus
+    && prospectus.priceBandLow != null
+    && prospectus.priceBandHigh != null
+    && prospectus.minimumSubscriptionShares != null
+    && prospectus.depositRate != null,
+  );
+
+const mergeProspectusDetails = (
+  primary: OpendartProspectusDetails | null,
+  fallback: OpendartProspectusDetails | null,
+): OpendartProspectusDetails | null => {
+  if (!primary && !fallback) {
+    return null;
+  }
+
+  return {
+    receiptNo: primary?.receiptNo ?? fallback?.receiptNo ?? "",
+    priceBandLow: primary?.priceBandLow ?? fallback?.priceBandLow ?? null,
+    priceBandHigh: primary?.priceBandHigh ?? fallback?.priceBandHigh ?? null,
+    minimumSubscriptionShares: primary?.minimumSubscriptionShares ?? fallback?.minimumSubscriptionShares ?? null,
+    depositRate: primary?.depositRate ?? fallback?.depositRate ?? null,
+    demandCompetitionRate: primary?.demandCompetitionRate ?? fallback?.demandCompetitionRate ?? null,
+    lockupRate: primary?.lockupRate ?? fallback?.lockupRate ?? null,
+    financialSnapshot: primary?.financialSnapshot ?? fallback?.financialSnapshot ?? null,
+  };
+};
+
 const fetchOpendartCurrentMonthIposUncached = async (
   displayRange: DateRange,
   disclosureRange: DateRange,
@@ -281,7 +313,7 @@ const fetchOpendartCurrentMonthIposUncached = async (
       if (!detail?.group?.length) {
         return null;
       }
-      const [financials, prospectus] = await Promise.all([
+      const [financialsFromApi, latestProspectus] = await Promise.all([
         fetchLatestFinancialSnapshot(disclosure.corp_code),
         fetchOpendartProspectusDetails(disclosure.rcept_no, { forceRefresh }).catch(() => null),
       ]);
@@ -297,6 +329,20 @@ const fetchOpendartCurrentMonthIposUncached = async (
       if (!general || !security) {
         return null;
       }
+
+      const fallbackProspectusReceiptNo = general.rcept_no ?? security.rcept_no ?? null;
+      const shouldFetchFallbackProspectus = Boolean(
+        fallbackProspectusReceiptNo
+        && fallbackProspectusReceiptNo !== disclosure.rcept_no
+        && (!latestProspectus || !hasCoreProspectusDetails(latestProspectus) || (!financialsFromApi && !latestProspectus.financialSnapshot)),
+      );
+      const fallbackProspectus = (
+        shouldFetchFallbackProspectus
+      )
+        ? await fetchOpendartProspectusDetails(fallbackProspectusReceiptNo!, { forceRefresh }).catch(() => null)
+        : null;
+      const prospectus = mergeProspectusDetails(latestProspectus, fallbackProspectus);
+      const financials = financialsFromApi ?? prospectus?.financialSnapshot ?? null;
 
       const { start, end } = parseSubscriptionRange(general.sbd);
       if (!start || !end) {
@@ -328,6 +374,8 @@ const fetchOpendartCurrentMonthIposUncached = async (
         `표시 범위 ${displayRange.label}`,
         `접수일 ${disclosure.rcept_dt.slice(0, 4)}-${disclosure.rcept_dt.slice(4, 6)}-${disclosure.rcept_dt.slice(6, 8)}`,
         financials?.reportLabel ? `재무지표 기준 ${financials.reportLabel}` : null,
+        prospectus?.demandCompetitionRate != null ? `증권신고서 기준 기관 수요예측 경쟁률 ${prospectus.demandCompetitionRate}:1` : null,
+        prospectus?.lockupRate != null ? `증권신고서 기준 의무보유확약 비율 ${prospectus.lockupRate}%` : null,
       ].filter((value): value is string => Boolean(value));
 
       return {
@@ -348,8 +396,8 @@ const fetchOpendartCurrentMonthIposUncached = async (
         refundDate,
         listingDate,
         status: buildStatus(start, end),
-        demandCompetitionRate: null,
-        lockupRate: null,
+        demandCompetitionRate: prospectus?.demandCompetitionRate ?? null,
+        lockupRate: prospectus?.lockupRate ?? null,
         floatRatio: null,
         insiderSalesRatio,
         marketMoodScore: null,

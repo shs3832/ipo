@@ -38,12 +38,6 @@ const getMinimumDepositAmount = ({
   return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
 };
 
-const eventLabel = {
-  SUBSCRIPTION: "청약",
-  REFUND: "환불",
-  LISTING: "상장",
-};
-
 const renderValue = (value: string | null | undefined, className?: string) =>
   value ? value : <span className={className}>{unavailableLabel}</span>;
 
@@ -90,6 +84,26 @@ const renderPriceBandValue = (
   return <span className={className}>{unavailableLabel}</span>;
 };
 
+const renderRatioPercent = (value: number | null | undefined) => {
+  if (value == null) {
+    return null;
+  }
+
+  return `${value.toLocaleString("ko-KR", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
+    maximumFractionDigits: 1,
+  })}%`;
+};
+
+const renderNumericValue = (
+  value: string | null,
+  emphasis = false,
+) => (
+  value
+    ? <span className={emphasis ? styles.primaryValue : undefined}>{value}</span>
+    : <span className={styles.unavailableValue}>{unavailableLabel}</span>
+);
+
 export default async function IpoDetailPage({
   params,
 }: {
@@ -130,6 +144,81 @@ export default async function IpoDetailPage({
   const warnings = ipo.latestAnalysis.warnings.length
     ? ipo.latestAnalysis.warnings
     : ["최종 청약 결정 전 증권신고서와 주관사 공고를 함께 확인해 주세요."];
+  const minimumDepositAmount = getMinimumDepositAmount(ipo);
+  const quickFacts = [
+    {
+      label: "확정 공모가",
+      value: ipo.offerPrice != null ? formatMoney(ipo.offerPrice) : null,
+      emphasis: true,
+    },
+    {
+      label: "최소청약금액",
+      value: minimumDepositAmount != null ? formatMoney(minimumDepositAmount) : null,
+      emphasis: true,
+    },
+    {
+      label: "환불일",
+      value: ipo.refundDate ? formatDate(ipo.refundDate) : null,
+    },
+    {
+      label: "상장 예정일",
+      value: ipo.listingDate ? formatDate(ipo.listingDate) : null,
+    },
+    {
+      label: "유통가능물량",
+      value: renderRatioPercent(ipo.floatRatio),
+    },
+    {
+      label: "주관사",
+      value: ipo.coManagers.length ? `${ipo.leadManager} / ${ipo.coManagers.join(", ")}` : ipo.leadManager,
+    },
+  ];
+  const detailFacts = [
+    {
+      label: "희망 공모가",
+      value: renderPriceBandValue(ipo.priceBandLow, ipo.priceBandHigh, styles.unavailableValue),
+    },
+    {
+      label: "최소청약주수",
+      value: ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : null,
+    },
+    {
+      label: "증거금률",
+      value: formatPercent(ipo.depositRate) !== "-" ? formatPercent(ipo.depositRate) : null,
+    },
+    {
+      label: "일반청약 경쟁률",
+      value: ipo.generalSubscriptionCompetitionRate != null
+        ? `${ipo.generalSubscriptionCompetitionRate.toLocaleString("ko-KR")}:1`
+        : null,
+    },
+    {
+      label: "유통가능주식수",
+      value: ipo.tradableShares != null ? `${ipo.tradableShares.toLocaleString("ko-KR")}주` : null,
+    },
+    {
+      label: "청약 기간",
+      value: renderDateRangeValue(ipo.subscriptionStart, ipo.subscriptionEnd, styles.unavailableValue),
+    },
+    {
+      label: "수요예측 일정",
+      value: renderDateRangeValue(ipo.demandForecastStart, ipo.demandForecastEnd, styles.unavailableValue),
+    },
+    {
+      label: "IR 일정",
+      value: renderDateRangeValue(ipo.irStart, ipo.irEnd, styles.unavailableValue),
+    },
+  ];
+  const listingFacts = [
+    {
+      label: "상장일 시초가",
+      value: listingOpenValue,
+    },
+    {
+      label: "공모가 대비 수익률",
+      value: listingReturnValue,
+    },
+  ];
 
   return (
     <main className="page-shell">
@@ -146,7 +235,7 @@ export default async function IpoDetailPage({
             <div className={styles.metaRow}>
               <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
               <span className="status-pill status-pill-soft">
-                이벤트 {ipo.events.length}건 · {visibleScore ? `참고 점수 ${ipo.latestAnalysis.score}점` : "평가 보류"}
+                {visibleScore ? `참고 점수 ${ipo.latestAnalysis.score}점` : "평가 보류"}
               </span>
             </div>
           </div>
@@ -163,125 +252,25 @@ export default async function IpoDetailPage({
         </section>
 
         <section className={styles.grid}>
-          <article className={styles.card}>
+          <article className={`${styles.card} ${styles.cardWide}`}>
             <div className={styles.cardHeader}>
-              <h2 className="section-title">핵심 일정</h2>
-              <p className="section-copy">캘린더와 메일 발송에 직접 영향을 주는 일정을 우선 노출합니다.</p>
+              <h2 className="section-title">지금 판단용</h2>
+              <p className="section-copy">청약 결정을 위해 가장 먼저 확인할 항목만 위로 올렸습니다.</p>
             </div>
-            <dl className={styles.statList}>
-              <div>
-                <dt>청약 시작</dt>
-                <dd>{formatDate(ipo.subscriptionStart)}</dd>
-              </div>
-              <div>
-                <dt>청약 마감</dt>
-                <dd>{formatDate(ipo.subscriptionEnd)}</dd>
-              </div>
-              <div>
-                <dt>환불일</dt>
-                <dd>{renderDateValue(ipo.refundDate, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>상장 예정일</dt>
-                <dd>{renderDateValue(ipo.listingDate, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>수요예측 일정</dt>
-                <dd>{renderDateRangeValue(ipo.demandForecastStart, ipo.demandForecastEnd, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>IR 일정</dt>
-                <dd>{renderDateRangeValue(ipo.irStart, ipo.irEnd, styles.unavailableValue)}</dd>
-              </div>
-            </dl>
-          </article>
-
-          <article className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className="section-title">공모 정보</h2>
-              <p className="section-copy">공모가, 경쟁률, 유통가능물량까지 한 번에 읽을 수 있게 묶었습니다.</p>
+            <div className={styles.quickGrid}>
+              {quickFacts.map((fact) => (
+                <div className={styles.quickItem} key={fact.label}>
+                  <span>{fact.label}</span>
+                  <strong>{renderNumericValue(fact.value, fact.emphasis)}</strong>
+                </div>
+              ))}
             </div>
-            <dl className={styles.statList}>
-              <div>
-                <dt>희망 공모가</dt>
-                <dd>{renderPriceBandValue(ipo.priceBandLow, ipo.priceBandHigh, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>확정 공모가</dt>
-                <dd>{renderValue(ipo.offerPrice != null ? formatMoney(ipo.offerPrice) : null, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>상장일 시초가</dt>
-                <dd>{listingOpenValue}</dd>
-              </div>
-              <div>
-                <dt>공모가 대비 수익률</dt>
-                <dd>{listingReturnValue}</dd>
-              </div>
-              <div>
-                <dt>최소청약주수</dt>
-                <dd>
-                  {renderValue(
-                    ipo.minimumSubscriptionShares != null
-                      ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주`
-                      : null,
-                    styles.unavailableValue,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>최소청약금액</dt>
-                <dd>{renderValue(formatMoney(getMinimumDepositAmount(ipo)) !== "-" ? formatMoney(getMinimumDepositAmount(ipo)) : null, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>증거금률</dt>
-                <dd>{renderValue(formatPercent(ipo.depositRate) !== "-" ? formatPercent(ipo.depositRate) : null, styles.unavailableValue)}</dd>
-              </div>
-              <div>
-                <dt>일반청약 경쟁률</dt>
-                <dd>
-                  {renderValue(
-                    ipo.generalSubscriptionCompetitionRate != null
-                      ? `${ipo.generalSubscriptionCompetitionRate.toLocaleString("ko-KR")}:1`
-                      : null,
-                    styles.unavailableValue,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>유통가능주식수</dt>
-                <dd>
-                  {renderValue(
-                    ipo.tradableShares != null
-                      ? `${ipo.tradableShares.toLocaleString("ko-KR")}주`
-                      : null,
-                    styles.unavailableValue,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>유통가능물량</dt>
-                <dd>{renderValue(formatPercent(ipo.floatRatio) !== "-" ? formatPercent(ipo.floatRatio) : null, styles.unavailableValue)}</dd>
-              </div>
-              {isAdmin ? (
-                <>
-                  <div>
-                    <dt>최근 수집 시각</dt>
-                    <dd>{adminMetadata ? formatDateTime(adminMetadata.sourceFetchedAt) : "-"}</dd>
-                  </div>
-                  <div>
-                    <dt>소스 키</dt>
-                    <dd>{adminMetadata?.latestSourceKey ?? "-"}</dd>
-                  </div>
-                </>
-              ) : null}
-            </dl>
           </article>
 
           <article className={`${styles.card} ${styles.cardWide}`}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">분석 요약</h2>
-              <p className="section-copy">점수는 근거가 충분할 때만 노출하고, 현재 확보된 근거와 주의사항을 분리해 보여줍니다.</p>
+              <p className="section-copy">핵심 근거와 주의 포인트를 먼저 보고, 세부 숫자는 아래에서 확인합니다.</p>
             </div>
             <p className={styles.analysisSummary}>{analysisSummary}</p>
             <p className={styles.analysisDisclaimer}>{scoreDisplay.policyNote}</p>
@@ -305,22 +294,66 @@ export default async function IpoDetailPage({
             </div>
           </article>
 
-          <article className={`${styles.card} ${styles.cardWide}`}>
+          <article className={styles.card}>
             <div className={styles.cardHeader}>
-              <h2 className="section-title">이벤트 타임라인</h2>
-              <p className="section-copy">발생 순서대로 이벤트를 따라가며 전체 일정을 빠르게 파악합니다.</p>
+              <h2 className="section-title">청약 일정</h2>
+              <p className="section-copy">핵심 일정은 간단하게, 일정 범위형 데이터는 여기서 확인합니다.</p>
             </div>
-            <div className={styles.timeline}>
-              {ipo.events.map((event) => (
-                <div className={styles.timelineItem} key={event.id}>
-                  <span className={styles.timelineTag}>{eventLabel[event.type]}</span>
-                  <div>
-                    <strong>{event.title}</strong>
-                    <p>{formatDate(event.eventDate)}</p>
-                  </div>
+            <dl className={styles.statList}>
+              <div>
+                <dt>청약 시작</dt>
+                <dd>{formatDate(ipo.subscriptionStart)}</dd>
+              </div>
+              <div>
+                <dt>청약 마감</dt>
+                <dd>{formatDate(ipo.subscriptionEnd)}</dd>
+              </div>
+              <div>
+                <dt>환불일</dt>
+                <dd>{renderDateValue(ipo.refundDate, styles.unavailableValue)}</dd>
+              </div>
+              <div>
+                <dt>상장 예정일</dt>
+                <dd>{renderDateValue(ipo.listingDate, styles.unavailableValue)}</dd>
+              </div>
+              <div>
+                <dt>수요예측 일정</dt>
+                <dd>{renderDateRangeValue(ipo.demandForecastStart, ipo.demandForecastEnd, styles.unavailableValue)}</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">상세 데이터</h2>
+              <p className="section-copy">판단에 직접 쓰이지 않는 보조 수치는 아래로 정리했습니다.</p>
+            </div>
+            <dl className={styles.statList}>
+              {detailFacts.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd>{typeof fact.value === "string" ? renderValue(fact.value, styles.unavailableValue) : fact.value}</dd>
                 </div>
               ))}
-            </div>
+              {isListedYet ? listingFacts.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd>{fact.value}</dd>
+                </div>
+              )) : null}
+              {isAdmin ? (
+                <>
+                  <div>
+                    <dt>최근 수집 시각</dt>
+                    <dd>{adminMetadata ? formatDateTime(adminMetadata.sourceFetchedAt) : "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>소스 키</dt>
+                    <dd>{adminMetadata?.latestSourceKey ?? "-"}</dd>
+                  </div>
+                </>
+              ) : null}
+            </dl>
           </article>
         </section>
       </div>

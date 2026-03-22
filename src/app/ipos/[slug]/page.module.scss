@@ -83,6 +83,37 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.quickGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.quickItem {
+  @include softSurface(18px, 20px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 96px;
+}
+
+.quickItem span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.quickItem strong {
+  font-size: 1.15rem;
+  line-height: 1.45;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+}
+
+.primaryValue {
+  font-size: 1.28rem;
+}
+
 .card {
   @include surface(24px, 28px);
 
@@ -160,44 +191,6 @@
   list-style: disc;
 }
 
-.timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.timelineItem {
-  @include softSurface(18px, 22px);
-
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.timelineItem strong {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 1.02rem;
-}
-
-.timelineItem p {
-  color: var(--text-secondary);
-}
-
-.timelineTag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: var(--radius-pill);
-  color: var(--primary-strong);
-  background: var(--primary-soft);
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
 .loadingHero {
   @include surface(36px, 32px);
 
@@ -231,6 +224,10 @@
   .analysisColumns {
     grid-template-columns: 1fr;
   }
+
+  .quickGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @include mobile {
@@ -258,6 +255,17 @@
     gap: 14px;
   }
 
+  .quickGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .quickItem {
+    min-height: auto;
+    padding: 16px;
+    border-radius: 18px;
+  }
+
   .statList div {
     flex-direction: column;
     align-items: flex-start;
@@ -269,16 +277,8 @@
   }
 
   .analysisBlock,
-  .timelineItem {
+  .quickItem {
     padding: 16px;
     border-radius: 18px;
-  }
-
-  .timelineItem {
-    flex-direction: column;
-  }
-
-  .timelineTag {
-    width: fit-content;
   }
 }

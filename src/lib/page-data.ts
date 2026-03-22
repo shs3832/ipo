@@ -23,6 +23,23 @@ const toDate = (value: Date | string | null | undefined) => {
   return value instanceof Date ? value : new Date(value);
 };
 
+const fallbackScoreDisplay: IpoRecord["latestAnalysis"]["scoreDisplay"] = {
+  isVisible: false,
+  evidenceLabels: [],
+  evidenceCount: 0,
+  demandSupplyEvidenceCount: 0,
+  financialEvidenceCount: 0,
+  helpText: "점수 정보를 다시 계산하는 중입니다. 잠시 후 새로고침해 주세요.",
+  policyNote: "핵심 수급 지표와 재무 지표가 충분히 확보된 종목만 점수를 표시합니다.",
+  disclaimer: "점수는 투자 판단을 돕기 위한 참고용 정보이며, 최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
+};
+
+const hasScoreDisplay = (value: unknown): value is IpoRecord["latestAnalysis"]["scoreDisplay"] =>
+  typeof value === "object"
+  && value !== null
+  && "isVisible" in value
+  && typeof (value as { isVisible?: unknown }).isVisible === "boolean";
+
 const reviveIpoRecord = <T extends IpoRecord | PublicIpoDetailRecord>(ipo: T): T => ({
   ...ipo,
   subscriptionStart: toDate(ipo.subscriptionStart) ?? new Date(),
@@ -39,6 +56,9 @@ const reviveIpoRecord = <T extends IpoRecord | PublicIpoDetailRecord>(ipo: T): T
   })),
   latestAnalysis: {
     ...ipo.latestAnalysis,
+    scoreDisplay: hasScoreDisplay(ipo.latestAnalysis.scoreDisplay)
+      ? ipo.latestAnalysis.scoreDisplay
+      : fallbackScoreDisplay,
     generatedAt: toDate(ipo.latestAnalysis.generatedAt) ?? new Date(),
   },
   ...("sourceFetchedAt" in ipo

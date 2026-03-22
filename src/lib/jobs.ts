@@ -231,6 +231,51 @@ const mergeKindListingMetadata = async (
   });
 };
 
+const mergeOpendartScoringEnrichment = (
+  records: SourceIpoRecord[],
+  opendartRecords: SourceIpoRecord[],
+): SourceIpoRecord[] => {
+  if (records.length === 0 || opendartRecords.length === 0) {
+    return records;
+  }
+
+  const opendartByName = new Map(
+    opendartRecords.map((record) => [normalizeCompanyNameForMatching(record.name), record] as const),
+  );
+
+  return records.map((record) => {
+    const opendart = opendartByName.get(normalizeCompanyNameForMatching(record.name));
+    if (!opendart) {
+      return record;
+    }
+
+    return {
+      ...record,
+      priceBandLow: record.priceBandLow ?? opendart.priceBandLow ?? null,
+      priceBandHigh: record.priceBandHigh ?? opendart.priceBandHigh ?? null,
+      minimumSubscriptionShares: record.minimumSubscriptionShares ?? opendart.minimumSubscriptionShares ?? null,
+      depositRate: record.depositRate ?? opendart.depositRate ?? null,
+      demandCompetitionRate: record.demandCompetitionRate ?? opendart.demandCompetitionRate ?? null,
+      lockupRate: record.lockupRate ?? opendart.lockupRate ?? null,
+      insiderSalesRatio: record.insiderSalesRatio ?? opendart.insiderSalesRatio ?? null,
+      financialReportLabel: record.financialReportLabel ?? opendart.financialReportLabel ?? null,
+      revenue: record.revenue ?? opendart.revenue ?? null,
+      previousRevenue: record.previousRevenue ?? opendart.previousRevenue ?? null,
+      revenueGrowthRate: record.revenueGrowthRate ?? opendart.revenueGrowthRate ?? null,
+      operatingIncome: record.operatingIncome ?? opendart.operatingIncome ?? null,
+      previousOperatingIncome: record.previousOperatingIncome ?? opendart.previousOperatingIncome ?? null,
+      operatingMarginRate: record.operatingMarginRate ?? opendart.operatingMarginRate ?? null,
+      netIncome: record.netIncome ?? opendart.netIncome ?? null,
+      previousNetIncome: record.previousNetIncome ?? opendart.previousNetIncome ?? null,
+      totalAssets: record.totalAssets ?? opendart.totalAssets ?? null,
+      totalLiabilities: record.totalLiabilities ?? opendart.totalLiabilities ?? null,
+      totalEquity: record.totalEquity ?? opendart.totalEquity ?? null,
+      debtRatio: record.debtRatio ?? opendart.debtRatio ?? null,
+      notes: [...new Set([...(record.notes ?? []), ...(opendart.notes ?? [])])],
+    };
+  });
+};
+
 const enrichKindOfferMetadata = async (
   records: SourceIpoRecord[],
   { forceRefresh = false }: SyncOptions = {},
@@ -743,7 +788,28 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
     throw new Error("No live IPO source is configured. Set IPO_SOURCE_URL or OPENDART_API_KEY.");
   }
 
-  const recordsWithListingMetadata = await mergeKindListingMetadata(sourceRecords, { forceRefresh });
+  let recordsWithOpendartEnrichment = sourceRecords;
+
+  if (env.opendartApiKey && env.ipoSourceUrl) {
+    try {
+      const opendartRecords = await fetchOpendartCurrentMonthIpos({ forceRefresh });
+      recordsWithOpendartEnrichment = mergeOpendartScoringEnrichment(sourceRecords, opendartRecords);
+    } catch (error) {
+      await logOperation({
+        level: "WARN",
+        source: "job:daily-sync",
+        action: "opendart_scoring_enrichment_failed",
+        message: "외부 원본에 OpenDART 점수 보강을 적용하지 못해 원본 데이터만 사용합니다.",
+        context: toErrorContext(error, {
+          forceRefresh,
+          sourceRecords: sourceRecords.length,
+        }),
+      });
+      recordsWithOpendartEnrichment = sourceRecords;
+    }
+  }
+
+  const recordsWithListingMetadata = await mergeKindListingMetadata(recordsWithOpendartEnrichment, { forceRefresh });
   const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(recordsWithListingMetadata, { forceRefresh });
   return enrichListingOpenMetrics(recordsWithKindOfferMetadata, { forceRefresh });
 };

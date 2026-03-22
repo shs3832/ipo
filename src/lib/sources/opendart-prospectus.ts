@@ -1,20 +1,33 @@
 import { env } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
+import type { OpendartFinancialSnapshot } from "@/lib/sources/opendart-financials";
+import { inflateRawSync } from "node:zlib";
 
-type OpendartProspectusDetails = {
+export type OpendartProspectusDetails = {
   receiptNo: string;
   priceBandLow: number | null;
   priceBandHigh: number | null;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
+  demandCompetitionRate: number | null;
+  lockupRate: number | null;
+  financialSnapshot: OpendartFinancialSnapshot | null;
 };
 
 type FetchOpendartProspectusDetailsOptions = {
   forceRefresh?: boolean;
 };
 
-const OPENDART_BASE_URL = "https://dart.fss.or.kr";
+type ParsedTable = {
+  headers: string[];
+  rows: string[][];
+};
+
 const OPENDART_PROSPECTUS_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+const PROSPECTUS_FINANCIAL_AMOUNT_SCALE = 1_000_000;
 
 const decodeHtml = (value: string) =>
   value
@@ -58,24 +71,26 @@ const parseFloatNumber = (value: string | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const extractViewerArgs = (html: string) => {
-  const initialViewMatch = html.match(
-    /viewDoc\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]*)"\)/,
-  );
-
-  if (!initialViewMatch) {
+const parseSignedAmount = (value: string | null | undefined) => {
+  if (!value) {
     return null;
   }
 
-  return {
-    receiptNo: initialViewMatch[1],
-    documentNo: initialViewMatch[2],
-    elementId: initialViewMatch[3],
-    offset: initialViewMatch[4],
-    length: initialViewMatch[5],
-    dtd: initialViewMatch[6],
-  };
+  const normalized = value
+    .replace(/,/g, "")
+    .replace(/\s+/g, "")
+    .replace(/^\((.+)\)$/, "-$1");
+
+  if (!normalized || normalized === "-") {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 };
+
+const scaleAmount = (value: number | null, multiplier: number) =>
+  value == null ? null : value * multiplier;
 
 const extractPriceBand = (text: string) => {
   const patterns = [
@@ -94,6 +109,54 @@ const extractPriceBand = (text: string) => {
   }
 
   return { priceBandLow: null, priceBandHigh: null };
+};
+
+const extractDemandCompetitionRate = (texts: string[]) => {
+  const patterns = [
+    /기관(?:투자자)?\s*(?:수요예측\s*)?경쟁률[^\d]{0,20}([\d,.]+)\s*[:：]\s*1/gi,
+    /수요예측\s*경쟁률[^\d]{0,20}([\d,.]+)\s*[:：]\s*1/gi,
+    /기관(?:투자자)?\s*경쟁률[^\d]{0,20}([\d,.]+)\s*[:：]\s*1/gi,
+  ];
+
+  for (const text of texts) {
+    for (const pattern of patterns) {
+      const match = pattern.exec(text);
+      if (!match) {
+        continue;
+      }
+
+      const parsed = parseFloatNumber(match[1]);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const extractLockupRate = (texts: string[]) => {
+  const patterns = [
+    /기관투자자[^\d%]{0,120}?의무보유\s*확약(?:\s*비율)?[^\d]{0,20}([\d,.]+)\s*%/gi,
+    /의무보유\s*확약(?:기관투자자)?(?:\s*참여수량)?\s*비율[^\d]{0,20}([\d,.]+)\s*%/gi,
+    /의무보유\s*확약[^\d%]{0,20}기관투자자[^\d]{0,20}([\d,.]+)\s*%/gi,
+  ];
+
+  for (const text of texts) {
+    for (const pattern of patterns) {
+      const match = pattern.exec(text);
+      if (!match) {
+        continue;
+      }
+
+      const parsed = parseFloatNumber(match[1]);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
 };
 
 const extractDepositRate = (text: string) => {
@@ -140,45 +203,258 @@ const extractMinimumSubscriptionShares = (text: string) => {
   return rangeMatches.length > 0 ? Math.min(...rangeMatches) : null;
 };
 
-const fetchViewerDocumentHtml = async (receiptNo: string) => {
-  const mainHtml = await (await fetch(`${OPENDART_BASE_URL}/dsaf001/main.do?rcpNo=${encodeURIComponent(receiptNo)}`, {
-    cache: "no-store",
-  })).text();
+const extractCurrentAmount = (text: string, labelPatterns: RegExp[]) => {
+  for (const labelPattern of labelPatterns) {
+    const rowPattern = new RegExp(`${labelPattern.source}\\s+(\\(?-?[\\d,]+\\)?|-)`, "i");
+    const match = text.match(rowPattern);
+    if (!match) {
+      continue;
+    }
 
-  const viewerArgs = extractViewerArgs(mainHtml);
-  if (!viewerArgs) {
-    throw new Error(`OpenDART viewer args not found for receipt ${receiptNo}`);
+    const parsed = parseSignedAmount(match[1]);
+    if (parsed != null) {
+      return parsed;
+    }
   }
 
-  const viewerUrl = new URL(`${OPENDART_BASE_URL}/report/viewer.do`);
-  viewerUrl.searchParams.set("rcpNo", viewerArgs.receiptNo);
-  viewerUrl.searchParams.set("dcmNo", viewerArgs.documentNo);
-  viewerUrl.searchParams.set("eleId", viewerArgs.elementId);
-  viewerUrl.searchParams.set("offset", viewerArgs.offset);
-  viewerUrl.searchParams.set("length", viewerArgs.length);
-  viewerUrl.searchParams.set("dtd", viewerArgs.dtd);
+  return null;
+};
 
-  const response = await fetch(viewerUrl, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`OpenDART viewer request failed: HTTP ${response.status}`);
+const calculateMarginRate = (numerator: number | null, denominator: number | null) => {
+  if (numerator == null || denominator == null || denominator === 0) {
+    return null;
   }
 
-  return response.text();
+  return Number(((numerator / denominator) * 100).toFixed(1));
+};
+
+const calculateDebtRatio = (liabilities: number | null, equity: number | null) => {
+  if (liabilities == null || equity == null || equity === 0) {
+    return null;
+  }
+
+  return Number(((liabilities / equity) * 100).toFixed(1));
+};
+
+const parseXmlTable = (tableXml: string): ParsedTable | null => {
+  const rows = [...tableXml.matchAll(/<TR\b[^>]*>([\s\S]*?)<\/TR>/gi)]
+    .map((match) =>
+      [...match[1].matchAll(/<T[DH]\b[^>]*>([\s\S]*?)<\/T[DH]>/gi)]
+        .map((cell) => normalizeText(cell[1]))
+        .filter(Boolean),
+    )
+    .filter((row) => row.length > 1);
+
+  if (rows.length < 2) {
+    return null;
+  }
+
+  return {
+    headers: rows[0] ?? [],
+    rows: rows.slice(1),
+  };
+};
+
+const extractTableAfterTitle = (xml: string, titlePatterns: RegExp[]) => {
+  for (const pattern of titlePatterns) {
+    const match = pattern.exec(xml);
+    if (!match) {
+      continue;
+    }
+
+    const tables = xml.slice(match.index + match[0].length).matchAll(/<TABLE\b[\s\S]*?<\/TABLE>/gi);
+    for (const tableMatch of tables) {
+      const parsedTable = parseXmlTable(tableMatch[0]);
+      if (parsedTable) {
+        return parsedTable;
+      }
+    }
+  }
+
+  return null;
+};
+
+const choosePreferredColumnIndex = (headers: string[]) => {
+  let bestIndex = -1;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (let index = 1; index < headers.length; index += 1) {
+    const header = headers[index] ?? "";
+    let score = index;
+
+    if (/3Q|3분기|분기/.test(header)) {
+      score += 100;
+    }
+
+    if (/업종평균|평균|추정|예상|\(E\)/.test(header)) {
+      score -= 100;
+    }
+
+    const year = header.match(/(20\d{2})/)?.[1];
+    if (year) {
+      score += Number.parseInt(year, 10);
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+
+  return bestIndex;
+};
+
+const extractMetricFromTable = (
+  table: ParsedTable | null,
+  rowLabelPatterns: RegExp[],
+  parser: (value: string | null | undefined) => number | null,
+) => {
+  if (!table) {
+    return null;
+  }
+
+  const columnIndex = choosePreferredColumnIndex(table.headers);
+  if (columnIndex < 1) {
+    return null;
+  }
+
+  const row = table.rows.find((cells) =>
+    rowLabelPatterns.some((pattern) => pattern.test(cells[0] ?? "")),
+  );
+  if (!row) {
+    return null;
+  }
+
+  return parser(row[columnIndex]);
+};
+
+const extractFinancialSnapshot = (incomeSummaryTable: ParsedTable | null, stabilityTable: ParsedTable | null) => {
+  const operatingIncome = scaleAmount(
+    extractMetricFromTable(incomeSummaryTable, [/영업이익\(손실\)/, /영업이익/], parseSignedAmount),
+    PROSPECTUS_FINANCIAL_AMOUNT_SCALE,
+  );
+  const netIncome = scaleAmount(
+    extractMetricFromTable(incomeSummaryTable, [/당기순이익\(손실\)/, /당기순이익/], parseSignedAmount),
+    PROSPECTUS_FINANCIAL_AMOUNT_SCALE,
+  );
+  const debtRatio = extractMetricFromTable(stabilityTable, [/부채비율/], parseFloatNumber);
+
+  if (operatingIncome == null && netIncome == null && debtRatio == null) {
+    return null;
+  }
+
+  const snapshot = {
+    reportLabel: "증권신고서 요약 재무지표",
+    revenue: null,
+    previousRevenue: null,
+    revenueGrowthRate: null,
+    operatingIncome,
+    previousOperatingIncome: null,
+    operatingMarginRate: null,
+    netIncome,
+    previousNetIncome: null,
+    totalAssets: null,
+    totalLiabilities: null,
+    totalEquity: null,
+    debtRatio,
+  } satisfies OpendartFinancialSnapshot;
+
+  const hasAnyMetric = Object.entries(snapshot).some(([key, value]) => key !== "reportLabel" && value != null);
+  return hasAnyMetric ? snapshot : null;
+};
+
+const extractZipFile = (archive: Buffer) => {
+  const endOfCentralDirectoryOffset = archive.lastIndexOf(
+    Buffer.from([
+      ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE & 0xff,
+      (ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE >> 8) & 0xff,
+      (ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE >> 16) & 0xff,
+      (ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE >> 24) & 0xff,
+    ]),
+  );
+  if (endOfCentralDirectoryOffset < 0) {
+    throw new Error("OpenDART document archive is missing a central directory");
+  }
+
+  const centralDirectoryOffset = archive.readUInt32LE(endOfCentralDirectoryOffset + 16);
+  if (archive.readUInt32LE(centralDirectoryOffset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
+    throw new Error("OpenDART document archive has an invalid central directory");
+  }
+
+  const compressionMethod = archive.readUInt16LE(centralDirectoryOffset + 10);
+  const compressedSize = archive.readUInt32LE(centralDirectoryOffset + 20);
+  const fileNameLength = archive.readUInt16LE(centralDirectoryOffset + 28);
+  const extraFieldLength = archive.readUInt16LE(centralDirectoryOffset + 30);
+  const commentLength = archive.readUInt16LE(centralDirectoryOffset + 32);
+  const localHeaderOffset = archive.readUInt32LE(centralDirectoryOffset + 42);
+
+  if (archive.readUInt32LE(localHeaderOffset) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
+    throw new Error("OpenDART document archive has an invalid local file header");
+  }
+
+  const localFileNameLength = archive.readUInt16LE(localHeaderOffset + 26);
+  const localExtraFieldLength = archive.readUInt16LE(localHeaderOffset + 28);
+  const dataStart = localHeaderOffset + 30 + localFileNameLength + localExtraFieldLength;
+  const dataEnd = dataStart + compressedSize;
+  const compressedPayload = archive.subarray(dataStart, dataEnd);
+
+  if (archive.length < dataEnd + commentLength + fileNameLength + extraFieldLength) {
+    throw new Error("OpenDART document archive is truncated");
+  }
+
+  return {
+    compressionMethod,
+    compressedPayload,
+  };
 };
 
 const fetchOpendartProspectusDetailsUncached = async (
   receiptNo: string,
 ): Promise<OpendartProspectusDetails> => {
-  const viewerHtml = await fetchViewerDocumentHtml(receiptNo);
-  const normalizedText = normalizeText(viewerHtml);
-  const { priceBandLow, priceBandHigh } = extractPriceBand(normalizedText);
+  const endpoint = `${env.opendartBaseUrl.replace(/\/+$/, "")}/api/document.xml?${new URLSearchParams({
+    crtfc_key: env.opendartApiKey,
+    rcept_no: receiptNo,
+  }).toString()}`;
+  const response = await fetch(endpoint, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error(`OpenDART document request failed: HTTP ${response.status}`);
+  }
+
+  const archive = Buffer.from(await response.arrayBuffer());
+  const archiveText = archive.toString("utf8", 0, Math.min(archive.length, 200));
+  if (!archive.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
+    throw new Error(`OpenDART document request did not return a zip archive: ${archiveText.trim()}`);
+  }
+
+  const { compressionMethod, compressedPayload } = extractZipFile(archive);
+  const xmlBuffer =
+    compressionMethod === 0
+      ? compressedPayload
+      : compressionMethod === 8
+        ? inflateRawSync(compressedPayload)
+        : null;
+
+  if (!xmlBuffer) {
+    throw new Error(`OpenDART document compression method ${compressionMethod} is not supported`);
+  }
+
+  const xml = xmlBuffer.toString("utf8");
+  const normalizedXmlText = normalizeText(xml);
+  const incomeSummaryTable = extractTableAfterTitle(xml, [/\[최근 3개년 및 당해 분기 요약 손익계산서\]/]);
+  const stabilityTable = extractTableAfterTitle(xml, [/\[주요 재무안정성 지표\]/]);
+  const scoringTexts = [normalizedXmlText];
+  const { priceBandLow, priceBandHigh } = extractPriceBand(normalizedXmlText);
 
   return {
     receiptNo,
     priceBandLow,
     priceBandHigh,
-    minimumSubscriptionShares: extractMinimumSubscriptionShares(normalizedText),
-    depositRate: extractDepositRate(normalizedText),
+    minimumSubscriptionShares: extractMinimumSubscriptionShares(normalizedXmlText),
+    depositRate: extractDepositRate(normalizedXmlText),
+    demandCompetitionRate: extractDemandCompetitionRate(scoringTexts),
+    lockupRate: extractLockupRate(scoringTexts),
+    financialSnapshot: extractFinancialSnapshot(incomeSummaryTable, stabilityTable),
   };
 };
 
@@ -193,6 +469,9 @@ export const fetchOpendartProspectusDetails = async (
       priceBandHigh: null,
       minimumSubscriptionShares: null,
       depositRate: null,
+      demandCompetitionRate: null,
+      lockupRate: null,
+      financialSnapshot: null,
     };
   }
 
