@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test --import tsx",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "job:daily-sync": "tsx scripts/daily-sync.ts",

@@ -27,6 +27,7 @@ import {
   formatPercent,
   getKstMonthRange,
   getKstTodayKey,
+  isOnOrAfterKstDayOffset,
   isSameKstDate,
   kstDateKey,
   parseKstDate,
@@ -47,6 +48,7 @@ let databaseReachableCache: { value: boolean; expiresAt: number } | null = null;
 const IPO_SOURCE_URL_CACHE_TTL_MS = 1000 * 60 * 30;
 const DATABASE_REACHABLE_CACHE_TTL_MS = 60_000;
 const DATABASE_UNREACHABLE_CACHE_TTL_MS = 10_000;
+const STALE_SOURCE_WITHDRAWAL_GRACE_DAYS = 2;
 type SyncOptions = {
   forceRefresh?: boolean;
 };
@@ -1328,12 +1330,62 @@ const createDeliveryIdempotencyKey = (jobIdempotencyKey: string, recipientId: st
 const markStaleDisplayRangeIpos = async (sourceRecords: SourceIpoRecord[]) => {
   const activeSlugs = sourceRecords.map((record) => slugify(record.name));
   const displayRangeWhere = getDisplayRangeWhere();
-
-  const result = await prisma.ipo.updateMany({
+  const staleCandidates = await prisma.ipo.findMany({
     where: {
       ...displayRangeWhere,
       slug: {
         notIn: activeSlugs,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      sourceSnapshots: {
+        orderBy: { fetchedAt: "desc" },
+        take: 1,
+        select: {
+          fetchedAt: true,
+        },
+      },
+    },
+  });
+
+  if (staleCandidates.length === 0) {
+    return 0;
+  }
+
+  const protectedCandidates = staleCandidates.filter((ipo) => {
+    const lastFetchedAt = ipo.sourceSnapshots[0]?.fetchedAt;
+    return isOnOrAfterKstDayOffset(lastFetchedAt, -STALE_SOURCE_WITHDRAWAL_GRACE_DAYS);
+  });
+  const withdrawableIds = staleCandidates
+    .filter((ipo) => !protectedCandidates.some((protectedIpo) => protectedIpo.id === ipo.id))
+    .map((ipo) => ipo.id);
+
+  if (protectedCandidates.length > 0) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "delayed_withdrawal",
+      message:
+        `라이브 소스에서 빠진 공모주 ${protectedCandidates.length}건의 WITHDRAWN 처리를 `
+        + `${STALE_SOURCE_WITHDRAWAL_GRACE_DAYS}일 유예했습니다.`,
+      context: {
+        count: protectedCandidates.length,
+        graceDays: STALE_SOURCE_WITHDRAWAL_GRACE_DAYS,
+        names: protectedCandidates.map((ipo) => ipo.name),
+      },
+    });
+  }
+
+  if (withdrawableIds.length === 0) {
+    return 0;
+  }
+
+  const result = await prisma.ipo.updateMany({
+    where: {
+      id: {
+        in: withdrawableIds,
       },
     },
     data: {
@@ -1568,20 +1620,32 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       ?? latestSnapshot?.listingOpenReturnRate
       ?? null,
   } satisfies SourceIpoRecord;
+  const seenAt = new Date();
   const checksum = toChecksum(persistedRecord);
   const analysis = buildAnalysis(persistedRecord);
+  const targetStatus = persistedRecord.status ?? "UPCOMING";
 
   if (
     latestSnapshot?.sourceSnapshots[0]?.sourceKey === persistedRecord.sourceKey &&
     latestSnapshot.sourceSnapshots[0]?.checksum === checksum
   ) {
-    const targetStatus = persistedRecord.status ?? "UPCOMING";
+    const latestSourceSnapshotId = latestSnapshot.sourceSnapshots[0]?.id;
 
     if (latestSnapshot.id && latestSnapshot.status !== targetStatus) {
       await prisma.ipo.update({
         where: { id: latestSnapshot.id },
         data: {
           status: targetStatus,
+        },
+      });
+    }
+
+    if (latestSourceSnapshotId) {
+      // Keep the latest unchanged snapshot "fresh" so stale-source withdrawal uses last-seen time.
+      await prisma.ipoSourceSnapshot.update({
+        where: { id: latestSourceSnapshotId },
+        data: {
+          fetchedAt: seenAt,
         },
       });
     }

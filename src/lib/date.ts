@@ -66,6 +66,18 @@ export const shiftKstDateKey = (value: string, offset: number) => {
   return kstDateKey(date);
 };
 
+export const isOnOrAfterKstDayOffset = (
+  value: Date | null | undefined,
+  offset: number,
+  now = new Date(),
+) => {
+  if (!value) {
+    return false;
+  }
+
+  return value >= atKstTime(shiftKstDateKey(getKstTodayKey(now), offset), 0);
+};
+
 export const formatDate = (date: Date, pattern = "yyyy.MM.dd") =>
   formatInTimeZone(date, TIME_ZONE, pattern);
 

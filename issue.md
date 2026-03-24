@@ -598,6 +598,53 @@
 - 30분 전 리마인더는 “prepare 결과만” 믿지 말고, 지연 실행 시 DB에 남아 있던 당일 `READY` job도 함께 정리해야 한다.
 - `delivery_failed` 같은 운영 로그는 공통 함수 안에서도 실제 호출 source를 유지해야 관리자 화면에서 원인 추적이 가능하다.
 
+### Follow-up: WITHDRAWN Grace Review Fix / Docs Sync
+
+이번 스레드에서는 코드리뷰에서 잡힌 `WITHDRAWN` 유예 로직 회귀를 수정했고, 실제 동작에 맞게 운영 문서도 함께 동기화했다.
+
+### What Changed In This Follow-up
+
+1. `markStaleDisplayRangeIpos()`가 `sourceSnapshots[0].fetchedAt`를 마지막 확인 시각처럼 쓰고 있었지만, 실제로는 checksum이 바뀔 때만 snapshot이 쌓이므로 unchanged IPO에서는 stale timestamp가 남는다는 점을 다시 확인했다.
+2. 새 DB 컬럼을 추가하는 대신, checksum이 같아 새 snapshot을 만들지 않는 sync에서도 최신 `ipoSourceSnapshot.fetchedAt`을 현재 sync 시각으로 갱신하도록 바꿨다.
+3. 그 결과 stale-source `WITHDRAWN` 유예는 이제 “마지막으로 소스에서 본 시각” 기준으로 `2일` 보호가 적용되도록 정리됐다.
+4. KST 날짜 경계 비교를 재사용 가능한 helper로 분리하고, 최근 확인 시각이 cutoff 안팎에 걸리는 회귀 테스트를 추가했다.
+5. patch에 포함되지 않은 `scripts/verify-opendart-coverage.ts`를 가리키던 `package.json` script는 제거해 clean checkout에서 깨지지 않게 정리했다.
+6. `README.md`, `AGENTS.md`에 OpenDART 공시 조회 범위와 `WITHDRAWN` 유예 동작을 현재 코드 기준으로 맞춰 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- stale-source 유예 / last-seen 갱신
+  - `src/lib/jobs.ts`
+  - `src/lib/date.ts`
+- 테스트 / 스크립트 엔트리
+  - `tests/opendart-ipo.test.ts`
+  - `package.json`
+- 문서
+  - `issue.md`
+  - `README.md`
+  - `AGENTS.md`
+
+### Verified Root Cause In This Follow-up
+
+- 유예 기준으로 사용하던 `sourceSnapshots[0].fetchedAt`는 “마지막으로 소스에 보인 시각”이 아니라 “마지막으로 payload가 바뀌어 snapshot이 생성된 시각”에 더 가까웠다.
+- `upsertDatabaseIpo()`는 동일 sourceKey + 동일 checksum이면 새 snapshot을 만들지 않으므로, unchanged IPO는 어제도 정상 노출됐어도 며칠 전 timestamp를 계속 들고 있을 수 있었다.
+- 이 상태에서 OpenDART가 하루만 일시 누락돼도 첫 누락 sync에서 바로 `WITHDRAWN` 처리될 수 있었다.
+
+### Verification In This Follow-up
+
+- `npx prisma generate`
+- `npm test`
+- `npm run build`
+- `npm run lint`
+  - 기존 [src/lib/sources/opendart-prospectus.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-prospectus.ts)의 unused helper warning 3건은 유지, 새 lint error는 없음
+
+### Current Decisions To Remember In This Follow-up
+
+- stale withdrawal grace는 “last changed snapshot”이 아니라 “last seen in source” 기준이어야 한다.
+- 새 스키마를 늘리지 않아도, unchanged sync에서 최신 snapshot의 `fetchedAt`을 heartbeat처럼 갱신하면 같은 목적을 달성할 수 있다.
+- OpenDART 공시 조회 범위는 현재 `두 달 전 시작 ~ 현재달 말`이고, 표시 범위는 계속 `현재달 + 다음달`이다.
+- `source:verify:opendart` 같은 보조 스크립트는 파일이 실제로 커밋되기 전에는 `package.json`에 노출하지 않는다.
+
 ## 2026-03-22
 
 ### Follow-up: Score Visibility Gating / Evidence Messaging

@@ -50,7 +50,8 @@ type DateRange = {
 
 const OPENDART_OK_STATUS = "000";
 const PAGE_SIZE = 100;
-const MAX_DISCLOSURE_PAGES = 8;
+const DISCLOSURE_LOOKBACK_MONTHS = 2;
+const DISCLOSURE_PAGE_FETCH_BATCH_SIZE = 10;
 const OPENDART_SOURCE_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 type FetchOpendartCurrentMonthIposOptions = {
   forceRefresh?: boolean;
@@ -80,10 +81,10 @@ const toDateRange = (start: Date, end: Date, label: string, key: string): DateRa
   end,
 });
 
-const getDisplayRange = () => {
-  const currentMonth = getKstMonthRange(new Date(), 0);
-  const nextMonth = getKstMonthRange(new Date(), 1);
-  const previousMonth = getKstMonthRange(new Date(), -1);
+export const buildOpendartIpoRanges = (date = new Date()) => {
+  const currentMonth = getKstMonthRange(date, 0);
+  const nextMonth = getKstMonthRange(date, 1);
+  const lookbackMonth = getKstMonthRange(date, -DISCLOSURE_LOOKBACK_MONTHS);
 
   return {
     displayRange: toDateRange(
@@ -93,10 +94,10 @@ const getDisplayRange = () => {
       `${currentMonth.key}_${nextMonth.key}`,
     ),
     disclosureRange: toDateRange(
-      previousMonth.start,
+      lookbackMonth.start,
       currentMonth.end,
-      `${previousMonth.label} ~ ${currentMonth.label}`,
-      `${previousMonth.key}_${currentMonth.key}`,
+      `${lookbackMonth.label} ~ ${currentMonth.label}`,
+      `${lookbackMonth.key}_${currentMonth.key}`,
     ),
   };
 };
@@ -214,23 +215,40 @@ const fetchDisclosurePage = async (range: DateRange, pageNo: number) => {
   return body;
 };
 
-const fetchCandidateDisclosuresForRange = async (range: DateRange): Promise<OpendartDisclosureItem[]> => {
-  const firstPage = await fetchDisclosurePage(range, 1);
-
-  if (firstPage.status && firstPage.status !== OPENDART_OK_STATUS) {
-    if (firstPage.status === "013") {
-      return [];
+const assertListResponseOk = (body: OpendartListResponse) => {
+  if (body.status && body.status !== OPENDART_OK_STATUS) {
+    if (body.status === "013") {
+      return false;
     }
 
-    throw new Error(`OpenDART list request failed: ${firstPage.status} ${firstPage.message ?? ""}`.trim());
+    throw new Error(`OpenDART list request failed: ${body.status} ${body.message ?? ""}`.trim());
   }
 
-  const totalPages = Math.min(firstPage.total_page ?? 1, MAX_DISCLOSURE_PAGES);
-  const disclosures = [...(firstPage.list ?? [])];
+  return true;
+};
 
-  for (let page = 2; page <= totalPages; page += 1) {
-    const nextPage = await fetchDisclosurePage(range, page);
-    disclosures.push(...(nextPage.list ?? []));
+export const fetchCandidateDisclosuresForRange = async (range: DateRange): Promise<OpendartDisclosureItem[]> => {
+  const firstPage = await fetchDisclosurePage(range, 1);
+
+  if (!assertListResponseOk(firstPage)) {
+    return [];
+  }
+
+  const totalPages = firstPage.total_page ?? 1;
+  const disclosures = [...(firstPage.list ?? [])];
+  const remainingPages = Array.from({ length: Math.max(totalPages - 1, 0) }, (_, index) => index + 2);
+
+  for (let index = 0; index < remainingPages.length; index += DISCLOSURE_PAGE_FETCH_BATCH_SIZE) {
+    const pageBatch = remainingPages.slice(index, index + DISCLOSURE_PAGE_FETCH_BATCH_SIZE);
+    const batchResponses = await Promise.all(pageBatch.map((pageNo) => fetchDisclosurePage(range, pageNo)));
+
+    for (const nextPage of batchResponses) {
+      if (!assertListResponseOk(nextPage)) {
+        continue;
+      }
+
+      disclosures.push(...(nextPage.list ?? []));
+    }
   }
 
   return disclosures.filter(isEquityIpoDisclosure);
@@ -429,7 +447,7 @@ export const fetchOpendartCurrentMonthIpos = async ({
     return [];
   }
 
-  const { displayRange, disclosureRange } = getDisplayRange();
+  const { displayRange, disclosureRange } = buildOpendartIpoRanges();
 
   return getCachedExternalData(
     {

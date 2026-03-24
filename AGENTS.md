@@ -46,7 +46,7 @@ Additional notes:
 - public home/detail read paths are split from admin dashboard reads
 - home `/` is intended to stay static with `revalidate = 300`
 - read paths should not perform recipient bootstrap or other DB writes
-- stale IPOs in the current display range are marked `WITHDRAWN` during sync
+- stale IPOs in the current display range are marked `WITHDRAWN` during sync after a `2-day` grace period based on the latest source-seen timestamp
 
 ## OpenDART Scope Right Now
 
@@ -59,7 +59,7 @@ Currently implemented in:
 Behavior:
 
 - Display range is `current month + next month`
-- Disclosure lookup range is `previous month + current month`
+- Disclosure lookup range is `two months back + current month`
 - Records are filtered by `subscriptionStart` / `subscriptionEnd` being within display range
 - Month boundary and "today" logic must use `Asia/Seoul` helpers, not server local timezone
 
