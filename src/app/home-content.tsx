@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 
 import { BrokerChipList } from "@/components/broker-chip";
 import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, kstDateKey } from "@/lib/date";
-import type { IpoAnalysisRecord } from "@/lib/types";
 import styles from "@/app/home-content.module.scss";
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
@@ -22,13 +21,10 @@ type HomeIpoSummary = {
   name: string;
   market: string;
   leadManager: string;
-  score: number;
   subscriptionEnd: string;
   offerPrice: number | null;
   listingOpenPrice: number | null;
   listingOpenReturnRate: number | null;
-  ratingLabel: string;
-  scoreDisplay: IpoAnalysisRecord["scoreDisplay"];
 };
 
 type Props = {
@@ -91,6 +87,7 @@ export function HomeContent({
 }: Props) {
   const [filters, setFilters] = useState<Record<EventType, boolean>>(defaultFilters);
   const [hasRestoredFilters, setHasRestoredFilters] = useState(false);
+  const [todayKey, setTodayKey] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -118,6 +115,17 @@ export function HomeContent({
 
     window.localStorage.setItem(calendarFilterStorageKey, JSON.stringify(filters));
   }, [filters, hasRestoredFilters]);
+
+  useEffect(() => {
+    const syncTodayKey = () => {
+      setTodayKey(kstDateKey(new Date()));
+    };
+
+    syncTodayKey();
+
+    const intervalId = window.setInterval(syncTodayKey, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const eventCounts: Record<EventType, number> = {
     SUBSCRIPTION: 0,
@@ -218,21 +226,29 @@ export function HomeContent({
         <div className={`${styles.calendarGrid} ${SHOW_WEEKEND_COLUMNS ? "" : styles.weekdaysOnly}`}>
           {visibleMonthDays.map((dayValue) => {
             const day = new Date(dayValue);
-            const entries = (eventsByDate[kstDateKey(day)] ?? []).filter((entry) => filters[entry.type]);
+            const dayKey = kstDateKey(day);
+            const entries = (eventsByDate[dayKey] ?? []).filter((entry) => filters[entry.type]);
             const dayOfWeek = getKstDayOfWeek(day);
             const isSunday = dayOfWeek === 0;
             const isSaturday = dayOfWeek === 6;
             const isCurrentMonth = formatDate(day, "yyyy-MM") === currentMonthKey;
+            const isToday = todayKey === dayKey;
 
             return (
               <div
-                className={`${styles.calendarCell} ${isSunday ? styles.calendarSunday : ""} ${isSaturday ? styles.calendarSaturday : ""} ${isCurrentMonth ? "" : styles.calendarOtherMonth}`}
+                aria-current={isToday ? "date" : undefined}
+                className={`${styles.calendarCell} ${isSunday ? styles.calendarSunday : ""} ${isSaturday ? styles.calendarSaturday : ""} ${isCurrentMonth ? "" : styles.calendarOtherMonth} ${isToday ? styles.calendarToday : ""}`}
                 key={dayValue}
               >
                 <div
-                  className={`${styles.calendarDate} ${isSunday ? styles.calendarDateSunday : ""} ${isSaturday ? styles.calendarDateSaturday : ""}`}
+                  className={styles.calendarDateRow}
                 >
-                  {formatDate(day, "d")}
+                  <div
+                    className={`${styles.calendarDate} ${isSunday ? styles.calendarDateSunday : ""} ${isSaturday ? styles.calendarDateSaturday : ""} ${isToday ? styles.calendarDateToday : ""}`}
+                  >
+                    {formatDate(day, "d")}
+                  </div>
+                  {isToday ? <span className={styles.todayBadge}>오늘</span> : null}
                 </div>
                 <div className={styles.calendarEvents}>
                   {entries.length ? (
@@ -261,7 +277,7 @@ export function HomeContent({
           <div>
             <p className="page-eyebrow">Tracked IPOs</p>
             <h2 className="section-title">종목 개요</h2>
-            <p className="section-copy">청약 마감일 기준으로 공모가와 근거가 충분한 참고 점수만 빠르게 훑는 영역입니다.</p>
+            <p className="section-copy">청약 마감일 기준으로 일정, 공모가, 주관사 같은 공시 기반 핵심 정보만 빠르게 훑는 영역입니다.</p>
           </div>
           <span className="status-pill status-pill-soft">{ipos.length}개 종목</span>
         </div>
@@ -273,16 +289,6 @@ export function HomeContent({
                   <h3>{ipo.name}</h3>
                   <p>{ipo.market}</p>
                   <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
-                </div>
-                <div className={styles.scoreArea}>
-                  <span
-                    className={`${styles.scoreBadge} ${ipo.scoreDisplay.isVisible ? "" : styles.scoreBadgeMuted}`.trim()}
-                  >
-                    {ipo.scoreDisplay.isVisible ? `${ipo.score}점` : "평가 보류"}
-                  </span>
-                  <span className={styles.scoreCaption}>
-                    {ipo.scoreDisplay.isVisible ? "참고용 점수" : "핵심 지표 부족"}
-                  </span>
                 </div>
               </div>
               <dl className={styles.ipoStats}>
@@ -307,12 +313,11 @@ export function HomeContent({
                   </>
                 ) : (
                   <div>
-                    <dt>판단</dt>
-                    <dd>{ipo.scoreDisplay.isVisible ? ipo.ratingLabel : "평가 보류"}</dd>
+                    <dt>정량 점수</dt>
+                    <dd>비공개</dd>
                   </div>
                 )}
               </dl>
-              <p className={styles.scoreNote}>{ipo.scoreDisplay.helpText}</p>
             </Link>
           ))}
         </div>

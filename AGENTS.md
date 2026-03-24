@@ -94,8 +94,8 @@ Scoring logic lives in:
 Important:
 
 - Base score starts at `50`
-- Missing data가 많으면 숫자 점수를 숨기고 `평가 보류`로 처리한다
-- 현재 공개 노출 기준은 `총 4개 이상 지표`, `수급 2개 이상`, `재무 1개 이상`
+- 점수는 아직 내부 휴리스틱으로만 유지하고, 공개 화면/메일의 정량 점수는 현재 비공개 상태다
+- `scoreDisplay` 메타데이터는 남겨두되, 추후 재공개 판단과 내부 검증 용도로만 본다
 - Financial enrichment now affects:
   - revenue growth
   - operating income
@@ -112,6 +112,7 @@ Treat it as a structured heuristic.
 - Mobile hides the calendar and shows IPO overview first
 - Responsive mobile breakpoint is currently `1024px`
 - Calendar currently hides Saturday/Sunday columns, but this is implemented as a render toggle so it can be restored later
+- Calendar highlights today with a dedicated badge and stronger cell emphasis
 - Subscription events are shown by `closing date`, not start date
 - Event labels use badges:
   - `청약마감`
@@ -122,6 +123,7 @@ Treat it as a structured heuristic.
 - Detail page hides source metadata unless admin
 - Detail page prioritizes `지금 판단용` quick facts before analysis and lower-priority detail
 - Current top quick facts are `확정 공모가`, `최소청약금액`, `환불일`, `상장예정일`, `유통가능물량`, `주관사`
+- Public detail and alert copy currently use checklist-style analysis instead of public numeric scores
 - Public detail event timeline has been removed
 - `유통가능물량`(`floatRatio`) is already stored as a percent value, so UI must not multiply it again
 - Admin page is protected by login
@@ -190,7 +192,7 @@ Notes:
 
 - Data quality is still uneven
 - Some IPOs have financial data, some do not
-- 점수 노출 gating은 들어갔지만 threshold와 문구는 계속 다듬어야 한다
+- 정량 점수는 현재 비공개이며, 재공개 기준과 검증 절차를 아직 확정하지 않았다
 - No public multi-recipient UI yet
 - Telegram adapter data model exists, but sending is not implemented
 
@@ -200,9 +202,9 @@ If continuing feature work, highest-impact next tasks are:
 
 1. add demand competition / lockup / float data source
 2. add minimum subscription shares and deposit rate source
-3. split score into sub-scores
-4. expose data-completeness indicator more explicitly in UI
-5. tune score visibility thresholds and evidence messaging based on live data
+3. validate score against live outcomes and define re-open conditions for public exposure
+4. split score into sub-scores
+5. expose data-completeness indicator more explicitly in UI
 
 ## Safe Working Rules
 

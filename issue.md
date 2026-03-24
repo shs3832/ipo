@@ -67,6 +67,47 @@
 - 발송 실패가 있으면 잡 내부 로그뿐 아니라 API 응답도 `500`으로 노출해 운영자가 즉시 인지할 수 있게 유지한다.
 - 마감 임박 알림은 최종적으로 `15:30 KST` 기준을 유지한다.
 
+### Follow-up: Calendar Today Highlight / Public Score Pause / Docs Sync
+
+이번 스레드에서는 캘린더에서 오늘 날짜를 더 눈에 띄게 표시했고, OpenDART 단독 기반 점수의 신뢰도를 다시 검토한 뒤 공개 화면과 메일에서 정량 점수 노출을 잠시 중단했다. 마지막으로 이 결정이 다음 작업자에게 바로 전달되도록 문서도 함께 동기화했다.
+
+### What Changed In This Follow-up
+
+1. 홈 캘린더에서 `오늘` 날짜를 별도 badge와 강조 배경으로 표시하도록 바꿨다.
+2. OpenDART 단독 기반 점수의 신뢰도를 재검토했고, 현재 단계에서는 공개 추천/점수형 노출을 유지하지 않는 쪽이 더 안전하다고 정리했다.
+3. 홈 `종목 개요` 카드에서 점수/평가보류 상태를 제거하고, 일정·공모가·주관사 중심의 공시 기반 정보만 보이도록 정리했다.
+4. 상세 페이지 히어로의 점수 카드와 점수 문구를 `정량 점수 비공개` + `공시 기반 체크 포인트` 안내로 교체했다.
+5. 10시 분석 메일과 마감 임박 메일에서도 점수, 추천형 태그, 점수 공개 기준 문구를 걷어내고 중립적인 체크 포인트 안내로 바꿨다.
+6. 점수 로직 자체는 내부에 유지하되, 추가 데이터 소스와 결과 검증 전까지는 public surface에 다시 열지 않기로 했다.
+7. 위 정책 변경이 남아 있도록 `issue.md`, `README.md`, `AGENTS.md`, `agent.md`를 현재 상태로 동기화했다.
+
+### Main Code Changes In This Follow-up
+
+- 캘린더 / 홈 UI
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+  - `src/app/page.tsx`
+- 상세 페이지
+  - `src/app/ipos/[slug]/page.tsx`
+- 메일 payload / TODO 메모
+  - `src/lib/jobs.ts`
+- 문서
+  - `issue.md`
+  - `README.md`
+  - `AGENTS.md`
+  - `agent.md`
+
+### Verification In This Follow-up
+
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 오늘 날짜는 캘린더 셀에서 badge와 강조 스타일로 눈에 띄게 유지한다.
+- 정량 점수는 현재 내부 계산만 유지하고, 공개 화면과 메일에는 노출하지 않는다.
+- 점수 재공개 전제는 `OpenDART 외 추가 데이터 소스`, `근거 품질 검증`, `라이브 결과 검토`다.
+- 현재 public UX의 기본 방향은 `점수형 추천`이 아니라 `공시 기반 체크 포인트`다.
+
 ## 2026-03-21
 
 ### Thread Summary

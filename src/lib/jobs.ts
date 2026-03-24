@@ -425,65 +425,31 @@ const getDetailUrl = (slug: string) => {
   return `${baseUrl}/ipos/${encodeURIComponent(slug)}`;
 };
 
-const getScoreSummaryLine = (ipo: IpoRecord) =>
-  ipo.latestAnalysis.scoreDisplay.isVisible
-    ? `점수 ${ipo.latestAnalysis.score}점 (${ipo.latestAnalysis.ratingLabel})`
-    : "점수 평가 보류 (핵심 데이터 부족)";
-
 const getAnalysisSummaryLine = (ipo: IpoRecord) =>
-  ipo.latestAnalysis.scoreDisplay.isVisible
-    ? ipo.latestAnalysis.summary
-    : `평가 보류. ${ipo.latestAnalysis.scoreDisplay.helpText}`;
+  ipo.latestAnalysis.keyPoints[0]
+  ?? "정량 점수는 비공개 상태이며, 공시 기반 핵심 근거와 주의 포인트만 제공합니다.";
 
 const buildDecisionTags = (ipo: IpoRecord) => {
   const minimumDeposit = getMinimumDepositAmount(ipo);
-  const tags: string[] = [];
+  const tags: string[] = ["#공모주", "#청약마감", "#공시확인"];
 
-  if (!ipo.latestAnalysis.scoreDisplay.isVisible) {
-    tags.push("#평가보류");
-    tags.push("#데이터보완대기");
-  } else if (ipo.latestAnalysis.score >= 75) {
-    tags.push("#청약추천");
-  } else if (ipo.latestAnalysis.score >= 55) {
-    tags.push("#선별청약");
-  } else {
-    tags.push("#청약신중");
-  }
-
-  if (
-    ipo.latestAnalysis.scoreDisplay.isVisible
-    && minimumDeposit != null
-    && minimumDeposit <= 100_000
-    && ipo.latestAnalysis.score >= 60
-  ) {
-    tags.push("#균등추천");
-    tags.push("#소액참여적합");
-  } else {
-    tags.push("#균등비추천");
-  }
-
-  if (
-    ipo.latestAnalysis.scoreDisplay.isVisible
-    && minimumDeposit != null
-    && minimumDeposit <= 150_000
-    && ipo.latestAnalysis.score >= 75
-  ) {
-    tags.push("#레버리지검토가능");
-  } else {
-    tags.push("#레버리지신중");
+  if (minimumDeposit != null) {
+    tags.push("#증거금확인");
   }
 
   if (ipo.latestAnalysis.warnings.length > 0) {
     tags.push("#변동성주의");
   }
 
-  return tags;
+  return [...new Set(tags)];
 };
 
+// TODO: Re-enable public score and recommendation tags after validating the heuristic
+// with additional data sources beyond OpenDART and live outcome checks.
 const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 - 10시 분석`,
   tags: buildDecisionTags(ipo),
-  intro: `${ipo.name}의 청약 마감 당일 10시 기준 분석 요약입니다.`,
+  intro: `${ipo.name}의 청약 마감 당일 10시 기준 공시 기반 체크 포인트입니다.`,
   webUrl: getDetailUrl(ipo.slug),
   sections: [
     {
@@ -491,8 +457,8 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
       lines: [
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
         `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
-        getScoreSummaryLine(ipo),
-        ipo.latestAnalysis.scoreDisplay.helpText,
+        "정량 점수 비공개",
+        "OpenDART 단독 기준의 신뢰도 보강 전까지는 점수형 판단을 노출하지 않습니다.",
       ],
     },
     {
@@ -528,15 +494,15 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
     },
   ],
   footer: [
-    ipo.latestAnalysis.scoreDisplay.policyNote,
-    ipo.latestAnalysis.scoreDisplay.disclaimer,
+    "정량 점수는 데이터 신뢰도 보강 전까지 비공개 상태입니다.",
+    "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
 
 const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 임박 알림`,
   tags: buildDecisionTags(ipo),
-  intro: `${ipo.name} 청약 마감이 임박했습니다. 최종 주문 전 핵심 정보를 다시 확인하세요.`,
+  intro: `${ipo.name} 청약 마감이 임박했습니다. 최종 주문 전 공시 기반 핵심 정보를 다시 확인하세요.`,
   webUrl: getDetailUrl(ipo.slug),
   sections: [
     {
@@ -545,8 +511,8 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
         `청약 마감 오늘 16:00`,
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
         `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
-        getScoreSummaryLine(ipo),
-        ipo.latestAnalysis.scoreDisplay.helpText,
+        "정량 점수 비공개",
+        "현재는 점수 대신 공시 기반 체크 포인트만 제공합니다.",
       ],
     },
     {
@@ -574,8 +540,8 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
   ],
   footer: [
     "마감 직전에는 증권사별 주문 마감이 조금 다를 수 있으니 최종 화면을 다시 확인해 주세요.",
-    ipo.latestAnalysis.scoreDisplay.policyNote,
-    ipo.latestAnalysis.scoreDisplay.disclaimer,
+    "정량 점수는 데이터 신뢰도 보강 전까지 비공개 상태입니다.",
+    "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
 

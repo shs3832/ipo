@@ -99,13 +99,10 @@ export default async function Home() {
             name: ipo.name,
             market: ipo.market,
             leadManager: ipo.leadManager,
-            score: ipo.latestAnalysis.score,
             subscriptionEnd: ipo.subscriptionEnd.toISOString(),
             offerPrice: ipo.offerPrice,
             listingOpenPrice: ipo.listingOpenPrice,
             listingOpenReturnRate: ipo.listingOpenReturnRate,
-            ratingLabel: ipo.latestAnalysis.ratingLabel,
-            scoreDisplay: ipo.latestAnalysis.scoreDisplay,
           }))}
           monthDays={monthDays.map((day) => day.toISOString())}
         />

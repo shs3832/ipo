@@ -133,14 +133,11 @@ export default async function IpoDetailPage({
           {isListedYet ? unavailableLabel : pendingListingLabel}
         </span>
       );
-  const scoreDisplay = ipo.latestAnalysis.scoreDisplay;
-  const visibleScore = scoreDisplay.isVisible;
-  const analysisSummary = visibleScore
-    ? ipo.latestAnalysis.summary
-    : `평가 보류. ${scoreDisplay.helpText}`;
+  const analysisSummary =
+    "정량 점수는 데이터 신뢰도 보강 전까지 공개하지 않고, 현재는 공시에서 확인된 핵심 근거와 주의 포인트만 먼저 정리해 제공합니다.";
   const keyPoints = ipo.latestAnalysis.keyPoints.length
     ? ipo.latestAnalysis.keyPoints
-    : [visibleScore ? "세부 근거 데이터가 추가되면 분석 요약이 더 구체화됩니다." : scoreDisplay.policyNote];
+    : ["핵심 지표는 계속 보강 중이며, 현재는 확인된 공시 사실 위주로 요약합니다."];
   const warnings = ipo.latestAnalysis.warnings.length
     ? ipo.latestAnalysis.warnings
     : ["최종 청약 결정 전 증권신고서와 주관사 공고를 함께 확인해 주세요."];
@@ -234,20 +231,16 @@ export default async function IpoDetailPage({
             <BrokerChipList className={styles.heroBrokerList} names={[ipo.leadManager, ...ipo.coManagers]} />
             <div className={styles.metaRow}>
               <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
-              <span className="status-pill status-pill-soft">
-                {visibleScore ? `참고 점수 ${ipo.latestAnalysis.score}점` : "평가 보류"}
-              </span>
+              <span className="status-pill status-pill-soft">정량 점수 비공개</span>
             </div>
           </div>
 
           <div className={styles.scoreCard}>
-            <span className={styles.scoreLabel}>{visibleScore ? "현재 점수" : "평가 상태"}</span>
-            <strong className={visibleScore ? "" : styles.scoreValueMuted}>
-              {visibleScore ? ipo.latestAnalysis.score : "평가 보류"}
-            </strong>
-            <span className={styles.scoreRating}>{visibleScore ? ipo.latestAnalysis.ratingLabel : "데이터 보강 대기"}</span>
-            <p className={styles.scoreHelpText}>{scoreDisplay.helpText}</p>
-            <p className={styles.scoreDisclaimer}>{scoreDisplay.disclaimer}</p>
+            <span className={styles.scoreLabel}>분석 안내</span>
+            <strong className={styles.scoreValueMuted}>공시 기반</strong>
+            <span className={styles.scoreRating}>신뢰도 보강 후 정량 점수 재공개 예정</span>
+            <p className={styles.scoreHelpText}>현재는 일정, 가격, 주관사와 핵심 체크 포인트를 우선 제공합니다.</p>
+            <p className={styles.scoreDisclaimer}>점수형 판단은 OpenDART 외 추가 데이터 소스와 검증 기준을 보강한 뒤 다시 검토합니다.</p>
           </div>
         </section>
 
@@ -269,11 +262,11 @@ export default async function IpoDetailPage({
 
           <article className={`${styles.card} ${styles.cardWide}`}>
             <div className={styles.cardHeader}>
-              <h2 className="section-title">분석 요약</h2>
-              <p className="section-copy">핵심 근거와 주의 포인트를 먼저 보고, 세부 숫자는 아래에서 확인합니다.</p>
+              <h2 className="section-title">공시 기반 체크 포인트</h2>
+              <p className="section-copy">정량 점수 대신 공시에서 확인된 핵심 근거와 주의 포인트를 먼저 정리했습니다.</p>
             </div>
             <p className={styles.analysisSummary}>{analysisSummary}</p>
-            <p className={styles.analysisDisclaimer}>{scoreDisplay.policyNote}</p>
+            <p className={styles.analysisDisclaimer}>세부 숫자는 아래 항목과 증권신고서 원문을 함께 확인해 주세요.</p>
             <div className={styles.analysisColumns}>
               <div className={styles.analysisBlock}>
                 <h3>핵심 근거</h3>
