@@ -534,9 +534,9 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
 });
 
 const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
-  subject: `[공모주] ${ipo.name} 오늘 청약 마감 30분 전 알림`,
+  subject: `[공모주] ${ipo.name} 오늘 청약 마감 임박 알림`,
   tags: buildDecisionTags(ipo),
-  intro: `${ipo.name} 청약 마감까지 30분 남았습니다. 최종 주문 전 핵심 정보를 다시 확인하세요.`,
+  intro: `${ipo.name} 청약 마감이 임박했습니다. 최종 주문 전 핵심 정보를 다시 확인하세요.`,
   webUrl: getDetailUrl(ipo.slug),
   sections: [
     {
@@ -1267,6 +1267,10 @@ const ensureAdminRecipient = async (): Promise<void> => {
   }
 
   const email = env.adminEmail;
+  if (!email) {
+    throw new Error("ADMIN_EMAIL is not configured.");
+  }
+
   const recipient = await prisma.recipient.upsert({
     where: { id: "admin-recipient" },
     update: {
@@ -1554,8 +1558,7 @@ export const renderMessageHtml = (payload: NotificationJobRecord["payload"]) => 
 
 const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) => {
   if (!isEmailConfigured()) {
-    console.log(`EMAIL PREVIEW -> ${to}\n${renderMessageText(payload)}`);
-    return { providerMessageId: "console-preview" };
+    throw new Error("SMTP email settings are not configured.");
   }
 
   const transporter = createTransporter();
@@ -1990,8 +1993,6 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
       return result;
     }
 
-    await ensureAdminRecipient();
-
     const activeDisplayRangeCount = await countActiveDisplayRangeIpos();
 
     if (sourceRecords.length === 0 && activeDisplayRangeCount > 0) {
@@ -2277,6 +2278,10 @@ const dispatchPreparedAlerts = async ({
     const staleSkippedCount = staleJobs.length;
     const deliveries: NotificationDeliveryRecord[] = [];
 
+    if (readyJobs.length > 0 && recipients.length === 0) {
+      throw new Error("No active verified email recipients are configured for alert delivery.");
+    }
+
     if (useDatabase && staleJobs.length > 0) {
       await prisma.notificationJob.updateMany({
         where: {
@@ -2463,6 +2468,10 @@ const dispatchPreparedAlerts = async ({
       mode: useDatabase ? "database" : "fallback",
       timestamp: now,
       attempted: readyJobs.length,
+      sentCount,
+      failedCount,
+      skippedCount,
+      staleSkippedCount,
       deliveries,
     };
   } catch (error) {

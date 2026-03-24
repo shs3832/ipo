@@ -13,10 +13,13 @@ export async function GET(request: NextRequest) {
         level: "ERROR",
         source: "api:daily-sync",
         action: "misconfigured",
-        message: "JOB_SECRET 누락으로 daily-sync 호출을 차단했습니다.",
-        context: { path: request.nextUrl.pathname },
+        message: "CRON_SECRET과 JOB_SECRET이 모두 없어 daily-sync 호출을 차단했습니다.",
+        context: { path: request.nextUrl.pathname, ...auth.context },
       });
-      return NextResponse.json({ error: "Job secret is not configured" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Neither CRON_SECRET nor JOB_SECRET is configured" },
+        { status: 500 },
+      );
     }
 
     await logOperation({
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest) {
       source: "api:daily-sync",
       action: "unauthorized",
       message: "인증되지 않은 daily-sync 호출을 차단했습니다.",
-      context: { path: request.nextUrl.pathname },
+      context: { path: request.nextUrl.pathname, ...auth.context },
     });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -38,7 +41,14 @@ export async function GET(request: NextRequest) {
       source: "api:daily-sync",
       action: "completed",
       message: `daily-sync API 호출을 정상 처리했습니다. synced=${result.synced}`,
-      context: { path: request.nextUrl.pathname, mode: result.mode, synced: result.synced, forceRefresh },
+      context: {
+        path: request.nextUrl.pathname,
+        mode: result.mode,
+        synced: result.synced,
+        forceRefresh,
+        authMethod: auth.method,
+        ...auth.context,
+      },
     });
     return NextResponse.json(result);
   } catch (error) {

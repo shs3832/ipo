@@ -136,6 +136,8 @@ Treat it as a structured heuristic.
 - Required env for proper prod setup:
   - `ADMIN_ACCESS_PASSWORD`
   - `ADMIN_SESSION_SECRET`
+  - `ADMIN_EMAIL`
+  - `CRON_SECRET`
   - `JOB_SECRET`
 - Missing auth env should fail closed, not fall back to development-style secrets
 - Never commit `.env`

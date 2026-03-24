@@ -13,10 +13,11 @@ const parsePort = (value: string | undefined) => {
 
 export const env = {
   databaseUrl: process.env.DATABASE_URL ?? "",
+  cronSecret: process.env.CRON_SECRET ?? "",
   jobSecret: process.env.JOB_SECRET ?? "",
   adminAccessPassword: process.env.ADMIN_ACCESS_PASSWORD ?? "",
   adminSessionSecret: process.env.ADMIN_SESSION_SECRET ?? "",
-  adminEmail: process.env.ADMIN_EMAIL ?? "me@example.com",
+  adminEmail: process.env.ADMIN_EMAIL ?? "",
   appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
   smtpHost: process.env.SMTP_HOST ?? "",
   smtpPort: parsePort(process.env.SMTP_PORT) ?? 587,

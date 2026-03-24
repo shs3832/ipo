@@ -221,10 +221,11 @@ npm run dev
 주요 변수:
 
 - `DATABASE_URL`: PostgreSQL 연결 문자열
-- `JOB_SECRET`: 잡 API 보호용 필수 시크릿
+- `CRON_SECRET`: Vercel Cron 인증용 시크릿
+- `JOB_SECRET`: 수동 잡 API 호출 보호용 시크릿
 - `ADMIN_ACCESS_PASSWORD`: 관리자 로그인 비밀번호
 - `ADMIN_SESSION_SECRET`: 관리자 세션 서명용 랜덤 시크릿
-- `ADMIN_EMAIL`: 관리자 이메일
+- `ADMIN_EMAIL`: 실제 수신 가능한 관리자 이메일
 - `APP_BASE_URL`: 메일의 `웹에서 보기` 링크 기준 URL
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `IPO_SOURCE_URL`: 외부 JSON 데이터 소스
@@ -232,7 +233,9 @@ npm run dev
 - `OPENDART_BASE_URL`
 
 관리자 로그인은 `ADMIN_ACCESS_PASSWORD`와 `ADMIN_SESSION_SECRET`이 둘 다 있어야 동작합니다.
-`JOB_SECRET`이 없으면 잡 API는 허용되지 않고 misconfigured 상태로 차단됩니다.
+Vercel Cron 자동 실행에는 `CRON_SECRET`이 필요하고, 수동 호출에는 `JOB_SECRET`이 필요합니다.
+`CRON_SECRET`과 `JOB_SECRET`이 둘 다 없으면 잡 API는 misconfigured 상태로 차단됩니다.
+알림 메일 발송은 `ADMIN_EMAIL`과 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`이 모두 있어야 하며, 빠지면 발송 잡이 실패로 종료됩니다.
 
 소스 우선순위:
 
@@ -274,9 +277,11 @@ npm run source:check:opendart
 - `GET /api/jobs/daily-sync`
 - `GET /api/jobs/prepare-daily-alerts`
 - `GET /api/jobs/dispatch-alerts`
+- `GET /api/jobs/prepare-closing-alerts`
+- `GET /api/jobs/dispatch-closing-alerts`
 
-`JOB_SECRET`는 필수입니다. `?secret=` 쿼리 또는 `x-job-secret` 헤더가 필요합니다.  
-Vercel Cron은 `x-vercel-cron` 헤더를 통해 허용됩니다.
+Vercel Cron은 `Authorization: Bearer <CRON_SECRET>` 헤더로 인증합니다.  
+브라우저나 스크립트에서 수동 호출할 때는 `?secret=` 쿼리 또는 `x-job-secret` 헤더에 `JOB_SECRET`을 넣어야 합니다.
 
 ## 배포 메모
 

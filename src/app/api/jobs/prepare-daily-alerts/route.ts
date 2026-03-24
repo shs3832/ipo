@@ -13,10 +13,13 @@ export async function GET(request: NextRequest) {
         level: "ERROR",
         source: "api:prepare-daily-alerts",
         action: "misconfigured",
-        message: "JOB_SECRET 누락으로 prepare-daily-alerts 호출을 차단했습니다.",
-        context: { path: request.nextUrl.pathname },
+        message: "CRON_SECRET과 JOB_SECRET이 모두 없어 prepare-daily-alerts 호출을 차단했습니다.",
+        context: { path: request.nextUrl.pathname, ...auth.context },
       });
-      return NextResponse.json({ error: "Job secret is not configured" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Neither CRON_SECRET nor JOB_SECRET is configured" },
+        { status: 500 },
+      );
     }
 
     await logOperation({
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest) {
       source: "api:prepare-daily-alerts",
       action: "unauthorized",
       message: "인증되지 않은 prepare-daily-alerts 호출을 차단했습니다.",
-      context: { path: request.nextUrl.pathname },
+      context: { path: request.nextUrl.pathname, ...auth.context },
     });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -36,7 +39,13 @@ export async function GET(request: NextRequest) {
       source: "api:prepare-daily-alerts",
       action: "completed",
       message: `prepare-daily-alerts API 호출을 정상 처리했습니다. jobs=${result.jobs.length}`,
-      context: { path: request.nextUrl.pathname, mode: result.mode, jobs: result.jobs.length },
+      context: {
+        path: request.nextUrl.pathname,
+        mode: result.mode,
+        jobs: result.jobs.length,
+        authMethod: auth.method,
+        ...auth.context,
+      },
     });
     return NextResponse.json(result);
   } catch (error) {

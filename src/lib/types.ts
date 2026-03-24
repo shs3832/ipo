@@ -255,5 +255,9 @@ export type DispatchResult = {
   mode: "database" | "fallback";
   timestamp: Date;
   attempted: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  staleSkippedCount: number;
   deliveries: NotificationDeliveryRecord[];
 };

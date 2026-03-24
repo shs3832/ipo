@@ -1,5 +1,72 @@
 # Issue Log
 
+## 2026-03-24
+
+### Thread Summary
+
+운영 로그에 반복적으로 찍히던 잡 API `unauthorized` 경고를 분석했고, Vercel Cron 인증 방식과 현재 앱 인증 방식이 어긋나 있던 문제를 수정했다. 이어서 메일 발송 경로를 fail-closed로 보강하고, 마감 임박 알림의 운영 판단을 다시 정리해 최종적으로 `15:30 KST` 기준을 유지하도록 되돌렸다.
+
+### What Happened
+
+1. `2026-03-24` 운영 로그와 `OperationLog` DB를 직접 확인해 `/api/jobs/daily-sync`, `/api/jobs/prepare-daily-alerts`, `/api/jobs/dispatch-alerts`, `/api/jobs/prepare-closing-alerts`, `/api/jobs/dispatch-closing-alerts` 호출이 모두 `unauthorized`로 차단되고 있었음을 확인했다.
+2. 원인을 추적한 결과, 앱은 `JOB_SECRET` 또는 `x-vercel-cron` 기반 인증을 기대하고 있었지만 실제 운영 기준으로는 Vercel 공식 방식인 `Authorization: Bearer <CRON_SECRET>`을 지원해야 한다는 점을 정리했다.
+3. 잡 인증을 `CRON_SECRET` 우선 + `JOB_SECRET` 수동 호출 fallback 구조로 바꾸고, 단순 `x-vercel-cron` 헤더 신뢰는 제거했다.
+4. 잡 route 로그에 `cronSecretConfigured`, `jobSecretConfigured`, `hasAuthorizationHeader`, `authMethod` 같은 진단 컨텍스트를 남기도록 보강했다.
+5. 문서도 현재 운영 기준에 맞춰 `CRON_SECRET`, `JOB_SECRET`, `ADMIN_EMAIL`, `SMTP_*` 요구사항을 다시 정리했다.
+6. 추가 코드 리뷰 과정에서 `ADMIN_EMAIL`이 없을 때 placeholder 주소로 조용히 진행될 수 있는 점, SMTP 미설정 시 preview를 성공처럼 처리하던 점, 수신자가 없는데도 발송 잡이 계속 완료될 수 있는 점을 발견했다.
+7. 위 메일 관련 경로를 fail-closed로 바꿔, `ADMIN_EMAIL` 또는 `SMTP_*`가 없으면 준비/발송 잡이 분명하게 실패하도록 수정했다.
+8. `dispatch-alerts` / `dispatch-closing-alerts`는 내부 발송 실패가 있을 때 API 응답도 `500`으로 반환하게 바꿔, Vercel 쪽에서도 장애 신호를 바로 볼 수 있게 했다.
+9. 마감 임박 알림은 한때 `15:00` 윈도우 처리로 조정했지만, 실제 제품 판단상 의미 있는 막판 판단 시각은 `15:30`이라는 결론에 따라 최종적으로 다시 `15:30 KST` 기준으로 복원했다.
+
+### Main Code Changes
+
+- 잡 인증 / env
+  - `src/lib/job-auth.ts`
+  - `src/lib/env.ts`
+- 잡 API route
+  - `src/app/api/jobs/daily-sync/route.ts`
+  - `src/app/api/jobs/prepare-daily-alerts/route.ts`
+  - `src/app/api/jobs/dispatch-alerts/route.ts`
+  - `src/app/api/jobs/prepare-closing-alerts/route.ts`
+  - `src/app/api/jobs/dispatch-closing-alerts/route.ts`
+- 잡/메일 로직
+  - `src/lib/jobs.ts`
+  - `src/lib/types.ts`
+- 운영 문서 / 예제 env
+  - `.env.example`
+  - `README.md`
+  - `AGENTS.md`
+
+### Verified Root Cause
+
+- 반복된 `unauthorized` 경고의 직접 원인은 잡 호출 인증 불일치였다.
+- 기존 코드는 `JOB_SECRET` 수동 호출과 `x-vercel-cron` 헤더를 기준으로 판단했고, Vercel 공식 `Authorization: Bearer <CRON_SECRET>` 검증이 없었다.
+- 그 결과 배포 환경에서 실제 크론 호출 또는 크론처럼 보이는 호출이 들어와도 앱 기준으로는 인증 실패로 차단될 수 있었다.
+
+### Verification
+
+- `OperationLog` DB 직접 조회
+  - `2026-03-24` 기준 `api:* unauthorized` 반복 패턴 확인
+  - 대응하는 `job:* completed` 부재 확인
+- `npm run lint`
+- `npm run build`
+- 로컬 프로덕션 서버(`npm run start`) 기동 후 인증 테스트
+  - 무인증 `daily-sync` 호출: `401 Unauthorized`
+  - `Authorization: Bearer <CRON_SECRET>` 포함 `daily-sync` 호출: `200`, `authMethod: vercel-cron-secret` 확인
+- 로컬 프로덕션 서버에서 fail-closed 테스트
+  - `ADMIN_EMAIL` 비움 + `prepare-daily-alerts` 호출: `500`
+  - `ADMIN_EMAIL` 비움 + `daily-sync` 호출: `200` 유지
+  - `SMTP_*` 비움 + `dispatch-alerts` 호출: `500`, `failedCount > 0` 응답 확인
+
+### Current Decisions To Remember
+
+- Vercel Cron 자동 실행은 `CRON_SECRET` + `Authorization: Bearer <CRON_SECRET>` 기준으로 인증한다.
+- `JOB_SECRET`는 브라우저/스크립트에서 수동으로 잡 API를 호출할 때만 사용한다.
+- `ADMIN_EMAIL`은 실제 수신 가능한 주소가 필수이며, 기본 placeholder 값으로 대체하지 않는다.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`이 빠지면 발송 잡은 성공처럼 숨기지 말고 실패로 종료한다.
+- 발송 실패가 있으면 잡 내부 로그뿐 아니라 API 응답도 `500`으로 노출해 운영자가 즉시 인지할 수 있게 유지한다.
+- 마감 임박 알림은 최종적으로 `15:30 KST` 기준을 유지한다.
+
 ## 2026-03-21
 
 ### Thread Summary

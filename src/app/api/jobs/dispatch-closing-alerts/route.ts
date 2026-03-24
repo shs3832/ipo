@@ -13,10 +13,13 @@ export async function GET(request: NextRequest) {
         level: "ERROR",
         source: "api:dispatch-closing-alerts",
         action: "misconfigured",
-        message: "JOB_SECRET 누락으로 dispatch-closing-alerts 호출을 차단했습니다.",
-        context: { path: request.nextUrl.pathname },
+        message: "CRON_SECRET과 JOB_SECRET이 모두 없어 dispatch-closing-alerts 호출을 차단했습니다.",
+        context: { path: request.nextUrl.pathname, ...auth.context },
       });
-      return NextResponse.json({ error: "Job secret is not configured" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Neither CRON_SECRET nor JOB_SECRET is configured" },
+        { status: 500 },
+      );
     }
 
     await logOperation({
@@ -24,21 +27,35 @@ export async function GET(request: NextRequest) {
       source: "api:dispatch-closing-alerts",
       action: "unauthorized",
       message: "인증되지 않은 dispatch-closing-alerts 호출을 차단했습니다.",
-      context: { path: request.nextUrl.pathname },
+      context: { path: request.nextUrl.pathname, ...auth.context },
     });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const result = await dispatchClosingSoonAlerts();
+    const status = result.failedCount > 0 ? 500 : 200;
     await logOperation({
-      level: "INFO",
+      level: result.failedCount > 0 ? "WARN" : "INFO",
       source: "api:dispatch-closing-alerts",
-      action: "completed",
-      message: `dispatch-closing-alerts API 호출을 정상 처리했습니다. attempted=${result.attempted}`,
-      context: { path: request.nextUrl.pathname, mode: result.mode, attempted: result.attempted },
+      action: result.failedCount > 0 ? "completed_with_failures" : "completed",
+      message:
+        result.failedCount > 0
+          ? `dispatch-closing-alerts API 호출은 완료됐지만 발송 실패가 있습니다. attempted=${result.attempted}, failed=${result.failedCount}`
+          : `dispatch-closing-alerts API 호출을 정상 처리했습니다. attempted=${result.attempted}`,
+      context: {
+        path: request.nextUrl.pathname,
+        mode: result.mode,
+        attempted: result.attempted,
+        sentCount: result.sentCount,
+        failedCount: result.failedCount,
+        skippedCount: result.skippedCount,
+        staleSkippedCount: result.staleSkippedCount,
+        authMethod: auth.method,
+        ...auth.context,
+      },
     });
-    return NextResponse.json(result);
+    return NextResponse.json(result, { status });
   } catch (error) {
     await logOperation({
       level: "ERROR",
