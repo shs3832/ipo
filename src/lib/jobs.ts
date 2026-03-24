@@ -41,7 +41,7 @@ import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-
 import { fetchKindListingDates } from "@/lib/sources/kind-listings";
 import { fetchKindOfferDetails } from "@/lib/sources/kind-offer-details";
 import { fetchKindStockPriceSnapshot } from "@/lib/sources/kind-stock-prices";
-import { fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
+import { fetchOpendartCurrentMonthIpoResult, fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
 import nodemailer from "nodemailer";
 
 let databaseReachableCache: { value: boolean; expiresAt: number } | null = null;
@@ -51,6 +51,11 @@ const DATABASE_UNREACHABLE_CACHE_TTL_MS = 10_000;
 const STALE_SOURCE_WITHDRAWAL_GRACE_DAYS = 2;
 type SyncOptions = {
   forceRefresh?: boolean;
+};
+
+type SourceFetchResult = {
+  records: SourceIpoRecord[];
+  excludedNonIpoSlugs: string[];
 };
 
 type SchedulerDefinition = {
@@ -724,12 +729,13 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
   };
 };
 
-const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SourceIpoRecord[]> => {
+const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): Promise<SourceFetchResult> => {
   if (!hasLiveIpoSource()) {
     throw new Error("No live IPO source is configured. Set IPO_SOURCE_URL or OPENDART_API_KEY.");
   }
 
   let sourceRecords: SourceIpoRecord[];
+  let excludedNonIpoSlugs: string[] = [];
 
   if (env.ipoSourceUrl) {
     const cacheKey = createHash("sha256").update(env.ipoSourceUrl).digest("hex");
@@ -751,7 +757,9 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
       },
     );
   } else if (env.opendartApiKey) {
-    sourceRecords = await fetchOpendartCurrentMonthIpos({ forceRefresh });
+    const opendartResult = await fetchOpendartCurrentMonthIpoResult({ forceRefresh });
+    sourceRecords = opendartResult.records;
+    excludedNonIpoSlugs = opendartResult.excludedNonIpoNames.map((name) => slugify(name));
   } else {
     throw new Error("No live IPO source is configured. Set IPO_SOURCE_URL or OPENDART_API_KEY.");
   }
@@ -779,7 +787,11 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
 
   const recordsWithListingMetadata = await mergeKindListingMetadata(recordsWithOpendartEnrichment, { forceRefresh });
   const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(recordsWithListingMetadata, { forceRefresh });
-  return enrichListingOpenMetrics(recordsWithKindOfferMetadata, { forceRefresh });
+
+  return {
+    records: await enrichListingOpenMetrics(recordsWithKindOfferMetadata, { forceRefresh }),
+    excludedNonIpoSlugs,
+  };
 };
 
 const countActiveDisplayRangeIpos = async () => {
@@ -1327,7 +1339,10 @@ const ensureAdminRecipient = async (): Promise<void> => {
 const createDeliveryIdempotencyKey = (jobIdempotencyKey: string, recipientId: string, channelAddress: string) =>
   `${jobIdempotencyKey}:${recipientId}:EMAIL:${encodeURIComponent(channelAddress.trim().toLowerCase())}`;
 
-const markStaleDisplayRangeIpos = async (sourceRecords: SourceIpoRecord[]) => {
+const markStaleDisplayRangeIpos = async (
+  sourceRecords: SourceIpoRecord[],
+  { immediateWithdrawSlugs = [] }: { immediateWithdrawSlugs?: string[] } = {},
+) => {
   const activeSlugs = sourceRecords.map((record) => slugify(record.name));
   const displayRangeWhere = getDisplayRangeWhere();
   const staleCandidates = await prisma.ipo.findMany({
@@ -1354,13 +1369,34 @@ const markStaleDisplayRangeIpos = async (sourceRecords: SourceIpoRecord[]) => {
     return 0;
   }
 
+  const immediateWithdrawSlugSet = new Set(immediateWithdrawSlugs);
+
   const protectedCandidates = staleCandidates.filter((ipo) => {
+    if (immediateWithdrawSlugSet.has(slugify(ipo.name))) {
+      return false;
+    }
+
     const lastFetchedAt = ipo.sourceSnapshots[0]?.fetchedAt;
     return isOnOrAfterKstDayOffset(lastFetchedAt, -STALE_SOURCE_WITHDRAWAL_GRACE_DAYS);
   });
   const withdrawableIds = staleCandidates
-    .filter((ipo) => !protectedCandidates.some((protectedIpo) => protectedIpo.id === ipo.id))
+    .filter((ipo) => immediateWithdrawSlugSet.has(slugify(ipo.name)) || !protectedCandidates.some((protectedIpo) => protectedIpo.id === ipo.id))
     .map((ipo) => ipo.id);
+
+  if (immediateWithdrawSlugSet.size > 0) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "withdrew_non_ipo_records",
+      message: `실권주/배정형 비IPO로 판정된 ${immediateWithdrawSlugSet.size}건을 캘린더에서 제외했습니다.`,
+      context: {
+        count: immediateWithdrawSlugSet.size,
+        names: staleCandidates
+          .filter((ipo) => immediateWithdrawSlugSet.has(slugify(ipo.name)))
+          .map((ipo) => ipo.name),
+      },
+    });
+  }
 
   if (protectedCandidates.length > 0) {
     await logOperation({
@@ -2002,7 +2038,7 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
   });
 
   try {
-    const sourceRecords = await fetchSourceRecords({ forceRefresh });
+    const { records: sourceRecords, excludedNonIpoSlugs } = await fetchSourceRecords({ forceRefresh });
 
     if (!(await canUseDatabase())) {
       const result = {
@@ -2043,7 +2079,9 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
 
     const ipos = await Promise.all(sourceRecords.map((record) => upsertDatabaseIpo(record)));
     const synced = ipos.filter(Boolean).length;
-    const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords);
+    const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords, {
+      immediateWithdrawSlugs: excludedNonIpoSlugs,
+    });
 
     await logOperation({
       level: "INFO",

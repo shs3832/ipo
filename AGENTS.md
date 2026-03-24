@@ -47,6 +47,7 @@ Additional notes:
 - home `/` is intended to stay static with `revalidate = 300`
 - read paths should not perform recipient bootstrap or other DB writes
 - stale IPOs in the current display range are marked `WITHDRAWN` during sync after a `2-day` grace period based on the latest source-seen timestamp
+- except records explicitly classified as rights/public-offering non-IPO, which are withdrawn immediately
 
 ## OpenDART Scope Right Now
 
@@ -61,6 +62,7 @@ Behavior:
 - Display range is `current month + next month`
 - Disclosure lookup range is `two months back + current month`
 - Records are filtered by `subscriptionStart` / `subscriptionEnd` being within display range
+- estkRs `일반사항.asstd` is currently used as a temporary exclusion signal for rights/public-offering non-IPO cases
 - Month boundary and "today" logic must use `Asia/Seoul` helpers, not server local timezone
 
 OpenDART currently provides:
@@ -84,6 +86,7 @@ OpenDART still does not reliably provide:
 - float ratio
 - reliable refund date
 - reliable listing date
+- authoritative IPO-vs-rights-offering classification without extra heuristics or supplementary sources
 
 ## Scoring Reality
 
@@ -195,6 +198,7 @@ Notes:
 - 정량 점수는 현재 비공개이며, 재공개 기준과 검증 절차를 아직 확정하지 않았다
 - No public multi-recipient UI yet
 - Telegram adapter data model exists, but sending is not implemented
+- 캘린더 베이스가 아직 KIND-first가 아니라서, KIND에만 있는 일정 누락과 OpenDART 임시 분류 휴리스틱 의존이 남아 있다
 
 ## Best Next Steps
 
@@ -205,6 +209,7 @@ If continuing feature work, highest-impact next tasks are:
 3. validate score against live outcomes and define re-open conditions for public exposure
 4. split score into sub-scores
 5. expose data-completeness indicator more explicitly in UI
+6. redesign the calendar ingest to be KIND-first and replace the temporary `asstd` non-IPO filter with richer document/source classification
 
 ## Safe Working Rules
 

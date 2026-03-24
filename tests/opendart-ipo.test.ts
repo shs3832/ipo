@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { isOnOrAfterKstDayOffset } from "@/lib/date";
-import { buildOpendartIpoRanges, fetchCandidateDisclosuresForRange } from "@/lib/sources/opendart-ipo";
+import {
+  buildOpendartIpoRanges,
+  fetchCandidateDisclosuresForRange,
+  isLikelyNewListingGeneralRow,
+} from "@/lib/sources/opendart-ipo";
 
 test("buildOpendartIpoRanges keeps a wider disclosure lookback for upcoming IPO coverage", () => {
   const { displayRange, disclosureRange } = buildOpendartIpoRanges(new Date("2026-03-24T12:00:00+09:00"));
@@ -81,6 +85,22 @@ test("fetchCandidateDisclosuresForRange crawls every disclosure page instead of 
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test("isLikelyNewListingGeneralRow excludes allotment-based rights/public offering cases", () => {
+  assert.equal(
+    isLikelyNewListingGeneralRow({
+      asstd: "-",
+    }),
+    true,
+  );
+
+  assert.equal(
+    isLikelyNewListingGeneralRow({
+      asstd: "2026년 01월 29일",
+    }),
+    false,
+  );
 });
 
 test("isOnOrAfterKstDayOffset protects recently seen records across KST day boundaries", () => {

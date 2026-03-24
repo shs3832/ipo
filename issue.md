@@ -108,6 +108,81 @@
 - 점수 재공개 전제는 `OpenDART 외 추가 데이터 소스`, `근거 품질 검증`, `라이브 결과 검토`다.
 - 현재 public UX의 기본 방향은 `점수형 추천`이 아니라 `공시 기반 체크 포인트`다.
 
+### Follow-up: Rights Offering Exclusion / Calendar Source TODO
+
+참고 캘린더와 대조한 결과, 현재 OpenDART `증권신고서(지분증권)` 베이스에는 실권주·배정형 비IPO 일정이 섞일 수 있음을 다시 확인했다. 우선 `estkRs` 일반사항의 `배정기준일(asstd)`이 있는 건을 실권주/배정형 비IPO로 간주해 캘린더에서 제외하고, 더 근본적인 소스 재설계 항목은 TODO로 남겼다.
+
+### What Changed In This Follow-up
+
+1. OpenDART `estkRs` 일반사항의 `asstd` 값을 보고, 배정기준일이 잡히는 지분증권 일정은 캘린더용 신규 IPO 목록에서 제외하도록 필터를 추가했다.
+2. 이 기준으로 `티웨이항공`, `대한광통신`, `에스에너지`, `진양홀딩스`처럼 기존 상장사 지분증권 일정이 캘린더에 섞이던 케이스를 우선 제거한다.
+3. `아이엠바이오로직스`, `카나프테라퓨틱스`, `메쥬`, `한패스`, `리센스메디컬`, `인벤테라`, SPAC 계열은 현재 샘플 기준 `asstd = -`라 유지되도록 했다.
+4. `asstd`가 `-`면 통과하고 실제 날짜가 있으면 제외되는 단위 테스트를 추가했다.
+
+### Main Code Changes In This Follow-up
+
+- 실권주/배정형 일정 제외 필터
+  - `src/lib/sources/opendart-ipo.ts`
+- 테스트
+  - `tests/opendart-ipo.test.ts`
+- 문서 / TODO
+  - `issue.md`
+
+### Verification In This Follow-up
+
+- OpenDART `estkRs` 샘플 대조
+  - 비IPO 혼입으로 보인 `티웨이항공`, `대한광통신`, `에스에너지`, `진양홀딩스`는 `asstd` 값이 실제 날짜로 내려옴
+  - 유지해야 할 IPO 샘플 `아이엠바이오로직스`, `카나프테라퓨틱스`, `메쥬`, `한패스`, `리센스메디컬`, `인벤테라`, SPAC 계열은 `asstd = -`
+- `npm test`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run job:daily-sync -- --force-refresh`
+
+### TODO
+
+- 캘린더 베이스 소스를 OpenDART가 아니라 KIND IPO 일정 계열로 재설계해, KIND에만 있는 `상장` 일정도 신규 레코드로 생성할 수 있게 하기
+- OpenDART 비IPO 분류를 `asstd` 1개 신호에서 끝내지 않고 `실권주`, `주주배정후 실권주 일반공모`, `유상증자`, `일반공모` 같은 문구까지 문서 본문 기준으로 세분화하기
+- `케이뱅크`, `액스비스`, `에스팀`처럼 KIND에는 있지만 OpenDART 베이스에는 없는 종목을 캘린더에 포함시키는 보강 ingest 추가하기
+- 관리자용 검증 화면 또는 배치 리포트를 만들어 “참고 캘린더 대비 누락/과다”를 날짜별로 비교할 수 있게 하기
+
+### Follow-up: Immediate Non-IPO Withdrawal / Docs Sync
+
+실권주·배정형 비IPO를 OpenDART 수집 단계에서 걸러도, `daily-sync`가 그 제외 결과를 직접 쓰지 않으면 기존 DB 레코드가 `2일 유예`만 타고 남아 있었다. 이 스레드에서는 제외 결과를 동기화 경로에 연결해 즉시 `WITHDRAWN` 처리되게 마무리했고, 관련 운영 문서도 현재 동작 기준으로 갱신했다.
+
+### What Changed In This Follow-up
+
+1. `fetchSourceRecords()`가 OpenDART 소스 결과와 함께 `excludedNonIpoSlugs`를 반환하도록 바꿨다.
+2. `markStaleDisplayRangeIpos()`가 위 슬러그 목록을 받아, 실권주/배정형 비IPO로 판정된 종목은 `2일 유예` 없이 즉시 `WITHDRAWN` 처리하도록 연결했다.
+3. 일반적인 소스 누락은 기존처럼 `2일 유예`를 유지하고, 명시적 비IPO 판정 건만 바로 제외되도록 분기했다.
+4. `README.md`, `AGENTS.md`, `agent.md`에 현재 OpenDART 임시 분류 기준과 즉시 제외 동작을 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- 동기화 연결 / 즉시 제외 처리
+  - `src/lib/jobs.ts`
+- OpenDART 비IPO 제외 결과 반환
+  - `src/lib/sources/opendart-ipo.ts`
+- 테스트
+  - `tests/opendart-ipo.test.ts`
+- 문서
+  - `issue.md`
+  - `README.md`
+  - `AGENTS.md`
+  - `agent.md`
+
+### Verification In This Follow-up
+
+- `npm test`
+- `npx tsc --noEmit`
+- `npm run lint`
+  - 기존 `src/lib/sources/opendart-prospectus.ts` unused var 경고 3건만 유지
+- `npm run job:daily-sync -- --force-refresh`
+  - `2026-03-24 22:06 KST` 운영 로그에 `withdrew_non_ipo_records` 기록
+  - `실권주/배정형 비IPO로 판정된 11건을 캘린더에서 제외했습니다.`
+- DB 직접 확인
+  - `티웨이항공`, `대한광통신`, `에스에너지`, `진양홀딩스`, `비보존 제약`, `한국첨단소재`, `진양폴리우레탄` 등은 `WITHDRAWN`
+  - 표시 범위 활성 종목은 `카나프테라퓨틱스`, `아이엠바이오로직스`, `메쥬`, `한패스`, `리센스메디컬`, `인벤테라` 포함 13건만 남음
+
 ## 2026-03-21
 
 ### Thread Summary

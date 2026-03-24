@@ -57,6 +57,11 @@ type FetchOpendartCurrentMonthIposOptions = {
   forceRefresh?: boolean;
 };
 
+type OpendartCurrentMonthIpoResult = {
+  records: SourceIpoRecord[];
+  excludedNonIpoNames: string[];
+};
+
 const buildUrl = (path: string, params: Record<string, string>) => {
   const baseUrl = env.opendartBaseUrl.replace(/\/+$/, "");
   const search = new URLSearchParams(params);
@@ -177,6 +182,18 @@ const buildStatus = (start: string | null, end: string | null) => {
 
 const isEquityIpoDisclosure = (item: OpendartDisclosureItem) =>
   item.report_nm.includes("증권신고서(지분증권)");
+
+const hasMeaningfulOpendartValue = (value: string | undefined | null) => {
+  const normalized = value?.trim();
+  return Boolean(normalized && normalized !== "-");
+};
+
+export const isLikelyNewListingGeneralRow = (general: Record<string, string>) =>
+  !hasMeaningfulOpendartValue(general.asstd);
+
+const isExcludedNonIpoResult = (
+  record: SourceIpoRecord | { kind: "excluded_non_ipo"; name: string } | null,
+): record is { kind: "excluded_non_ipo"; name: string } => Boolean(record && "kind" in record);
 
 const byLatestReceipt = (left: { rcept_no: string }, right: { rcept_no: string }) =>
   right.rcept_no.localeCompare(left.rcept_no);
@@ -318,14 +335,17 @@ const fetchOpendartCurrentMonthIposUncached = async (
   displayRange: DateRange,
   disclosureRange: DateRange,
   { forceRefresh = false }: FetchOpendartCurrentMonthIposOptions = {},
-): Promise<SourceIpoRecord[]> => {
+): Promise<OpendartCurrentMonthIpoResult> => {
   const disclosures = await fetchCandidateDisclosuresForRange(disclosureRange);
   if (disclosures.length === 0) {
-    return [];
+    return {
+      records: [],
+      excludedNonIpoNames: [],
+    };
   }
   const uniqueDisclosures = [...new Map(disclosures.sort(byLatestReceipt).map((item) => [item.corp_code, item])).values()];
 
-  const records: Array<SourceIpoRecord | null> = await Promise.all(
+  const records: Array<SourceIpoRecord | { kind: "excluded_non_ipo"; name: string } | null> = await Promise.all(
     uniqueDisclosures.map(async (disclosure) => {
       const detail = await fetchEquitySecurityInfo(disclosure.corp_code, disclosureRange);
       if (!detail?.group?.length) {
@@ -346,6 +366,15 @@ const fetchOpendartCurrentMonthIposUncached = async (
 
       if (!general || !security) {
         return null;
+      }
+
+      // Existing listed-company rights/public offering cases in estkRs expose an allotment
+      // record date (`asstd`), while 신규 상장 건은 현재 수집 범위에서 `-`로 내려온다.
+      if (!isLikelyNewListingGeneralRow(general)) {
+        return {
+          kind: "excluded_non_ipo" as const,
+          name: disclosure.corp_name,
+        };
       }
 
       const fallbackProspectusReceiptNo = general.rcept_no ?? security.rcept_no ?? null;
@@ -437,14 +466,20 @@ const fetchOpendartCurrentMonthIposUncached = async (
     }),
   );
 
-  return records.filter((record): record is SourceIpoRecord => record !== null);
+  return {
+    records: records.filter((record): record is SourceIpoRecord => Boolean(record && "sourceKey" in record)),
+    excludedNonIpoNames: records.filter(isExcludedNonIpoResult).map((record) => record.name),
+  };
 };
 
-export const fetchOpendartCurrentMonthIpos = async ({
+export const fetchOpendartCurrentMonthIpoResult = async ({
   forceRefresh = false,
-}: FetchOpendartCurrentMonthIposOptions = {}): Promise<SourceIpoRecord[]> => {
+}: FetchOpendartCurrentMonthIposOptions = {}): Promise<OpendartCurrentMonthIpoResult> => {
   if (!env.opendartApiKey) {
-    return [];
+    return {
+      records: [],
+      excludedNonIpoNames: [],
+    };
   }
 
   const { displayRange, disclosureRange } = buildOpendartIpoRanges();
@@ -459,3 +494,8 @@ export const fetchOpendartCurrentMonthIpos = async ({
     async () => fetchOpendartCurrentMonthIposUncached(displayRange, disclosureRange, { forceRefresh }),
   );
 };
+
+export const fetchOpendartCurrentMonthIpos = async ({
+  forceRefresh = false,
+}: FetchOpendartCurrentMonthIposOptions = {}): Promise<SourceIpoRecord[]> =>
+  (await fetchOpendartCurrentMonthIpoResult({ forceRefresh })).records;
