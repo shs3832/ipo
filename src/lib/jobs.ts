@@ -19,12 +19,14 @@ import {
   type SyncResult,
 } from "@/lib/types";
 import { buildAnalysis, buildAnalysisScoreDisplay } from "@/lib/analysis";
+import { assessIpoDataQuality, type IpoDataQualitySummary } from "@/lib/ipo-data-quality";
 import {
   atKstTime,
   formatDate,
   formatDateTime,
   formatMoney,
   formatPercent,
+  getKstMinutesOfDay,
   getKstMonthRange,
   getKstTodayKey,
   isOnOrAfterKstDayOffset,
@@ -39,6 +41,7 @@ import { getCachedExternalData } from "@/lib/external-cache";
 import { buildFallbackDashboard, buildFallbackPublicHomeSnapshot } from "@/lib/fallback-data";
 import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
 import { fetchKindListingDates } from "@/lib/sources/kind-listings";
+import { fetchKindListingSchedule } from "@/lib/sources/kind-listing-schedule";
 import { fetchKindOfferDetails } from "@/lib/sources/kind-offer-details";
 import { fetchKindStockPriceSnapshot } from "@/lib/sources/kind-stock-prices";
 import { fetchOpendartCurrentMonthIpoResult, fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
@@ -49,6 +52,7 @@ const IPO_SOURCE_URL_CACHE_TTL_MS = 1000 * 60 * 30;
 const DATABASE_REACHABLE_CACHE_TTL_MS = 60_000;
 const DATABASE_UNREACHABLE_CACHE_TTL_MS = 10_000;
 const STALE_SOURCE_WITHDRAWAL_GRACE_DAYS = 2;
+const ALERT_DATA_FRESHNESS_MS = 90 * 60 * 1000;
 type SyncOptions = {
   forceRefresh?: boolean;
 };
@@ -200,42 +204,150 @@ const toListingOpenReturnRate = (offerPrice: number | null | undefined, listingO
   return Number((((listingOpenPrice - offerPrice) / offerPrice) * 100).toFixed(1));
 };
 
+const buildSourceStatus = (start: string | null, end: string | null) => {
+  if (!start || !end) {
+    return "UPCOMING" as const;
+  }
+
+  const todayKey = getKstTodayKey();
+
+  if (todayKey < start) {
+    return "UPCOMING" as const;
+  }
+
+  if (todayKey > end) {
+    return "CLOSED" as const;
+  }
+
+  return "OPEN" as const;
+};
+
 const mergeKindListingMetadata = async (
   records: SourceIpoRecord[],
   { forceRefresh = false }: SyncOptions = {},
 ): Promise<SourceIpoRecord[]> => {
-  if (records.length === 0) {
+  const [kindListings, kindListingSchedules] = await Promise.all([
+    fetchKindListingDates({ forceRefresh }),
+    fetchKindListingSchedule({ forceRefresh }),
+  ]);
+
+  if (records.length === 0 && kindListings.length === 0 && kindListingSchedules.length === 0) {
     return records;
   }
 
-  const kindListings = await fetchKindListingDates({ forceRefresh });
-  if (kindListings.length === 0) {
-    return records;
-  }
-
-  const listingDateByName = new Map(
+  const listingByName = new Map(
     kindListings.map(
       (listing) => [normalizeCompanyNameForMatching(listing.name), listing] as const,
     ),
   );
+  const listingScheduleByName = new Map(
+    kindListingSchedules.map(
+      (schedule) => [normalizeCompanyNameForMatching(schedule.name), schedule] as const,
+    ),
+  );
 
-  return records.map((record) => {
-    const kindListing = listingDateByName.get(normalizeCompanyNameForMatching(record.name));
-    if (!kindListing) {
+  const mergedRecords = records.map((record) => {
+    const normalizedName = normalizeCompanyNameForMatching(record.name);
+    const kindListing = listingByName.get(normalizedName);
+    const kindListingSchedule = listingScheduleByName.get(normalizedName);
+
+    if (!kindListing && !kindListingSchedule) {
       return record;
     }
 
     const notes = record.notes ?? [];
-    const kindNote = `KIND 신규상장기업현황 기준 상장예정일 ${kindListing.listingDate}`;
+    const nextNotes = [...notes];
+
+    if (kindListingSchedule) {
+      const kindScheduleNote = `KIND 공모일정 기준 상장예정일 ${kindListingSchedule.listingDate}`;
+      if (!nextNotes.includes(kindScheduleNote)) {
+        nextNotes.push(kindScheduleNote);
+      }
+    } else if (kindListing) {
+      const kindListingNote = `KIND 신규상장기업현황 기준 상장예정일 ${kindListing.listingDate}`;
+      if (!nextNotes.includes(kindListingNote)) {
+        nextNotes.push(kindListingNote);
+      }
+    }
 
     return {
       ...record,
-      kindIssueCode: kindListing.isurCd,
-      kindBizProcessNo: kindListing.bzProcsNo,
-      listingDate: kindListing.listingDate,
-      notes: notes.includes(kindNote) ? notes : [...notes, kindNote],
+      kindIssueCode: kindListing?.isurCd ?? record.kindIssueCode ?? null,
+      kindBizProcessNo: kindListingSchedule?.bizProcessNo ?? kindListing?.bzProcsNo ?? record.kindBizProcessNo ?? null,
+      listingDate: kindListingSchedule?.listingDate ?? kindListing?.listingDate ?? record.listingDate ?? null,
+      notes: nextNotes,
     };
   });
+
+  const existingNameKeys = new Set(mergedRecords.map((record) => normalizeCompanyNameForMatching(record.name)));
+  const missingKindSchedules = kindListingSchedules.filter(
+    (schedule) => !existingNameKeys.has(normalizeCompanyNameForMatching(schedule.name)),
+  );
+
+  const kindOnlyRecords: Array<SourceIpoRecord | null> = await Promise.all(
+    missingKindSchedules.map(async (schedule) => {
+      const kindListing = listingByName.get(normalizeCompanyNameForMatching(schedule.name));
+      if (!kindListing) {
+        return null;
+      }
+
+      const kindDetails = await fetchKindOfferDetails(kindListing.isurCd, schedule.bizProcessNo, { forceRefresh })
+        .catch(() => null);
+      if (!kindDetails?.subscriptionStart || !kindDetails.subscriptionEnd) {
+        return null;
+      }
+
+      return {
+        sourceKey: `kind-listing-schedule:${schedule.listingDate}:${kindListing.isurCd}:${schedule.bizProcessNo}`,
+        name: kindDetails.name ?? schedule.name,
+        market: kindDetails.market ?? "기타법인",
+        leadManager: kindDetails.leadManager ?? "-",
+        coManagers: kindDetails.coManagers,
+        kindIssueCode: kindListing.isurCd,
+        kindBizProcessNo: schedule.bizProcessNo,
+        priceBandLow: null,
+        priceBandHigh: null,
+        offerPrice: kindDetails.offerPrice,
+        minimumSubscriptionShares: null,
+        depositRate: null,
+        generalSubscriptionCompetitionRate: kindDetails.generalSubscriptionCompetitionRate,
+        irStart: kindDetails.irStart,
+        irEnd: kindDetails.irEnd,
+        demandForecastStart: kindDetails.demandForecastStart,
+        demandForecastEnd: kindDetails.demandForecastEnd,
+        tradableShares: kindDetails.tradableShares,
+        floatRatio: kindDetails.floatRatio,
+        subscriptionStart: kindDetails.subscriptionStart,
+        subscriptionEnd: kindDetails.subscriptionEnd,
+        refundDate: kindDetails.refundDate,
+        listingDate: schedule.listingDate ?? kindDetails.listingDate,
+        status: buildSourceStatus(kindDetails.subscriptionStart, kindDetails.subscriptionEnd),
+        demandCompetitionRate: null,
+        lockupRate: null,
+        insiderSalesRatio: null,
+        marketMoodScore: null,
+        financialReportLabel: null,
+        revenue: null,
+        previousRevenue: null,
+        revenueGrowthRate: null,
+        operatingIncome: null,
+        previousOperatingIncome: null,
+        operatingMarginRate: null,
+        netIncome: null,
+        previousNetIncome: null,
+        totalAssets: null,
+        totalLiabilities: null,
+        totalEquity: null,
+        debtRatio: null,
+        notes: [
+          `KIND 공모일정 기준 상장예정일 ${schedule.listingDate}`,
+          `KIND 공모기업현황 상세 기준 공모청약일정 ${kindDetails.subscriptionStart} ~ ${kindDetails.subscriptionEnd}`,
+        ],
+      } satisfies SourceIpoRecord;
+    }),
+  );
+
+  return [...mergedRecords, ...kindOnlyRecords.filter((record): record is SourceIpoRecord => record !== null)];
 };
 
 const mergeOpendartScoringEnrichment = (
@@ -329,6 +441,7 @@ const enrichKindOfferMetadata = async (
 
       return {
         ...record,
+        market: kindDetails.market ?? record.market,
         offerPrice: kindDetails.offerPrice ?? record.offerPrice ?? null,
         generalSubscriptionCompetitionRate:
           kindDetails.generalSubscriptionCompetitionRate ?? record.generalSubscriptionCompetitionRate ?? null,
@@ -339,7 +452,7 @@ const enrichKindOfferMetadata = async (
         tradableShares: kindDetails.tradableShares ?? record.tradableShares ?? null,
         floatRatio: kindDetails.floatRatio ?? record.floatRatio ?? null,
         refundDate: kindDetails.refundDate ?? record.refundDate ?? null,
-        listingDate: kindDetails.listingDate ?? record.listingDate ?? null,
+        listingDate: record.listingDate ?? kindDetails.listingDate ?? null,
         notes: nextNotes,
       } satisfies SourceIpoRecord;
     }),
@@ -355,27 +468,34 @@ const enrichListingOpenMetrics = async (
   }
 
   const todayKey = getKstTodayKey();
+  const currentKstMinutes = getKstMinutesOfDay();
   const captureWindowStartKey = shiftKstDateKey(todayKey, -5);
 
   const enrichedRecords = await Promise.all(
     records.map(async (record) => {
+      const isListingToday = record.listingDate === todayKey;
+
       if (
         !record.kindIssueCode ||
         !record.listingDate ||
-        record.listingDate >= todayKey ||
+        record.listingDate > todayKey ||
+        (isListingToday && currentKstMinutes < 10 * 60) ||
         record.listingDate < captureWindowStartKey
       ) {
         return record;
       }
 
-      const snapshot = await fetchKindStockPriceSnapshot(record.kindIssueCode, { forceRefresh });
+      const snapshot = await fetchKindStockPriceSnapshot(record.kindIssueCode, {
+        forceRefresh: forceRefresh || isListingToday,
+      });
       if (snapshot.priceDate !== record.listingDate || snapshot.openingPrice == null) {
         return record;
       }
 
       const listingOpenReturnRate = toListingOpenReturnRate(record.offerPrice, snapshot.openingPrice);
       const notes = record.notes ?? [];
-      const kindNote = `KIND 종가 기준(${snapshot.priceDate}) 시초가 ${snapshot.openingPrice.toLocaleString("ko-KR")}원`;
+      const asOfLabel = snapshot.priceAsOf ?? snapshot.priceDate ?? record.listingDate;
+      const kindNote = `KIND 시세 기준(${asOfLabel}) 시초가 ${snapshot.openingPrice.toLocaleString("ko-KR")}원`;
 
       return {
         ...record,
@@ -436,7 +556,28 @@ const getAnalysisSummaryLine = (ipo: IpoRecord) =>
   ipo.latestAnalysis.keyPoints[0]
   ?? "정량 점수는 비공개 상태이며, 공시 기반 핵심 근거와 주의 포인트만 제공합니다.";
 
-const buildDecisionTags = (ipo: IpoRecord) => {
+const buildDataQualityLines = (dataQuality: IpoDataQualitySummary) => {
+  const lines = [
+    `상태 ${dataQuality.label}`,
+    dataQuality.detail,
+  ];
+
+  if (dataQuality.confirmedFacts.length > 0) {
+    lines.push(`확인된 항목 ${dataQuality.confirmedFacts.join(", ")}`);
+  }
+
+  if (dataQuality.optionalMissing.length > 0) {
+    lines.push(`추가 확인 중 ${dataQuality.optionalMissing.join(", ")}`);
+  }
+
+  if (dataQuality.sourceChecks.length > 0) {
+    lines.push(`검증 경로 ${dataQuality.sourceChecks.join(" / ")}`);
+  }
+
+  return lines;
+};
+
+const buildDecisionTags = (ipo: IpoRecord, dataQuality: IpoDataQualitySummary) => {
   const minimumDeposit = getMinimumDepositAmount(ipo);
   const tags: string[] = ["#공모주", "#청약마감", "#공시확인"];
 
@@ -448,15 +589,26 @@ const buildDecisionTags = (ipo: IpoRecord) => {
     tags.push("#변동성주의");
   }
 
+  if (dataQuality.status === "VERIFIED") {
+    tags.push("#일정검증");
+  } else if (dataQuality.status === "PARTIAL") {
+    tags.push("#일부미확인");
+  }
+
   return [...new Set(tags)];
 };
 
 // TODO: Re-enable public score and recommendation tags after validating the heuristic
 // with additional data sources beyond OpenDART and live outcome checks.
-const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
+const buildClosingDayAnalysisMessage = (
+  ipo: IpoRecord,
+  dataQuality: IpoDataQualitySummary,
+): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 - 10시 분석`,
-  tags: buildDecisionTags(ipo),
-  intro: `${ipo.name}의 청약 마감 당일 10시 기준 공시 기반 체크 포인트입니다.`,
+  tags: buildDecisionTags(ipo, dataQuality),
+  intro:
+    `${ipo.name}의 청약 마감 당일 10시 기준 공시 기반 체크 포인트입니다. `
+    + `${dataQuality.status === "VERIFIED" ? "핵심 일정과 공모가는 검증된 값만 사용합니다." : "일부 항목은 추가 검증 상태를 함께 표시합니다."}`,
   webUrl: getDetailUrl(ipo.slug),
   sections: [
     {
@@ -471,8 +623,8 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
     {
       label: "핵심 요약",
       lines: [
-        `시장 ${ipo.market}`,
-        `주관사 ${ipo.leadManager}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
+        `시장 ${dataQuality.marketLabel}`,
+        `주관사 ${dataQuality.leadManagerLabel}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
         `청약 마감 ${formatDate(ipo.subscriptionEnd)} 16:00`,
         getAnalysisSummaryLine(ipo),
       ],
@@ -488,6 +640,10 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
       ],
     },
     {
+      label: "데이터 상태",
+      lines: buildDataQualityLines(dataQuality),
+    },
+    {
       label: "10시 분석",
       lines: [
         ...ipo.latestAnalysis.keyPoints,
@@ -501,14 +657,18 @@ const buildClosingDayAnalysisMessage = (ipo: IpoRecord): NotificationJobRecord["
     },
   ],
   footer: [
+    `데이터 상태: ${dataQuality.label}`,
     "정량 점수는 데이터 신뢰도 보강 전까지 비공개 상태입니다.",
     "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
 
-const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord["payload"] => ({
+const buildClosingSoonReminderMessage = (
+  ipo: IpoRecord,
+  dataQuality: IpoDataQualitySummary,
+): NotificationJobRecord["payload"] => ({
   subject: `[공모주] ${ipo.name} 오늘 청약 마감 임박 알림`,
-  tags: buildDecisionTags(ipo),
+  tags: buildDecisionTags(ipo, dataQuality),
   intro: `${ipo.name} 청약 마감이 임박했습니다. 최종 주문 전 공시 기반 핵심 정보를 다시 확인하세요.`,
   webUrl: getDetailUrl(ipo.slug),
   sections: [
@@ -525,11 +685,15 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
     {
       label: "공모 정보",
       lines: [
-        `시장 ${ipo.market}`,
-        `주관사 ${ipo.leadManager}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
+        `시장 ${dataQuality.marketLabel}`,
+        `주관사 ${dataQuality.leadManagerLabel}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
         `확정 공모가 ${ipo.offerPrice?.toLocaleString("ko-KR") ?? "-"}원`,
         `증거금률 ${formatPercent(ipo.depositRate)}`,
       ],
+    },
+    {
+      label: "데이터 상태",
+      lines: buildDataQualityLines(dataQuality),
     },
     {
       label: "빠른 리마인드",
@@ -546,6 +710,7 @@ const buildClosingSoonReminderMessage = (ipo: IpoRecord): NotificationJobRecord[
     },
   ],
   footer: [
+    `데이터 상태: ${dataQuality.label}`,
     "마감 직전에는 증권사별 주문 마감이 조금 다를 수 있으니 최종 화면을 다시 확인해 주세요.",
     "정량 점수는 데이터 신뢰도 보강 전까지 비공개 상태입니다.",
     "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
@@ -559,6 +724,12 @@ const getTodayClosingIpos = (dashboard: DashboardSnapshot, today: Date) =>
   dashboard.ipos.filter(
     (ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN",
   );
+
+const buildAlertCandidates = (ipos: IpoRecord[]) =>
+  ipos.map((ipo) => ({
+    ipo,
+    dataQuality: assessIpoDataQuality(ipo),
+  }));
 
 const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
   const storedJobs = await Promise.all(
@@ -854,6 +1025,83 @@ const canUseDatabase = async () => {
     const message = error instanceof Error ? error.message : "Unknown database connection error";
     console.warn(`Database unavailable, falling back to empty state: ${message}`);
     return false;
+  }
+};
+
+const ensureFreshAlertSourceData = async (source: string, now = new Date()) => {
+  const recentSuccess = await prisma.operationLog.findFirst({
+    where: {
+      source: "job:daily-sync",
+      action: "completed",
+      createdAt: {
+        gte: new Date(now.getTime() - ALERT_DATA_FRESHNESS_MS),
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      id: true,
+      createdAt: true,
+    },
+  });
+
+  if (recentSuccess) {
+    return false;
+  }
+
+  await logOperation({
+    level: "INFO",
+    source,
+    action: "refresh_source_data",
+    message: "알림 발송 전 최신 일정 검증을 위해 공모주 데이터를 다시 동기화합니다.",
+    context: {
+      freshnessMinutes: ALERT_DATA_FRESHNESS_MS / (60 * 1000),
+    },
+  });
+
+  await runDailySync({ forceRefresh: true });
+  return true;
+};
+
+const logAlertQualitySignals = async (
+  source: string,
+  alertLabel: string,
+  candidates: Array<{ ipo: IpoRecord; dataQuality: IpoDataQualitySummary }>,
+) => {
+  const blocked = candidates.filter((candidate) => !candidate.dataQuality.shouldSendAlert);
+  const partial = candidates.filter((candidate) => candidate.dataQuality.status === "PARTIAL");
+
+  if (blocked.length > 0) {
+    await logOperation({
+      level: "WARN",
+      source,
+      action: "skipped_unverified_ipos",
+      message: `핵심 정보가 부족한 공모주 ${blocked.length}건의 ${alertLabel} 생성을 보류했습니다.`,
+      context: {
+        count: blocked.length,
+        ipos: blocked.map((candidate) => ({
+          name: candidate.ipo.name,
+          criticalMissing: candidate.dataQuality.criticalMissing,
+        })),
+      },
+    });
+  }
+
+  if (partial.length > 0) {
+    await logOperation({
+      level: "INFO",
+      source,
+      action: "partial_alert_data",
+      message: `일부 항목이 미확인인 공모주 ${partial.length}건은 상태를 표시한 채 ${alertLabel}을 준비합니다.`,
+      context: {
+        count: partial.length,
+        ipos: partial.map((candidate) => ({
+          name: candidate.ipo.name,
+          optionalMissing: candidate.dataQuality.optionalMissing,
+        })),
+      },
+    });
   }
 };
 
@@ -2118,41 +2366,43 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
   });
 
   try {
-    if (await canUseDatabase()) {
-      await ensureAdminRecipient();
-    }
-
-    const dashboard = await getDashboardSnapshot();
-    const todayKey = getKstTodayKey();
-    const today = parseKstDate(todayKey);
-    const closingIpos = getTodayClosingIpos(dashboard, today);
-
-    const jobs: PreparedJobSeed[] = closingIpos.map((ipo) => ({
-      id: `prepared-${ipo.id}-closing-day-analysis`,
-      ipoId: ipo.id,
-      ipoSlug: ipo.slug,
-      alertType: "CLOSING_DAY_ANALYSIS" as const,
-      scheduledFor: atKstTime(todayKey, 10),
-      payload: buildClosingDayAnalysisMessage(ipo),
-      status: "READY" as const,
-      idempotencyKey: `${ipo.id}:${todayKey}:closing-day-analysis`,
-    }));
-
-    if (!(await canUseDatabase())) {
+    const useDatabase = await canUseDatabase();
+    if (!useDatabase) {
       await logOperation({
         level: "WARN",
         source: "job:prepare-daily-alerts",
-        action: "fallback_mode",
-        message: `DB 연결이 없어 fallback 상태에서 알림 ${jobs.length}건을 준비했습니다.`,
-        context: { jobs: jobs.length },
+        action: "fallback_mode_blocked",
+        message: "DB 연결이 없어 10시 분석 알림 준비를 보류했습니다.",
       });
 
       return {
         mode: "fallback",
         timestamp: new Date(),
-        jobs,
+        jobs: [],
       };
     }
+
+    await ensureFreshAlertSourceData("job:prepare-daily-alerts");
+    await ensureAdminRecipient();
+
+    const dashboard = await getDashboardSnapshot();
+    const todayKey = getKstTodayKey();
+    const today = parseKstDate(todayKey);
+    const candidates = buildAlertCandidates(getTodayClosingIpos(dashboard, today));
+    await logAlertQualitySignals("job:prepare-daily-alerts", "10시 분석 알림", candidates);
+
+    const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
+
+    const jobs: PreparedJobSeed[] = closingIpos.map(({ ipo, dataQuality }) => ({
+      id: `prepared-${ipo.id}-closing-day-analysis`,
+      ipoId: ipo.id,
+      ipoSlug: ipo.slug,
+      alertType: "CLOSING_DAY_ANALYSIS" as const,
+      scheduledFor: atKstTime(todayKey, 10),
+      payload: buildClosingDayAnalysisMessage(ipo, dataQuality),
+      status: "READY" as const,
+      idempotencyKey: `${ipo.id}:${todayKey}:closing-day-analysis`,
+    }));
 
     const storedJobs = await persistPreparedJobs(jobs);
 
@@ -2190,43 +2440,44 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
   });
 
   try {
-    if (await canUseDatabase()) {
-      await ensureAdminRecipient();
+    const useDatabase = await canUseDatabase();
+    if (!useDatabase) {
+      await logOperation({
+        level: "WARN",
+        source: "job:prepare-closing-alerts",
+        action: "fallback_mode_blocked",
+        message: "DB 연결이 없어 마감 30분 전 알림 준비를 보류했습니다.",
+      });
+
+      return {
+        mode: "fallback",
+        timestamp: new Date(),
+        jobs: [],
+      };
     }
+
+    await ensureFreshAlertSourceData("job:prepare-closing-alerts");
+    await ensureAdminRecipient();
 
     const now = new Date();
     const todayKey = getKstTodayKey(now);
     const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
     const today = parseKstDate(todayKey);
     const dashboard = await getDashboardSnapshot();
-    const closingIpos = now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [];
+    const candidates = now < closingCutoffAt ? buildAlertCandidates(getTodayClosingIpos(dashboard, today)) : [];
+    await logAlertQualitySignals("job:prepare-closing-alerts", "마감 30분 전 알림", candidates);
+    const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
 
-    const jobs: PreparedJobSeed[] = closingIpos.map((ipo) => ({
+    const jobs: PreparedJobSeed[] = closingIpos.map(({ ipo, dataQuality }) => ({
       id: `prepared-${ipo.id}-closing-soon-reminder`,
       ipoId: ipo.id,
       ipoSlug: ipo.slug,
       alertType: "CLOSING_DAY_ANALYSIS" as const,
       scheduledFor: atKstTime(todayKey, CLOSING_SOON_ALERT_HOUR, CLOSING_SOON_ALERT_MINUTE),
-      payload: buildClosingSoonReminderMessage(ipo),
+      payload: buildClosingSoonReminderMessage(ipo, dataQuality),
       status: "READY" as const,
       idempotencyKey: `${ipo.id}:${todayKey}:closing-soon-reminder`,
     }));
-
-    if (!(await canUseDatabase())) {
-      await logOperation({
-        level: "WARN",
-        source: "job:prepare-closing-alerts",
-        action: "fallback_mode",
-        message: `DB 연결이 없어 fallback 상태에서 마감 30분 전 알림 ${jobs.length}건을 준비했습니다.`,
-        context: { jobs: jobs.length, afterClose: now >= closingCutoffAt },
-      });
-
-      return {
-        mode: "fallback",
-        timestamp: new Date(),
-        jobs,
-      };
-    }
 
     const storedJobs = await persistPreparedJobs(jobs);
 

@@ -63,7 +63,7 @@ const chipClassNames: Record<EventType, string> = {
 };
 
 const calendarNotice =
-  "일정 데이터는 매일 오전 6시(Asia/Seoul) 기준으로 갱신됩니다. 환불·상장 일정은 증권사와 거래소 사정에 따라 변동될 수 있으니 최종 공고를 함께 확인해 주세요.";
+  "일정 데이터는 매일 오전 6시 기준으로 갱신되고, 상장일 시초가는 오전 10:10과 10:30에 추가 확인합니다. 환불·상장 일정은 최종 공고를 함께 확인해 주세요.";
 const calendarFilterStorageKey = "ipo-calendar-event-filters";
 const defaultFilters: Record<EventType, boolean> = {
   SUBSCRIPTION: true,

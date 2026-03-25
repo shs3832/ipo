@@ -22,7 +22,7 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 - Neon DB
 - Vercel deployment + Cron
 - Nodemailer + Gmail SMTP
-- OpenDART as the primary live data source
+- OpenDART disclosure source + KIND schedule/detail/price enrichment
 
 ## Must-Know Runtime Notes
 
@@ -38,8 +38,9 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
    - `OPENDART_API_KEY`
    - empty fallback
 3. `daily-sync` normalizes records and upserts DB
-4. `prepare-daily-alerts` creates payloads for closing-day emails
-5. `dispatch-alerts` sends deliveries and logs status
+4. `daily-sync` also reruns at `10:10 KST` and `10:30 KST` to capture listing-day opening prices
+5. `prepare-daily-alerts` creates payloads for closing-day emails after freshness / data-quality checks
+6. `dispatch-alerts` sends deliveries and logs status
 
 Additional notes:
 
@@ -48,6 +49,8 @@ Additional notes:
 - read paths should not perform recipient bootstrap or other DB writes
 - stale IPOs in the current display range are marked `WITHDRAWN` during sync after a `2-day` grace period based on the latest source-seen timestamp
 - except records explicitly classified as rights/public-offering non-IPO, which are withdrawn immediately
+- `prepare-daily-alerts` / `prepare-closing-alerts` should not send on stale data; if no successful `daily-sync` exists within the last `90 minutes`, they force a refresh first
+- alerts are blocked when any of `offerPrice`, `refundDate`, `listingDate`, `leadManager` is missing
 
 ## OpenDART Scope Right Now
 
@@ -190,6 +193,8 @@ Notes:
 
 - The script name remains `mail:sample`, but sample IPO data has been removed.
 - It now works as a preview sender for whatever prepared alert payload currently exists.
+- Alert payloads now include a `데이터 상태` section derived from `assessIpoDataQuality()`.
+- `BLOCKED` IPOs are skipped from automatic mail generation and should appear in ops logs as a quality signal.
 
 ## Known Product Gaps
 
@@ -199,6 +204,8 @@ Notes:
 - No public multi-recipient UI yet
 - Telegram adapter data model exists, but sending is not implemented
 - 캘린더 베이스가 아직 KIND-first가 아니라서, KIND에만 있는 일정 누락과 OpenDART 임시 분류 휴리스틱 의존이 남아 있다
+- KIND 캘린더에만 있는 `schedule-only` 상장 종목은 아직 `searchListingTypeSub` / KIND 상세 연결 여부에 따라 생성이 갈릴 수 있다
+- `kind-listing-schedule`가 시장 badge를 아직 읽지 않아, 일정 전용 종목은 `기타법인`으로 남을 수 있다
 
 ## Best Next Steps
 

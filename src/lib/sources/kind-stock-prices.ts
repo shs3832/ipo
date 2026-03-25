@@ -4,6 +4,7 @@ type KindStockPriceSnapshot = {
   issueCode: string;
   shortCode: string | null;
   priceDate: string | null;
+  priceAsOf: string | null;
   openingPrice: number | null;
   currentPrice: number | null;
   previousClosePrice: number | null;
@@ -32,9 +33,13 @@ const parseNumber = (value: string | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const extractStockPriceSnapshot = (html: string, issueCode: string): KindStockPriceSnapshot => {
+const extractPriceAsOf = (html: string) =>
+  html.match(/\*\s*(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?)\s*(?:종가\s*)?기준/)?.[1] ?? null;
+
+export const extractStockPriceSnapshot = (html: string, issueCode: string): KindStockPriceSnapshot => {
   const shortCode = html.match(/id="repIsuSrtCd"[^>]*value="([^"]+)"/)?.[1] ?? null;
-  const priceDate = html.match(/\*\s*(\d{4}-\d{2}-\d{2})\s*종가 기준/)?.[1] ?? null;
+  const priceAsOf = extractPriceAsOf(html);
+  const priceDate = priceAsOf?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
   const labelValuePairs = new Map<string, string>();
 
   for (const match of html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>\s*<td\b[^>]*>([\s\S]*?)<\/td>/g)) {
@@ -45,6 +50,7 @@ const extractStockPriceSnapshot = (html: string, issueCode: string): KindStockPr
     issueCode,
     shortCode,
     priceDate,
+    priceAsOf,
     openingPrice: parseNumber(labelValuePairs.get("시가")),
     currentPrice: parseNumber(labelValuePairs.get("현재가")),
     previousClosePrice: parseNumber(labelValuePairs.get("전일가")),

@@ -1,5 +1,91 @@
 # Issue Log
 
+## 2026-03-25
+
+### Follow-up: KIND Listing Coverage / Listing Open Price / Alert Quality Gate / Docs Sync
+
+이번 스레드에서는 참고 캘린더와 상장 일정을 더 가깝게 맞추기 위해 KIND `공모일정(상장)` 소스를 추가로 붙였고, 상장 당일 시초가를 자동으로 캡처하는 경로를 보강했다. 이어서 메일은 아무 데이터로나 보내지 않도록 `핵심 정보 검증` 게이트를 넣고, 공개 상세에도 현재 검증 상태를 함께 노출하도록 정리했다.
+
+### What Changed In This Follow-up
+
+1. KIND `공모일정` 캘린더에서 `상장` 일정을 직접 읽는 `kind-listing-schedule` 소스를 추가하고, `daily-sync`가 OpenDART 레코드에 KIND 상장일을 우선 병합하도록 바꿨다.
+2. 기존 `KIND 신규상장기업현황`만으로는 놓치던 `케이뱅크`, `에스팀`, `액스비스` 같은 상장 일정이 DB와 공개 스냅샷에 반영되도록 보강했다.
+3. KIND 상세의 `상장일`이 이미 캘린더에서 확인한 `상장예정일`을 다시 덮어쓰지 않도록 순서를 정리했고, KIND 상세에서 확인된 시장 구분도 기존 레코드에 병합되게 했다.
+4. KIND 시세 파서를 현재 응답 형식인 `* YYYY-MM-DD HH:mm:ss 기준`까지 읽도록 수정했고, 상장일 당일 `10:00 KST` 이후에는 같은 날도 시초가를 캡처할 수 있게 했다.
+5. `daily-sync` 크론을 `06:00 KST` 기본 동기화 외에 `10:10 KST`, `10:30 KST`에도 추가 실행하도록 바꿔 상장일 시초가와 공모가 대비 수익률을 자동 저장하게 했다.
+6. `ipo-data-quality` 평가기를 추가해 `확정 공모가`, `환불일`, `상장 예정일`, `주관사` 중 하나라도 비면 자동 메일 발송을 보류하게 했다.
+7. `prepare-daily-alerts`, `prepare-closing-alerts`는 알림 준비 전에 최근 `90분` 내 `daily-sync` 성공 로그가 없으면 먼저 `runDailySync({ forceRefresh: true })`를 수행하도록 바꿨다.
+8. 메일 payload와 상세 페이지에 `데이터 상태`를 노출해 `검증 완료 / 일부 미확인 / 발송 보류`를 구분하고, 어떤 항목이 확인됐는지 또는 추가 검증 중인지 같이 안내하게 했다.
+9. 홈 캘린더 안내 문구도 현재 운영 기준에 맞춰 `06:00` 기본 갱신 + `10:10/10:30` 시초가 추가 확인으로 갱신했다.
+10. 이번 동작과 현재 한계를 다음 작업자가 바로 이어받을 수 있도록 `README.md`, `AGENTS.md`, `agent.md`를 현재 기준으로 동기화했다.
+
+### Main Code Changes In This Follow-up
+
+- KIND 상장 일정 보강
+  - `src/lib/sources/kind-listing-schedule.ts`
+  - `src/lib/sources/kind-offer-details.ts`
+  - `src/lib/jobs.ts`
+  - `tests/kind-listing-schedule.test.ts`
+  - `tests/kind-offer-details.test.ts`
+- 상장일 시초가 캡처
+  - `src/lib/sources/kind-stock-prices.ts`
+  - `src/lib/date.ts`
+  - `src/lib/jobs.ts`
+  - `vercel.json`
+  - `tests/kind-stock-prices.test.ts`
+- 알림 데이터 품질 게이트 / 상세 표시
+  - `src/lib/ipo-data-quality.ts`
+  - `src/lib/jobs.ts`
+  - `src/app/home-content.tsx`
+  - `src/app/ipos/[slug]/page.tsx`
+  - `tests/ipo-data-quality.test.ts`
+- 문서
+  - `issue.md`
+  - `README.md`
+  - `AGENTS.md`
+  - `agent.md`
+
+### Verified Root Cause In This Follow-up
+
+- 상장 일정이 `2~3건`만 보이던 직접 원인은, 기존 흐름이 `KIND 신규상장기업현황`만 참고하고 `KIND 공모일정(상장)`을 읽지 않던 구조였다.
+- 상장일 시초가가 잘 안 잡히던 직접 원인은 KIND 시세 응답 포맷이 `종가 기준`에서 `HH:mm:ss 기준`으로 바뀌었는데 파서가 이를 반영하지 못했고, 같은 날 상장은 아예 캡처 조건에서 제외하고 있던 점이었다.
+- 알림 쪽은 DB가 없는 fallback 상태나 오래된 동기화 상태에서도 payload를 만들 수 있었고, 핵심 일정/공모가/주관사 누락 여부를 명시적으로 검사하지 않고 있었다.
+
+### Verification In This Follow-up
+
+- `npm test`
+  - `12` tests passed
+- `npx tsc --noEmit`
+- `npm run lint`
+  - 기존 `src/lib/sources/opendart-prospectus.ts` unused helper warning `3건`만 유지
+- 2026년 3월 상장 일정 DB / 공개 스냅샷 대조
+  - `2026-03-05` 케이뱅크
+  - `2026-03-06` 에스팀
+  - `2026-03-09` 액스비스
+  - `2026-03-16` 카나프테라퓨틱스
+  - `2026-03-20` 아이엠바이오로직스
+  - `2026-03-25` 한패스
+  - `2026-03-26` 메쥬
+  - `2026-03-27` 엔에이치기업인수목적33호
+  - `2026-03-27` 코스모로보틱스
+  - `2026-03-31` 리센스메디컬
+- 상장일 시초가 QA
+  - `한패스`가 `listingOpenPrice = 37,100원`, `listingOpenReturnRate = 95.3%`로 저장되는 것 확인
+
+### Current Decisions To Remember In This Follow-up
+
+- 상장 일정의 기준은 이제 `KIND 공모일정(상장)`을 우선 참고하고, OpenDART는 일정 생성보다 공시/재무 보강 성격으로 다룬다.
+- 상장일 시초가는 기본 sync와 분리하지 않고 `10:10 KST`, `10:30 KST` 추가 sync로 캡처한다.
+- 알림은 “보낼 수 있는 메일을 최대한 다 보내기”보다 “핵심 정보가 검증된 메일만 보내기”가 우선이다.
+- `확정 공모가`, `환불일`, `상장 예정일`, `주관사` 중 하나라도 비면 자동 알림은 생성하지 않고 운영 로그에 남긴다.
+- 공개 상세와 메일의 `데이터 상태` 표기는 같은 평가기를 공유해 서로 다른 메시지를 만들지 않는다.
+
+### Remaining Gaps / TODO
+
+- KIND 캘린더에만 있고 `searchListingTypeSub` / KIND 상세와 즉시 연결되지 않는 `schedule-only` 종목은 아직 완전한 KIND-first ingest가 아니다.
+- `kind-listing-schedule`는 현재 캘린더 행의 시장 badge를 읽지 않아, 상세 보강이 안 붙는 일정은 `기타법인`으로 남을 수 있다.
+- 상장일 시초가는 `10:10`과 `10:30` 두 번 재시도하지만, KIND 지연이 더 길면 놓칠 수 있어 `11:00` 추가 재시도는 운영 옵션으로 남아 있다.
+
 ## 2026-03-24
 
 ### Thread Summary

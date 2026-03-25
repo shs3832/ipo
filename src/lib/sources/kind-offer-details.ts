@@ -1,9 +1,15 @@
 import { getCachedExternalData } from "@/lib/external-cache";
 
 type KindOfferDetails = {
+  name: string | null;
+  market: string | null;
+  leadManager: string | null;
+  coManagers: string[];
   issueCode: string;
   bizProcessNo: string;
   offerPrice: number | null;
+  subscriptionStart: string | null;
+  subscriptionEnd: string | null;
   listingDate: string | null;
   refundDate: string | null;
   generalSubscriptionCompetitionRate: number | null;
@@ -95,6 +101,41 @@ const parseRatio = (value: string | null | undefined) => {
   return match ? parseFloatNumber(match[1]) : null;
 };
 
+const normalizeManagerName = (value: string) =>
+  value
+    .replace(/주식회사|\(주\)|㈜/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const parseManagerNames = (value: string | null | undefined) => {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[,/·]/)
+    .map((name) => normalizeManagerName(name))
+    .filter(Boolean);
+};
+
+const mapKindMarket = (value: string | null | undefined) => {
+  const normalized = value?.trim().toLowerCase() ?? "";
+
+  switch (normalized) {
+    case "유가증권":
+    case "icn_t_yu.gif":
+      return "KOSPI";
+    case "코스닥":
+    case "icn_t_ko.gif":
+      return "KOSDAQ";
+    case "코넥스":
+    case "icn_t_kn.gif":
+      return "KONEX";
+    default:
+      return null;
+  }
+};
+
 const extractLabelValuePairs = (html: string) => {
   const pairs = new Map<string, string>();
 
@@ -103,6 +144,20 @@ const extractLabelValuePairs = (html: string) => {
   }
 
   return pairs;
+};
+
+export const extractCompanyIdentity = (html: string) => {
+  const companyCellHtml = html.match(/<th\b[^>]*>\s*회사명\s*<\/th>\s*<td\b[^>]*>([\s\S]*?)<\/td>/)?.[1] ?? null;
+  const marketToken = companyCellHtml?.match(/alt=['"]([^'"]+)['"]/)?.[1]
+    ?? companyCellHtml?.match(/src=['"][^'"]*\/(icn_t_[^'"/]+\.gif)['"]/)?.[1]
+    ?? html.match(/alt=['"]([^'"]+)['"]/)?.[1]
+    ?? html.match(/src=['"][^'"]*\/(icn_t_[^'"/]+\.gif)['"]/)?.[1]
+    ?? null;
+
+  return {
+    name: companyCellHtml ? stripTags(companyCellHtml) || null : null,
+    market: mapKindMarket(marketToken),
+  };
 };
 
 const fetchKindDetailHtml = async (method: string, issueCode: string, bizProcessNo: string) => {
@@ -137,15 +192,24 @@ const fetchKindOfferDetailsUncached = async (
 
   const overviewPairs = extractLabelValuePairs(overviewHtml);
   const offerPairs = extractLabelValuePairs(offerHtml);
+  const identity = extractCompanyIdentity(overviewHtml);
+  const managerNames = parseManagerNames(overviewPairs.get("상장주선인"));
   const tradableShares = parseInteger(overviewPairs.get("유통가능주식수"));
   const listedShares = parseInteger(overviewPairs.get("상장주식수"));
   const irSchedule = parseDateRangeValue(offerPairs.get("IR일정"));
   const demandSchedule = parseDateRangeValue(offerPairs.get("수요예측일정"));
+  const subscriptionSchedule = parseDateRangeValue(offerPairs.get("공모청약일정"));
 
   return {
+    name: identity.name,
+    market: identity.market,
+    leadManager: managerNames[0] ?? null,
+    coManagers: managerNames.slice(1),
     issueCode,
     bizProcessNo,
     offerPrice: parseInteger(offerPairs.get("공모가격")),
+    subscriptionStart: subscriptionSchedule.start,
+    subscriptionEnd: subscriptionSchedule.end,
     listingDate: parseDateValue(offerPairs.get("상장일")),
     refundDate: parseDateValue(offerPairs.get("납입일")),
     generalSubscriptionCompetitionRate: parseRatio(offerPairs.get("청약경쟁률")),

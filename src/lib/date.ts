@@ -32,6 +32,11 @@ export const getKstTodayKey = (date = new Date()) => {
   return toKstDateString(year, month, day);
 };
 
+export const getKstMinutesOfDay = (date = new Date()) => {
+  const [hour, minute] = formatInTimeZone(date, TIME_ZONE, "HH:mm").split(":").map(Number);
+  return (hour * 60) + minute;
+};
+
 export const getKstMonthRange = (date = new Date(), offset = 0) => {
   const { year, month } = getKstDateParts(date);
   const shifted = getShiftedYearMonth(year, month, offset);

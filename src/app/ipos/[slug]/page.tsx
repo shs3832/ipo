@@ -13,6 +13,7 @@ import {
   getKstTodayKey,
   kstDateKey,
 } from "@/lib/date";
+import { assessIpoDataQuality } from "@/lib/ipo-data-quality";
 import { getIpoAdminMetadataBySlug } from "@/lib/jobs";
 import { getCachedIpoDetail } from "@/lib/page-data";
 import styles from "@/app/ipos/[slug]/page.module.scss";
@@ -142,6 +143,7 @@ export default async function IpoDetailPage({
     ? ipo.latestAnalysis.warnings
     : ["최종 청약 결정 전 증권신고서와 주관사 공고를 함께 확인해 주세요."];
   const minimumDepositAmount = getMinimumDepositAmount(ipo);
+  const dataQuality = assessIpoDataQuality(ipo);
   const quickFacts = [
     {
       label: "확정 공모가",
@@ -160,6 +162,10 @@ export default async function IpoDetailPage({
     {
       label: "상장 예정일",
       value: ipo.listingDate ? formatDate(ipo.listingDate) : null,
+    },
+    {
+      label: "데이터 상태",
+      value: dataQuality.label,
     },
     {
       label: "유통가능물량",
@@ -231,6 +237,7 @@ export default async function IpoDetailPage({
             <BrokerChipList className={styles.heroBrokerList} names={[ipo.leadManager, ...ipo.coManagers]} />
             <div className={styles.metaRow}>
               <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
+              <span className="status-pill status-pill-soft">데이터 {dataQuality.label}</span>
               <span className="status-pill status-pill-soft">정량 점수 비공개</span>
             </div>
           </div>
