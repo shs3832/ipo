@@ -1745,6 +1745,7 @@ const toNotificationDeliveryRecord = (delivery: {
   status: NotificationDeliveryRecord["status"];
   providerMessageId: string | null;
   errorMessage: string | null;
+  createdAt: Date;
   sentAt: Date | null;
   idempotencyKey: string;
 }): NotificationDeliveryRecord => ({
@@ -1756,6 +1757,7 @@ const toNotificationDeliveryRecord = (delivery: {
   status: delivery.status,
   providerMessageId: delivery.providerMessageId,
   errorMessage: delivery.errorMessage,
+  createdAt: delivery.createdAt,
   sentAt: delivery.sentAt,
   idempotencyKey: delivery.idempotencyKey,
 });
@@ -2641,6 +2643,7 @@ const dispatchPreparedAlerts = async ({
                 status: "SKIPPED",
                 providerMessageId: existing.providerMessageId,
                 errorMessage: existing.errorMessage,
+                createdAt: existing.createdAt,
                 sentAt: existing.sentAt,
                 idempotencyKey: existing.idempotencyKey,
               });
@@ -2683,6 +2686,7 @@ const dispatchPreparedAlerts = async ({
                 status: delivery.status,
                 providerMessageId: delivery.providerMessageId,
                 errorMessage: delivery.errorMessage,
+                createdAt: delivery.createdAt,
                 sentAt: delivery.sentAt,
                 idempotencyKey: delivery.idempotencyKey,
               });
@@ -2696,6 +2700,7 @@ const dispatchPreparedAlerts = async ({
                 status: "SENT",
                 providerMessageId: response.providerMessageId,
                 errorMessage: null,
+                createdAt: sentAt,
                 sentAt,
                 idempotencyKey,
               });
@@ -2718,7 +2723,7 @@ const dispatchPreparedAlerts = async ({
             });
 
             if (useDatabase) {
-              await prisma.notificationDelivery.upsert({
+              const delivery = await prisma.notificationDelivery.upsert({
                 where: { idempotencyKey },
                 update: {
                   status: "FAILED",
@@ -2734,20 +2739,35 @@ const dispatchPreparedAlerts = async ({
                   idempotencyKey,
                 },
               });
-            }
 
-            deliveries.push({
-              id: `delivery-failed-${recipient.id}-${job.id}`,
-              jobId: job.id,
-              recipientId: recipient.id,
-              channelType: "EMAIL",
-              channelAddress: channel.address,
-              status: "FAILED",
-              providerMessageId: null,
-              errorMessage: message,
-              sentAt: null,
-              idempotencyKey,
-            });
+              deliveries.push({
+                id: delivery.id,
+                jobId: delivery.jobId,
+                recipientId: delivery.recipientId,
+                channelType: delivery.channelType,
+                channelAddress: delivery.channelAddress,
+                status: delivery.status,
+                providerMessageId: delivery.providerMessageId,
+                errorMessage: delivery.errorMessage,
+                createdAt: delivery.createdAt,
+                sentAt: delivery.sentAt,
+                idempotencyKey: delivery.idempotencyKey,
+              });
+            } else {
+              deliveries.push({
+                id: `delivery-failed-${recipient.id}-${job.id}`,
+                jobId: job.id,
+                recipientId: recipient.id,
+                channelType: "EMAIL",
+                channelAddress: channel.address,
+                status: "FAILED",
+                providerMessageId: null,
+                errorMessage: message,
+                createdAt: new Date(),
+                sentAt: null,
+                idempotencyKey,
+              });
+            }
             jobDeliveries.push("FAILED");
           }
         }

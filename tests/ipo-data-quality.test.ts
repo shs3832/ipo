@@ -21,10 +21,10 @@ test("assessIpoDataQuality blocks alerts when critical facts are missing", () =>
 
   assert.equal(summary.status, "BLOCKED");
   assert.equal(summary.shouldSendAlert, false);
-  assert.deepEqual(summary.criticalMissing, ["확정 공모가", "환불일", "상장 예정일", "주관사"]);
+  assert.deepEqual(summary.criticalMissing, ["확정 공모가", "환불일", "주관사"]);
 });
 
-test("assessIpoDataQuality marks partially verified IPOs without blocking send", () => {
+test("assessIpoDataQuality does not block alerts when listing date is missing", () => {
   const summary = assessIpoDataQuality({
     market: "기타법인",
     leadManager: "한국투자증권",
@@ -35,14 +35,14 @@ test("assessIpoDataQuality marks partially verified IPOs without blocking send",
     depositRate: null,
     generalSubscriptionCompetitionRate: 1671.46,
     refundDate: parseKstDate("2026-03-19"),
-    listingDate: parseKstDate("2026-03-25"),
+    listingDate: null,
     floatRatio: 25.2,
   });
 
   assert.equal(summary.status, "PARTIAL");
   assert.equal(summary.shouldSendAlert, true);
   assert.equal(summary.marketLabel, "미확인");
-  assert.deepEqual(summary.optionalMissing, ["시장구분", "최소청약주수", "증거금률"]);
+  assert.deepEqual(summary.optionalMissing, ["상장 예정일", "시장구분", "최소청약주수", "증거금률"]);
 });
 
 test("assessIpoDataQuality marks fully verified IPOs as verified", () => {

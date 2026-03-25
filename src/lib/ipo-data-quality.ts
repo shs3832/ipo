@@ -55,12 +55,14 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
     criticalMissing.push("환불일");
   } else {
     confirmedFacts.push("환불일");
+    sourceChecks.push("환불일 확인");
   }
 
   if (!ipo.listingDate) {
-    criticalMissing.push("상장 예정일");
+    optionalMissing.push("상장 예정일");
   } else {
     confirmedFacts.push("상장 예정일");
+    sourceChecks.push("상장 예정일 확인");
   }
 
   if (!isKnownLeadManager(ipo.leadManager)) {
@@ -102,10 +104,6 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
     sourceChecks.push("공모가 확인");
   }
 
-  if (ipo.refundDate && ipo.listingDate) {
-    sourceChecks.push("환불일/상장 예정일 확인");
-  }
-
   if (ipo.minimumSubscriptionShares != null && ipo.depositRate != null) {
     sourceChecks.push("최소청약금액 계산 가능");
   }
@@ -129,7 +127,7 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
     return {
       status: "PARTIAL",
       label: "일부 미확인",
-      detail: `핵심 일정과 공모가는 확인했지만 ${formatMissingPreview(optionalMissing)}은(는) 아직 추가 검증 중입니다.`,
+      detail: `자동 발송 기준 핵심 정보는 확인했지만 ${formatMissingPreview(optionalMissing)}은(는) 아직 추가 검증 중입니다.`,
       shouldSendAlert: true,
       criticalMissing,
       optionalMissing,
@@ -143,7 +141,7 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
   return {
     status: "VERIFIED",
     label: "검증 완료",
-    detail: "핵심 일정, 확정 공모가, 주관사 정보를 확인했습니다.",
+    detail: "자동 발송 기준 핵심 정보와 주요 일정 정보를 확인했습니다.",
     shouldSendAlert: true,
     criticalMissing,
     optionalMissing,

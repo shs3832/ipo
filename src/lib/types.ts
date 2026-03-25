@@ -163,6 +163,7 @@ export type NotificationDeliveryRecord = {
   status: DeliveryStatus;
   providerMessageId: string | null;
   errorMessage: string | null;
+  createdAt: Date;
   sentAt: Date | null;
   idempotencyKey: string;
 };

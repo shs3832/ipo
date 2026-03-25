@@ -12,6 +12,16 @@ import styles from "@/app/admin/page.module.scss";
 
 export const dynamic = "force-dynamic";
 
+const getDeliveryTimestampLabel = (delivery: { status: string; sentAt: Date | null; createdAt: Date }) => {
+  if (delivery.sentAt) {
+    return `발송 ${formatDateTime(delivery.sentAt)}`;
+  }
+
+  return delivery.status === "FAILED"
+    ? `실패 ${formatDateTime(delivery.createdAt)}`
+    : `기록 ${formatDateTime(delivery.createdAt)}`;
+};
+
 const syncMessage = {
   success: (synced: string | undefined) =>
     `최신 공모주 데이터를 수동으로 다시 가져왔습니다.${synced ? ` 반영 건수 ${synced}건.` : ""}`,
@@ -224,7 +234,7 @@ export default async function AdminPage({
                       </strong>
                       <p>
                         {delivery.status}
-                        {delivery.sentAt ? ` · ${formatDateTime(delivery.sentAt)}` : ""}
+                        {` · ${getDeliveryTimestampLabel(delivery)}`}
                       </p>
                     </div>
                   </div>

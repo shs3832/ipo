@@ -50,7 +50,8 @@ Additional notes:
 - stale IPOs in the current display range are marked `WITHDRAWN` during sync after a `2-day` grace period based on the latest source-seen timestamp
 - except records explicitly classified as rights/public-offering non-IPO, which are withdrawn immediately
 - `prepare-daily-alerts` / `prepare-closing-alerts` should not send on stale data; if no successful `daily-sync` exists within the last `90 minutes`, they force a refresh first
-- alerts are blocked when any of `offerPrice`, `refundDate`, `listingDate`, `leadManager` is missing
+- alerts are blocked when any of `offerPrice`, `refundDate`, `leadManager` is missing
+- missing `listingDate` downgrades alerts to `PARTIAL` but does not block automatic send
 
 ## OpenDART Scope Right Now
 

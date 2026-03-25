@@ -2,6 +2,18 @@
 
 ## 2026-03-25
 
+### Follow-up: Alert Gate Listing Date Relaxation
+
+자동 메일의 발송 차단 필수값에서 `상장 예정일`을 제외했다. 이제 `확정 공모가`, `환불일`, `주관사`가 자동 발송 기준 핵심 정보이고, `상장 예정일`이 비어 있으면 발송 보류 대신 `데이터 상태: 일부 미확인`으로 처리한다. 이 기준으로 `ipo-data-quality` 테스트와 운영 문서도 함께 맞췄다.
+
+### Files Touched In This Follow-up
+
+- `src/lib/ipo-data-quality.ts`
+- `tests/ipo-data-quality.test.ts`
+- `README.md`
+- `AGENTS.md`
+- `agent.md`
+
 ### Follow-up: KIND Listing Coverage / Listing Open Price / Alert Quality Gate / Docs Sync
 
 이번 스레드에서는 참고 캘린더와 상장 일정을 더 가깝게 맞추기 위해 KIND `공모일정(상장)` 소스를 추가로 붙였고, 상장 당일 시초가를 자동으로 캡처하는 경로를 보강했다. 이어서 메일은 아무 데이터로나 보내지 않도록 `핵심 정보 검증` 게이트를 넣고, 공개 상세에도 현재 검증 상태를 함께 노출하도록 정리했다.
