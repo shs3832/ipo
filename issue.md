@@ -2,6 +2,49 @@
 
 ## 2026-03-25
 
+### Follow-up: Admin Recipient Email Management / Direct Delivery Test
+
+관리자 전용 수신자 관리 페이지를 추가해, `admin-recipient` 아래의 이메일 채널을 화면에서 직접 등록/수정/삭제할 수 있게 했다. 동시에 발송 로직도 primary 1개만 보던 방식에서 verified 이메일 채널 전체를 순회하도록 바꿔, 관리자 화면에서 추가한 주소가 실제 `dispatch-*` 발송 대상에 포함되게 맞췄다.
+
+### What Changed In This Follow-up
+
+1. `/admin`에서 바로 이동할 수 있는 `/admin/recipients` 관리자 전용 페이지를 새로 만들고, 등록된 발송 이메일 목록 조회 / 새 이메일 등록 / 인라인 수정 / 삭제를 지원하도록 구현했다.
+2. 수신자 저장 방식은 새 `Recipient`를 늘리는 대신 기존 `admin-recipient` 1개 아래에 여러 `RecipientChannel(EMAIL)`을 두는 구조로 유지해, 기존 delivery idempotency와 발송 파이프라인을 그대로 활용했다.
+3. 관리자 화면에서 등록한 이메일은 verified 상태로 즉시 저장되며, 마지막 남은 발송 이메일은 삭제되지 않도록 막았다.
+4. 기존 `ensureAdminRecipient()`의 “`ADMIN_EMAIL`만 남기고 다른 이메일은 삭제” 동작을 제거하고, `ADMIN_EMAIL`은 초기 seed 역할만 하도록 바꿨다.
+5. `resolveRecipients()`는 verified primary 1개만 고르지 않고 verified 이메일 채널 전체를 발송 대상으로 포함하도록 수정했다.
+6. `prepare-daily-alerts`, `prepare-closing-alerts`는 verified 이메일이 하나도 없으면 `/admin/recipients`에서 먼저 등록하라는 명확한 에러로 fail-closed 하도록 정리했다.
+7. 실제 운영 확인을 위해 추가 등록한 두 번째 이메일 채널로 직접 SMTP 테스트 메일을 발송했고, provider 응답 기준 `accepted`를 확인했다.
+
+### Main Code Changes In This Follow-up
+
+- 관리자 수신자 관리 UI / 액션
+  - `src/app/admin/page.tsx`
+  - `src/app/admin/recipients/page.tsx`
+  - `src/app/admin/recipients/page.module.scss`
+  - `src/app/admin/recipients/actions.ts`
+- 관리자 수신자 bootstrap / 발송 대상 해석
+  - `src/lib/jobs.ts`
+- 문서
+  - `issue.md`
+  - `README.md`
+
+### Verification In This Follow-up
+
+- `npm run build`
+- `npm run lint`
+  - 기존 `src/lib/sources/opendart-prospectus.ts` unused helper warning 3건만 유지, 새 lint error는 없음
+- 직접 SMTP 테스트
+  - `admin-recipient`의 최근 추가 이메일 채널을 대상으로 테스트 메일 발송
+  - provider 응답에서 `accepted` 확인, `rejected` 없음
+
+### Current Decisions To Remember In This Follow-up
+
+- 현재 수신자 관리 UI는 “여러 Recipient”가 아니라 “단일 `admin-recipient` + 여러 verified EMAIL 채널” 모델이다.
+- 실제 `dispatch-alerts` / `dispatch-closing-alerts`는 verified 이메일 채널 전체로 발송한다.
+- `ADMIN_EMAIL`은 더 이상 유일한 발송 대상이 아니라 초기 seed / preview 성격으로 본다.
+- 발송 이메일이 0개가 되지 않도록 마지막 채널 삭제는 막는다.
+
 ### Follow-up: Alert Gate Listing Date Relaxation
 
 자동 메일의 발송 차단 필수값에서 `상장 예정일`을 제외했다. 이제 `확정 공모가`, `환불일`, `주관사`가 자동 발송 기준 핵심 정보이고, `상장 예정일`이 비어 있으면 발송 보류 대신 `데이터 상태: 일부 미확인`으로 처리한다. 이 기준으로 `ipo-data-quality` 테스트와 운영 문서도 함께 맞췄다.

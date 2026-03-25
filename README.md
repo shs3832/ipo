@@ -1,7 +1,7 @@
 # IPO Calendar Alerts
 
 공모주 일정을 자동 수집해 내부 캘린더에 반영하고, 청약 마감 당일 오전 10시에 분석 메일을 보내는 개인용 서비스입니다.  
-1차는 단일 관리자 중심으로 운영하지만, 데이터 모델과 알림 파이프라인은 향후 다중 수신자 확장을 전제로 설계되어 있습니다.
+현재는 `admin-recipient` 1명을 중심으로 운영하지만, 관리자 화면에서 여러 이메일 채널을 등록해 함께 발송받을 수 있게 구성되어 있습니다.
 
 ## 프로젝트 성격
 
@@ -110,6 +110,7 @@
 
 - `/login` 기반 관리자 로그인
 - `/admin` 보호
+- `/admin/recipients`에서 발송 이메일 목록 조회 / 등록 / 수정 / 삭제
 - 최근 운영 로그 확인
 - `INFO / WARN / ERROR` 필터
 - 알림 발송/중복 건너뜀/실패 이력 저장
@@ -243,7 +244,7 @@ npm run dev
 - `JOB_SECRET`: 수동 잡 API 호출 보호용 시크릿
 - `ADMIN_ACCESS_PASSWORD`: 관리자 로그인 비밀번호
 - `ADMIN_SESSION_SECRET`: 관리자 세션 서명용 랜덤 시크릿
-- `ADMIN_EMAIL`: 실제 수신 가능한 관리자 이메일
+- `ADMIN_EMAIL`: 초기 seed / preview 대상이 될 관리자 이메일
 - `APP_BASE_URL`: 메일의 `웹에서 보기` 링크 기준 URL
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `IPO_SOURCE_URL`: 외부 JSON 데이터 소스
@@ -253,7 +254,8 @@ npm run dev
 관리자 로그인은 `ADMIN_ACCESS_PASSWORD`와 `ADMIN_SESSION_SECRET`이 둘 다 있어야 동작합니다.
 Vercel Cron 자동 실행에는 `CRON_SECRET`이 필요하고, 수동 호출에는 `JOB_SECRET`이 필요합니다.
 `CRON_SECRET`과 `JOB_SECRET`이 둘 다 없으면 잡 API는 misconfigured 상태로 차단됩니다.
-알림 메일 발송은 `ADMIN_EMAIL`과 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`이 모두 있어야 하며, 빠지면 발송 잡이 실패로 종료됩니다.
+알림 메일 발송은 `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`이 모두 있어야 하며, 동시에 verified 발송 이메일이 최소 1개 있어야 합니다.
+`ADMIN_EMAIL`은 초기 `admin-recipient` bootstrap 또는 `npm run mail:sample` preview 대상 용도로 사용할 수 있지만, 실제 `dispatch-*` 발송 대상은 `/admin/recipients`에 저장된 verified 이메일 채널 기준입니다.
 
 소스 우선순위:
 
@@ -288,7 +290,7 @@ npm run source:check:opendart
 
 참고:
 
-- `npm run mail:sample`은 이름은 그대로지만, 샘플 종목을 보내는 명령이 아니라 준비된 알림 payload를 관리자 메일로 미리 보내보는 preview 용도입니다.
+- `npm run mail:sample`은 이름은 그대로지만, 샘플 종목을 보내는 명령이 아니라 준비된 알림 payload를 `ADMIN_EMAIL`로 미리 보내보는 preview 용도입니다.
 
 ## API 엔드포인트
 
@@ -335,7 +337,9 @@ Vercel Cron은 `Authorization: Bearer <CRON_SECRET>` 헤더로 인증합니다.
 - OpenDART 요약값과 KIND 상세값이 충돌하는 경우 현재는 KIND 상세의 확정 공모가를 우선 사용합니다.
 - 자동 메일은 데이터가 비어 있어도 억지로 보내지 않고, 핵심 정보 누락 시 `발송 보류`로 처리합니다.
 - 상장일 시초가는 KIND 지연 시세 기준이라 `10:10`, `10:30` 재시도 후에도 늦게 반영될 수 있습니다.
-- 현재 관리자 수신자는 기본적으로 `admin-recipient` 1명입니다.
+- 현재 발송 관리는 기본적으로 `admin-recipient` 1명 아래의 여러 verified 이메일 채널로 운영합니다.
+- `/admin/recipients`에서 등록한 이메일은 다음 발송 잡부터 실제 `dispatch-*` 대상에 포함됩니다.
+- 마지막 남은 발송 이메일은 관리자 화면에서도 삭제되지 않도록 막아 두었습니다.
 - 알림 중복 방지는 `idempotencyKey` 기반입니다.
 - 홈 화면에서 `종목 개요`는 캘린더 오른쪽이 아니라 아래쪽에 배치됩니다.
 - 홈 캘린더의 주말 열은 현재 숨겨져 있으며, 렌더링 토글로 다시 켤 수 있게 유지되어 있습니다.
@@ -348,5 +352,5 @@ Vercel Cron은 `Authorization: Bearer <CRON_SECRET>` 헤더로 인증합니다.
 - 기관 경쟁률 / 의무보유확약률 안정 보강
 - 점수 체계를 `수급 / 재무 / 가격 / 리스크` 축으로 분리
 - 데이터 신뢰도 표시
-- 다중 수신자 UI
+- 수신자별 구독 범위 / 초대 상태 관리
 - 텔레그램 발송 구현

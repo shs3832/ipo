@@ -82,6 +82,9 @@ export default async function AdminPage({
             </article>
             <div className={styles.actionGroup}>
               <AdminManualSyncForm action={triggerManualSyncAction} />
+              <Link className="button-secondary" href="/admin/recipients">
+                이메일 관리
+              </Link>
               <Link className="button-primary" href="/">
                 캘린더 보기
               </Link>

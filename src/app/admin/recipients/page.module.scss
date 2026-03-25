@@ -1,0 +1,252 @@
+@use "../../../styles/mixins" as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hero {
+  @include surface(34px, 32px);
+
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 340px);
+}
+
+.heroBody,
+.heroAside,
+.card,
+.cardHeader,
+.form,
+.list,
+.row,
+.inlineForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.heroBody {
+  gap: 16px;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.heroAside {
+  gap: 14px;
+}
+
+.metricCard,
+.card,
+.feedbackBanner {
+  @include surface(24px, 28px);
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metricLabel,
+.label {
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.metricLabel {
+  color: var(--text-secondary);
+}
+
+.metricValue {
+  font-size: clamp(1.9rem, 4vw, 2.7rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.metricCopy,
+.helper,
+.row p,
+.deleteHint {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.actionGroup {
+  display: grid;
+}
+
+.feedbackBanner {
+  border: 1px solid transparent;
+}
+
+.feedbackBanner p {
+  line-height: 1.6;
+}
+
+.feedbackSuccess {
+  border-color: rgba(51, 179, 120, 0.28);
+  background: color-mix(in srgb, rgba(51, 179, 120, 0.14) 58%, white);
+  color: #0f6b43;
+}
+
+.feedbackError {
+  border-color: rgba(226, 90, 90, 0.28);
+  background: color-mix(in srgb, rgba(226, 90, 90, 0.12) 58%, white);
+  color: #8f2c2c;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+
+.card {
+  gap: 18px;
+}
+
+.cardHeader {
+  gap: 8px;
+}
+
+.form,
+.inlineForm {
+  gap: 12px;
+}
+
+.input {
+  min-height: 54px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text-primary);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary-soft-strong);
+  box-shadow: 0 0 0 4px rgba(42, 115, 245, 0.1);
+}
+
+.list {
+  gap: 12px;
+}
+
+.row,
+.emptyState {
+  @include softSurface(18px, 22px);
+
+  gap: 12px;
+}
+
+.row strong,
+.emptyState strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 1.02rem;
+}
+
+.rowHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rowHead > div {
+  min-width: 0;
+}
+
+.channelBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(42, 115, 245, 0.12);
+  color: var(--primary);
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.inlineActions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.deleteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.deleteButton {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(226, 90, 90, 0.28);
+  border-radius: 999px;
+  background: rgba(226, 90, 90, 0.08);
+  color: #9f2f2f;
+  font-weight: 700;
+  transition:
+    background var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-base);
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: rgba(226, 90, 90, 0.14);
+  border-color: rgba(226, 90, 90, 0.4);
+}
+
+.deleteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.emptyState p {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+@include mobile {
+  .hero,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .metricCard,
+  .card,
+  .feedbackBanner {
+    padding: 24px;
+    border-radius: 24px;
+  }
+
+  .inlineActions {
+    grid-template-columns: 1fr;
+  }
+
+  .input {
+    min-height: 50px;
+  }
+
+  .rowHead {
+    flex-direction: column;
+  }
+}

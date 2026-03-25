@@ -12,6 +12,7 @@ import {
   type NotificationJobRecord,
   type PreparedAlertsResult,
   type PublicHomeSnapshot,
+  type RecipientChannelRecord,
   type PublicIpoDetailRecord,
   type RecipientRecord,
   type SchedulerStatusRecord,
@@ -137,7 +138,10 @@ const schedulerDefinitions: SchedulerDefinition[] = [
 const CLOSING_TIME_HOUR = 16;
 const CLOSING_SOON_ALERT_HOUR = 15;
 const CLOSING_SOON_ALERT_MINUTE = 30;
+const ADMIN_RECIPIENT_ID = "admin-recipient";
 const hasLiveIpoSource = () => Boolean(env.ipoSourceUrl || env.opendartApiKey);
+
+const normalizeEmailAddress = (value: string) => value.trim().toLowerCase();
 
 const getDisplayRange = (date = new Date()) => {
   const currentMonth = getKstMonthRange(date, 0);
@@ -1489,18 +1493,22 @@ const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {
   return toIpoRecord(ipo);
 };
 
-const ensureAdminRecipient = async (): Promise<void> => {
-  if (!(await canUseDatabase())) {
-    return;
-  }
+const listRecipientEmailChannels = async (recipientId: string) =>
+  prisma.recipientChannel.findMany({
+    where: {
+      recipientId,
+      type: "EMAIL",
+    },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  });
 
-  const email = env.adminEmail;
-  if (!email) {
-    throw new Error("ADMIN_EMAIL is not configured.");
+const ensureAdminRecipient = async (): Promise<{ id: string } | null> => {
+  if (!(await canUseDatabase())) {
+    return null;
   }
 
   const recipient = await prisma.recipient.upsert({
-    where: { id: "admin-recipient" },
+    where: { id: ADMIN_RECIPIENT_ID },
     update: {
       name: "관리자",
       status: "ACTIVE",
@@ -1509,7 +1517,7 @@ const ensureAdminRecipient = async (): Promise<void> => {
       unsubscribedAt: null,
     },
     create: {
-      id: "admin-recipient",
+      id: ADMIN_RECIPIENT_ID,
       name: "관리자",
       status: "ACTIVE",
       inviteState: "INTERNAL",
@@ -1517,34 +1525,29 @@ const ensureAdminRecipient = async (): Promise<void> => {
     },
   });
 
-  await prisma.recipientChannel.upsert({
-    where: {
-      recipientId_type_address: {
+  const seedEmail = normalizeEmailAddress(env.adminEmail);
+  let emailChannels = await listRecipientEmailChannels(recipient.id);
+
+  if (emailChannels.length === 0 && seedEmail) {
+    await prisma.recipientChannel.create({
+      data: {
         recipientId: recipient.id,
         type: "EMAIL",
-        address: email,
+        address: seedEmail,
+        isPrimary: true,
+        isVerified: true,
       },
-    },
-    update: {
-      isPrimary: true,
-      isVerified: true,
-    },
-    create: {
-      recipientId: recipient.id,
-      type: "EMAIL",
-      address: email,
-      isPrimary: true,
-      isVerified: true,
-    },
-  });
+    });
 
-  await prisma.recipientChannel.deleteMany({
-    where: {
-      recipientId: recipient.id,
-      type: "EMAIL",
-      address: { not: email },
-    },
-  });
+    emailChannels = await listRecipientEmailChannels(recipient.id);
+  }
+
+  if (emailChannels.length > 0 && !emailChannels.some((channel) => channel.isPrimary)) {
+    await prisma.recipientChannel.update({
+      where: { id: emailChannels[0].id },
+      data: { isPrimary: true },
+    });
+  }
 
   await prisma.recipientChannel.upsert({
     where: {
@@ -1582,6 +1585,216 @@ const ensureAdminRecipient = async (): Promise<void> => {
       },
     });
   }
+
+  return {
+    id: recipient.id,
+  };
+};
+
+const toRecipientChannelRecord = (channel: {
+  id: string;
+  type: RecipientChannelRecord["type"];
+  address: string;
+  isPrimary: boolean;
+  isVerified: boolean;
+}): RecipientChannelRecord => ({
+  id: channel.id,
+  type: channel.type,
+  address: channel.address,
+  isPrimary: channel.isPrimary,
+  isVerified: channel.isVerified,
+});
+
+export const getAdminRecipientEmailChannels = async (): Promise<RecipientChannelRecord[]> => {
+  const recipient = await ensureAdminRecipient();
+  if (!recipient) {
+    return [];
+  }
+
+  const channels = await listRecipientEmailChannels(recipient.id);
+  return channels.map(toRecipientChannelRecord);
+};
+
+export const addAdminRecipientEmail = async (address: string): Promise<RecipientChannelRecord> => {
+  const recipient = await ensureAdminRecipient();
+  if (!recipient) {
+    throw new Error("DB 연결이 없어 이메일을 등록할 수 없습니다.");
+  }
+
+  const normalizedAddress = normalizeEmailAddress(address);
+
+  const channel = await prisma.$transaction(async (tx) => {
+    const emailChannels = await tx.recipientChannel.findMany({
+      where: {
+        recipientId: recipient.id,
+        type: "EMAIL",
+      },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    });
+
+    if (emailChannels.some((emailChannel) => emailChannel.address === normalizedAddress)) {
+      throw new Error("이미 등록된 이메일 주소입니다.");
+    }
+
+    const shouldBecomePrimary = emailChannels.length === 0 || !emailChannels.some((emailChannel) => emailChannel.isPrimary);
+    const createdChannel = await tx.recipientChannel.create({
+      data: {
+        recipientId: recipient.id,
+        type: "EMAIL",
+        address: normalizedAddress,
+        isPrimary: shouldBecomePrimary,
+        isVerified: true,
+      },
+    });
+
+    if (shouldBecomePrimary) {
+      await tx.recipientChannel.updateMany({
+        where: {
+          recipientId: recipient.id,
+          type: "EMAIL",
+          id: { not: createdChannel.id },
+        },
+        data: {
+          isPrimary: false,
+        },
+      });
+    }
+
+    return createdChannel;
+  });
+
+  await logOperation({
+    level: "INFO",
+    source: "admin:recipient-email",
+    action: "added",
+    message: `발송 이메일 ${normalizedAddress}를 등록했습니다.`,
+    context: {
+      recipientId: recipient.id,
+      channelId: channel.id,
+      address: normalizedAddress,
+    },
+  });
+
+  return toRecipientChannelRecord(channel);
+};
+
+export const updateAdminRecipientEmail = async (
+  channelId: string,
+  address: string,
+): Promise<RecipientChannelRecord> => {
+  const recipient = await ensureAdminRecipient();
+  if (!recipient) {
+    throw new Error("DB 연결이 없어 이메일을 수정할 수 없습니다.");
+  }
+
+  const normalizedAddress = normalizeEmailAddress(address);
+
+  const channel = await prisma.$transaction(async (tx) => {
+    const currentChannel = await tx.recipientChannel.findFirst({
+      where: {
+        id: channelId,
+        recipientId: recipient.id,
+        type: "EMAIL",
+      },
+    });
+
+    if (!currentChannel) {
+      throw new Error("수정할 이메일을 찾지 못했습니다.");
+    }
+
+    const duplicateChannel = await tx.recipientChannel.findFirst({
+      where: {
+        recipientId: recipient.id,
+        type: "EMAIL",
+        address: normalizedAddress,
+        id: { not: channelId },
+      },
+    });
+
+    if (duplicateChannel) {
+      throw new Error("이미 등록된 이메일 주소입니다.");
+    }
+
+    return tx.recipientChannel.update({
+      where: { id: channelId },
+      data: {
+        address: normalizedAddress,
+        isVerified: true,
+      },
+    });
+  });
+
+  await logOperation({
+    level: "INFO",
+    source: "admin:recipient-email",
+    action: "updated",
+    message: `발송 이메일을 ${normalizedAddress}로 수정했습니다.`,
+    context: {
+      recipientId: recipient.id,
+      channelId: channel.id,
+      address: normalizedAddress,
+    },
+  });
+
+  return toRecipientChannelRecord(channel);
+};
+
+export const deleteAdminRecipientEmail = async (channelId: string): Promise<{ address: string }> => {
+  const recipient = await ensureAdminRecipient();
+  if (!recipient) {
+    throw new Error("DB 연결이 없어 이메일을 삭제할 수 없습니다.");
+  }
+
+  const deleted = await prisma.$transaction(async (tx) => {
+    const emailChannels = await tx.recipientChannel.findMany({
+      where: {
+        recipientId: recipient.id,
+        type: "EMAIL",
+      },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    });
+
+    const targetChannel = emailChannels.find((emailChannel) => emailChannel.id === channelId);
+
+    if (!targetChannel) {
+      throw new Error("삭제할 이메일을 찾지 못했습니다.");
+    }
+
+    if (emailChannels.length <= 1) {
+      throw new Error("최소 1개의 발송 이메일은 유지되어야 합니다.");
+    }
+
+    await tx.recipientChannel.delete({
+      where: { id: channelId },
+    });
+
+    const remainingChannels = emailChannels.filter((emailChannel) => emailChannel.id !== channelId);
+
+    if (!remainingChannels.some((emailChannel) => emailChannel.isPrimary)) {
+      await tx.recipientChannel.update({
+        where: { id: remainingChannels[0].id },
+        data: { isPrimary: true },
+      });
+    }
+
+    return {
+      address: targetChannel.address,
+    };
+  });
+
+  await logOperation({
+    level: "INFO",
+    source: "admin:recipient-email",
+    action: "deleted",
+    message: `발송 이메일 ${deleted.address}를 삭제했습니다.`,
+    context: {
+      recipientId: recipient.id,
+      channelId,
+      address: deleted.address,
+    },
+  });
+
+  return deleted;
 };
 
 const createDeliveryIdempotencyKey = (jobIdempotencyKey: string, recipientId: string, channelAddress: string) =>
@@ -2387,6 +2600,10 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
     await ensureFreshAlertSourceData("job:prepare-daily-alerts");
     await ensureAdminRecipient();
 
+    if ((await resolveRecipients()).length === 0) {
+      throw new Error("발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.");
+    }
+
     const dashboard = await getDashboardSnapshot();
     const todayKey = getKstTodayKey();
     const today = parseKstDate(todayKey);
@@ -2460,6 +2677,10 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
 
     await ensureFreshAlertSourceData("job:prepare-closing-alerts");
     await ensureAdminRecipient();
+
+    if ((await resolveRecipients()).length === 0) {
+      throw new Error("발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.");
+    }
 
     const now = new Date();
     const todayKey = getKstTodayKey(now);
@@ -2536,8 +2757,6 @@ const resolveRecipients = async (): Promise<RecipientRecord[]> => {
       const verifiedEmailChannels = recipient.channels.filter(
         (channel) => channel.type === "EMAIL" && channel.isVerified,
       );
-      const primaryVerifiedEmails = verifiedEmailChannels.filter((channel) => channel.isPrimary);
-      const selectedEmailChannels = primaryVerifiedEmails.length ? primaryVerifiedEmails : verifiedEmailChannels;
 
       return {
         id: recipient.id,
@@ -2546,7 +2765,7 @@ const resolveRecipients = async (): Promise<RecipientRecord[]> => {
         inviteState: recipient.inviteState,
         consentedAt: recipient.consentedAt,
         unsubscribedAt: recipient.unsubscribedAt,
-        channels: selectedEmailChannels.map((channel) => ({
+        channels: verifiedEmailChannels.map((channel) => ({
           id: channel.id,
           type: channel.type,
           address: channel.address,
