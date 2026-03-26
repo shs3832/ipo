@@ -2,6 +2,54 @@
 
 ## 2026-03-26
 
+### Follow-up: Public Score Pause / Hidden UI / Reopen Notes
+
+이번 스레드에서는 공개 점수 노출을 다시 닫아두기로 결정했다. 점수 자체는 내부 휴리스틱과 팩트 테이블 구조를 유지하되, 사람마다 받아들이는 해석 편차가 크고 현재 소스 커버리지도 아직 고르지 않다고 봤다. 그래서 점수 파이프라인은 나중에 다시 열기 쉽도록 자리만 남기고, 현재 공개 화면과 메일에서는 다시 공시 기반 체크 포인트 중심으로 돌아가게 정리했다. 이 상태가 다음 작업자와 AI에게 바로 전달되도록, 닫아둔 이유와 재오픈 절차를 별도 문서로 분리해 남긴다.
+
+### What Changed In This Follow-up
+
+1. `src/lib/jobs.ts`에서 점수 fact sync / 재계산 helper를 no-op으로 바꾸고, 원래 호출 코드는 주석으로 남겨 추후 재오픈 시 바로 복구할 수 있게 했다.
+2. 공개 홈, 상세, 메일 read path에서는 더 이상 `getPublicIpoScoreMap()`을 붙이지 않고 `publicScore = null` 상태로 동작하게 정리했다.
+3. 메일/리마인더 문구도 점수/추천형 태그를 제거하고, 다시 공시 기반 체크 포인트 중심의 중립 문구로 돌렸다.
+4. 홈 카드의 점수 상태 배지/종합점수, 상세 히어로의 점수 pill/점수 카드/산출 근거, admin의 `V2 점수 상태` 카드까지 DOM은 유지하되 `display: none`으로 가려 재오픈 시 CSS 클래스만 걷어도 다시 보일 수 있게 했다.
+5. 현재 공개 정책과 재오픈 체크리스트를 `docs/context/score-rollout-status.md`로 분리했고, `AGENTS.md`, `README.md`, `docs/context/*`, `docs/ipo-score-architecture.md`를 최신 상태로 동기화했다.
+6. 이후 홈 카드에서 점수 UI가 계속 노출되는 것을 확인했고, 원인은 `.scoreHidden`보다 뒤에서 선언된 `.ipoScoreBadge`, `.ipoStats div`, `.scoreCard`의 `display` 규칙이 우선한 CSS specificity 충돌이었다. 세 화면의 `scoreHidden`을 `display: none !important`로 보강해 실제 렌더에서도 확실히 숨겨지게 수정했다.
+
+### Main Code Changes In This Follow-up
+
+- 점수 노출 중단 / 메일 문구 정리
+  - `src/lib/jobs.ts`
+- 홈 / 상세 점수 UI 숨김
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+  - `src/app/ipos/[slug]/page.tsx`
+  - `src/app/ipos/[slug]/page.module.scss`
+- 문서
+  - `issue.md`
+  - `AGENTS.md`
+  - `README.md`
+  - `docs/README.md`
+  - `docs/context/README.md`
+  - `docs/context/project-overview.md`
+  - `docs/context/runtime-and-ops.md`
+  - `docs/context/data-and-scoring.md`
+  - `docs/context/product-surface.md`
+  - `docs/context/score-rollout-status.md`
+  - `docs/ipo-score-architecture.md`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm run build`
+- `npm run lint`
+
+### Current Decisions To Remember In This Follow-up
+
+- 공개 홈, 상세, 메일에서는 정량 점수를 다시 숨긴 상태가 현재 기준이다.
+- 점수 데이터 구조와 admin score summary fetch는 남겨두되, 현재는 admin UI까지 포함해 점수 관련 화면을 전부 숨긴 상태다.
+- 홈/상세 점수 DOM은 유지하고 있으므로, 재오픈 시에는 `jobs.ts` helper 복구 + `scoreHidden` 제거가 핵심 복구 포인트다.
+- 재오픈 전에는 추가 소스 커버리지, 점수 해석 기준, 공개 문구 정책을 다시 점검한다.
+
 ### Follow-up: Documentation Restructure For AI Context
 
 이번 스레드에서는 길게 누적된 `README.md`, `AGENTS.md`, `issue.md`의 역할이 서로 섞이기 시작한 문제를 정리했다. 목표는 사람과 AI 작업자가 모두 같은 구조로 프로젝트 맥락을 빠르게 복원하는 것이었고, 이를 위해 `docs/README.md`를 문서 인덱스로 두고 `docs/context/` 아래에 역할별 맥락 문서를 분리했다. 동시에 `AGENTS.md`는 짧은 운영 규칙과 읽을 문서 링크만 남기는 식으로 압축하고, `README.md`는 사용자/운영자용 quick start 중심으로 되돌렸다.

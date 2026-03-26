@@ -27,17 +27,14 @@
 - 이벤트 타임라인은 제거됨
 - source metadata는 admin이 아니면 숨김
 
-## Public Score Display
+## Public Score UI Status
 
-- 홈 카드:
-  - 점수 상태 배지
-  - 종합점수
-- 상세 히어로:
-  - 종합점수
-  - 유통 / 확약 / 경쟁 / 마켓
-  - 재무 보정 설명
-- 체크 포인트 영역:
-  - public score snapshot의 `explanations`, `warnings` 우선 사용
+- 홈 카드의 점수 상태 배지와 종합점수는 현재 `display: none`으로 숨겨 둠
+- 상세 히어로의 점수 pill, 점수 카드, 산출 근거 블록도 현재 `display: none`으로 숨겨 둠
+- admin의 `V2 점수 상태` 카드도 현재 `display: none`으로 숨겨 둠
+- 공개 화면은 지금 `점수형 추천`보다 `공시 기반 체크 포인트` 중심
+- 점수 UI는 DOM을 유지하고 있으므로, 재오픈 시에는 `scoreHidden` 제거가 핵심 복구 포인트
+- 자세한 재오픈 절차는 [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 본다
 
 ## UI Constraints
 
@@ -62,7 +59,7 @@
 
 - closing-day analysis 메일
 - closing-soon reminder 메일
-- 공개 화면과 같은 score/explanations를 우선 사용
+- 현재는 점수 노출 대신 공시 기반 체크 포인트와 데이터 상태 중심 문구 사용
 - 링크는 `APP_BASE_URL` 기준
 
 ## Known Product Gaps

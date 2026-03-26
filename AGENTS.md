@@ -24,8 +24,9 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 - 공개 read path에서는 recipient bootstrap 같은 DB write를 하지 않음
 - 알림/발송 로직은 항상 idempotent 유지
 - admin 전용 메타데이터는 공개 화면에 노출하지 않음
-- 점수는 현재 `ipo_score_snapshot` 기반으로 공개 노출 중이며, `PARTIAL`도 총점이 있으면 표시
-- 홈 `/`는 `revalidate = 300`이므로 점수 재계산 직후 잠시 stale 할 수 있음
+- 공개 점수 rollout은 현재 pause 상태이며, 홈/상세 점수 UI는 숨겨져 있음
+- 점수 재오픈 기준과 코드 복구 포인트는 [`docs/context/score-rollout-status.md`](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 먼저 확인
+- 홈 `/`는 `revalidate = 300`
 
 ## Fast Links
 
@@ -33,6 +34,7 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 - 프로젝트 개요: [`docs/context/project-overview.md`](/Users/shs/Desktop/Study/ipo/docs/context/project-overview.md)
 - 런타임/운영: [`docs/context/runtime-and-ops.md`](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)
 - 데이터/점수: [`docs/context/data-and-scoring.md`](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
+- 점수 공개 상태: [`docs/context/score-rollout-status.md`](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 - 제품/UI: [`docs/context/product-surface.md`](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
 - 점수 설계 상세: [`docs/ipo-score-architecture.md`](/Users/shs/Desktop/Study/ipo/docs/ipo-score-architecture.md)
 - 스레드 로그: [`issue.md`](/Users/shs/Desktop/Study/ipo/issue.md)

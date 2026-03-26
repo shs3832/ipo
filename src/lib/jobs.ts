@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 import {
-  type AdminIpoScoreRecord,
   type AdminOverrideRecord,
   type AdminStatusSummary,
   type DashboardSnapshot,
@@ -44,11 +43,7 @@ import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { buildFallbackDashboard, buildFallbackPublicHomeSnapshot } from "@/lib/fallback-data";
 import {
-  enqueueDailyScoreAuditForLegacyIpos,
   getAdminIpoScoreSummaries,
-  getPublicIpoScoreMap,
-  processPendingIpoScoreRecalcQueue,
-  syncIpoScoringArtifacts,
 } from "@/lib/ipo-score-store";
 import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
 import { fetchKindListingDates } from "@/lib/sources/kind-listings";
@@ -745,74 +740,22 @@ const getDetailUrl = (slug: string) => {
   return `${baseUrl}/ipos/${encodeURIComponent(slug)}`;
 };
 
-const formatPublicScoreValue = (value: number | null, withUnit = true) =>
-  value == null ? null : `${value.toFixed(1)}${withUnit ? "점" : ""}`;
-
-const formatPublicAdjustmentScoreValue = (value: number | null) =>
-  value == null ? "-" : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
-
-const getPublicScoreStatusLabel = (score: IpoRecord["publicScore"]) => {
-  if (!score || score.status === "UNAVAILABLE" || score.status === "NOT_READY") {
-    return "점수 준비 중";
-  }
-
-  if (score.status === "PARTIAL") {
-    return "부분 산출";
-  }
-
-  if (score.status === "STALE") {
-    return "재점검 중";
-  }
-
-  return score.coverageStatus === "SUFFICIENT" ? "점수 공개" : "보강 반영";
-};
-
 const getAnalysisKeyPoints = (ipo: IpoRecord) =>
-  ipo.publicScore?.explanations.length
-    ? ipo.publicScore.explanations
-    : ipo.latestAnalysis.keyPoints;
+  ipo.latestAnalysis.keyPoints;
 
 const getAnalysisWarnings = (ipo: IpoRecord) =>
-  ipo.publicScore?.warnings.length
-    ? ipo.publicScore.warnings
-    : ipo.latestAnalysis.warnings;
+  ipo.latestAnalysis.warnings;
 
 const getAnalysisSummaryLine = (ipo: IpoRecord) =>
-  ipo.publicScore?.totalScore != null
-    ? `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}. ${ipo.publicScore.explanations[0] ?? "유통, 확약, 경쟁, 마켓 분석을 합산한 현재 기준 값입니다."}`
-    : ipo.publicScore?.explanations[0]
-      ?? ipo.latestAnalysis.keyPoints[0]
-      ?? "현재는 확보된 공시와 청약 데이터를 바탕으로 종목 점수를 계산하고 있습니다.";
+  ipo.latestAnalysis.keyPoints[0]
+  ?? "현재는 확보된 공시와 청약 데이터를 바탕으로 체크 포인트를 정리하고 있습니다.";
 
 const buildPublicScoreQuickLines = (ipo: IpoRecord) => {
-  if (ipo.publicScore?.totalScore != null) {
-    return [
-      `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}`,
-      `유통 ${formatPublicScoreValue(ipo.publicScore.supplyScore) ?? "-"} / 확약 ${formatPublicScoreValue(ipo.publicScore.lockupScore) ?? "-"} / 경쟁 ${formatPublicScoreValue(ipo.publicScore.competitionScore) ?? "-"} / 마켓 ${formatPublicScoreValue(ipo.publicScore.marketScore) ?? "-"}`,
-      `재무 보정 ${formatPublicAdjustmentScoreValue(ipo.publicScore.financialAdjustmentScore)}`,
-    ];
-  }
-
   return [
-    `종목점수 ${getPublicScoreStatusLabel(ipo.publicScore)}`,
+    "정량 점수는 현재 비공개 상태입니다.",
     getAnalysisSummaryLine(ipo),
   ];
 };
-
-const toPublicIpoScoreRecord = (score: AdminIpoScoreRecord): PublicIpoScoreRecord => ({
-  scoreVersion: score.scoreVersion,
-  status: score.status,
-  coverageStatus: score.coverageStatus,
-  totalScore: score.totalScore,
-  supplyScore: score.supplyScore,
-  lockupScore: score.lockupScore,
-  competitionScore: score.competitionScore,
-  marketScore: score.marketScore,
-  financialAdjustmentScore: score.financialAdjustmentScore,
-  warnings: score.warnings,
-  explanations: score.explanations,
-  calculatedAt: score.calculatedAt,
-});
 
 const buildDataQualityLines = (dataQuality: IpoDataQualitySummary) => {
   const lines = [
@@ -845,10 +788,6 @@ const buildDecisionTags = (ipo: IpoRecord, dataQuality: IpoDataQualitySummary) =
 
   if (getAnalysisWarnings(ipo).length > 0) {
     tags.push("#변동성주의");
-  }
-
-  if (ipo.publicScore?.totalScore != null) {
-    tags.push("#종목점수");
   }
 
   if (dataQuality.status === "VERIFIED") {
@@ -916,9 +855,7 @@ const buildClosingDayAnalysisMessage = (
   ],
   footer: [
     `데이터 상태: ${dataQuality.label}`,
-    ipo.publicScore?.totalScore != null
-      ? `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}`
-      : `종목점수 ${getPublicScoreStatusLabel(ipo.publicScore)}`,
+    "정량 점수는 현재 비공개 상태입니다.",
     "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
@@ -971,9 +908,7 @@ const buildClosingSoonReminderMessage = (
   footer: [
     `데이터 상태: ${dataQuality.label}`,
     "마감 직전에는 증권사별 주문 마감이 조금 다를 수 있으니 최종 화면을 다시 확인해 주세요.",
-    ipo.publicScore?.totalScore != null
-      ? `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}`
-      : `종목점수 ${getPublicScoreStatusLabel(ipo.publicScore)}`,
+    "정량 점수는 현재 비공개 상태입니다.",
     "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
@@ -987,9 +922,6 @@ const toPrismaJsonValue = (value: unknown) =>
 const syncScoringArtifactsSafely = async ({
   legacyIpoId,
   slug,
-  record,
-  sourceChecksum,
-  seenAt,
 }: {
   legacyIpoId: string;
   slug: string;
@@ -997,44 +929,30 @@ const syncScoringArtifactsSafely = async ({
   sourceChecksum: string;
   seenAt: Date;
 }) => {
-  try {
-    await syncIpoScoringArtifacts({
-      legacyIpoId,
-      slug,
-      record,
-      sourceChecksum,
-      seenAt,
-    });
-  } catch (error) {
-    await logOperation({
-      level: "WARN",
-      source: "job:daily-sync",
-      action: "score_sync_skipped",
-      message: `신규 점수 저장 경로 동기화를 건너뛰었습니다. ipo=${slug}`,
-      context: toErrorContext(error, {
-        slug,
-        legacyIpoId,
-      }),
-    });
-  }
+  void legacyIpoId;
+  void slug;
+
+  // Public score rollout is paused for now. Keep the original hook location obvious for reopening.
+  // await syncIpoScoringArtifacts({
+  //   legacyIpoId,
+  //   slug,
+  //   record,
+  //   sourceChecksum,
+  //   seenAt,
+  // });
 };
 
 const runScoringAuditSafely = async (legacyIpoIds: string[]) => {
-  try {
-    await enqueueDailyScoreAuditForLegacyIpos(legacyIpoIds, "job:daily-sync");
-    return await processPendingIpoScoreRecalcQueue("job:daily-sync");
-  } catch (error) {
-    await logOperation({
-      level: "WARN",
-      source: "job:daily-sync",
-      action: "score_recalc_skipped",
-      message: "신규 점수 재계산 경로를 건너뛰었습니다.",
-      context: toErrorContext(error, {
-        legacyIpoIds,
-      }),
-    });
-    return null;
-  }
+  void legacyIpoIds;
+
+  // Public score rollout is paused for now. Keep the original hook location obvious for reopening.
+  // await enqueueDailyScoreAuditForLegacyIpos(legacyIpoIds, "job:daily-sync");
+  // return await processPendingIpoScoreRecalcQueue("job:daily-sync");
+  return {
+    processed: 0,
+    createdSnapshots: 0,
+    failed: 0,
+  };
 };
 
 const getTodayClosingIpos = (dashboard: DashboardSnapshot, today: Date) =>
@@ -1827,8 +1745,7 @@ const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {
     return null;
   }
 
-  const publicScoreMap = await getPublicIpoScoreMap([ipo.id]);
-  return toIpoRecord(ipo, publicScoreMap.get(ipo.id) ?? null);
+  return toIpoRecord(ipo);
 };
 
 const listRecipientEmailChannels = async (recipientId: string) =>
@@ -2662,10 +2579,6 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
         name: ipo.name,
       })),
     );
-    const publicScoreByLegacyIpoId = new Map(
-      ipoScoreSummaries.map((score) => [score.legacyIpoId, toPublicIpoScoreRecord(score)] as const),
-    );
-
     const operationLogs = await getRecentOperationLogs(24);
 
     return {
@@ -2674,7 +2587,7 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
       calendarMonth: displayRange.currentMonth.start,
       ipos: ipos.flatMap((ipo) => (
         ipo.analyses.length && ipo.sourceSnapshots.length
-          ? [toIpoRecord(ipo, publicScoreByLegacyIpoId.get(ipo.id) ?? null)]
+          ? [toIpoRecord(ipo)]
           : []
       )),
       recipients: recipients.map(toRecipientRecord),
@@ -2726,15 +2639,13 @@ export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
       }),
     ]);
 
-    const publicScoreMap = await getPublicIpoScoreMap(ipos.map((ipo) => ipo.id));
-
     return {
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
       ipos: ipos.flatMap((ipo) => (
         ipo.analyses.length && ipo.sourceSnapshots.length
-          ? [toIpoRecord(ipo, publicScoreMap.get(ipo.id) ?? null)]
+          ? [toIpoRecord(ipo)]
           : []
       )),
       recipientCount,
@@ -2804,9 +2715,7 @@ export const getPublicIpoBySlug = async (slug: string): Promise<PublicIpoDetailR
     return null;
   }
 
-  const publicScoreMap = await getPublicIpoScoreMap([ipo.id]);
-
-  return toPublicIpoDetailRecord(ipo, publicScoreMap.get(ipo.id) ?? null);
+  return toPublicIpoDetailRecord(ipo);
 };
 
 export const getIpoAdminMetadataBySlug = async (slug: string): Promise<IpoAdminMetadata | null> => {

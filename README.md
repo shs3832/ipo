@@ -5,7 +5,7 @@
 현재 제품의 중심 축은 다음 3가지입니다.
 
 - 캘린더에서 공모주 일정 확인
-- 공개 홈/상세에서 종목 점수와 핵심 근거 확인
+- 공개 홈/상세에서 공시 기반 체크 포인트 확인
 - 관리자 화면에서 운영 로그와 발송 상태 관리
 
 ## Stack
@@ -62,10 +62,10 @@ npm run mail:sample
 
 ## Current Product Status
 
-- 공개 홈과 상세에서 `ipo_score_snapshot` 기반 종합점수를 노출 중
-- `READY`뿐 아니라 `PARTIAL`도 총점이 있으면 표시
-- 일부 서브점수는 소스 커버리지 부족으로 `데이터 미확보`일 수 있음
-- 점수 재계산 직후에는 공개 캐시 때문에 최대 `5분` 정도 stale 할 수 있음
+- 공개 홈과 상세는 현재 점수형 UI를 숨기고 공시 기반 체크 포인트 중심으로 노출
+- 점수 시스템 코드는 유지하지만, 공개 rollout은 pause 상태
+- 점수 데이터 구조는 남겨두지만, 현재는 admin UI까지 포함해 점수 관련 화면을 숨겨 둠
+- 점수 재오픈 기준과 복구 포인트는 [`docs/context/score-rollout-status.md`](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 봄
 
 ## Environment Variables
 

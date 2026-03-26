@@ -23,6 +23,8 @@ type HomeIpoSummary = {
   leadManager: string;
   subscriptionEnd: string;
   offerPrice: number | null;
+  minimumSubscriptionShares: number | null;
+  depositRate: number | null;
   listingOpenPrice: number | null;
   listingOpenReturnRate: number | null;
   publicScore: {
@@ -82,6 +84,18 @@ const isStoredFilters = (value: unknown): value is Record<EventType, boolean> =>
   && ["SUBSCRIPTION", "REFUND", "LISTING"].every(
     (type) => typeof (value as Record<string, unknown>)[type] === "boolean",
   );
+
+const getMinimumDepositAmount = ({
+  offerPrice,
+  minimumSubscriptionShares,
+  depositRate,
+}: Pick<HomeIpoSummary, "offerPrice" | "minimumSubscriptionShares" | "depositRate">) => {
+  if (offerPrice == null || minimumSubscriptionShares == null || depositRate == null) {
+    return null;
+  }
+
+  return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
+};
 
 const formatScoreValue = (value: number | null) => (value == null ? "산출 대기" : `${value.toFixed(1)}점`);
 
@@ -321,46 +335,58 @@ export function HomeContent({
           <span className="status-pill status-pill-soft">{ipos.length}개 종목</span>
         </div>
         <div className={styles.ipoList}>
-          {ipos.map((ipo) => (
-            <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
-              <div className={styles.ipoCardHead}>
-                <div>
-                  <h3>{ipo.name}</h3>
-                  <p>{ipo.market}</p>
-                  <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
+          {ipos.map((ipo) => {
+            const minimumDepositAmount = getMinimumDepositAmount(ipo);
+
+            return (
+              <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
+                <div className={styles.ipoCardHead}>
+                  <div>
+                    <h3>{ipo.name}</h3>
+                    <p>{ipo.market}</p>
+                    <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
+                  </div>
+                  <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)} ${styles.scoreHidden}`}>
+                    {getScoreStatusLabel(ipo.publicScore)}
+                  </span>
                 </div>
-                <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)}`}>
-                  {getScoreStatusLabel(ipo.publicScore)}
-                </span>
-              </div>
-              <dl className={styles.ipoStats}>
-                <div>
-                  <dt>청약</dt>
-                  <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>
-                </div>
-                <div>
-                  <dt>공모가</dt>
-                  <dd>{formatMoney(ipo.offerPrice)}</dd>
-                </div>
-                <div>
-                  <dt>종합점수</dt>
-                  <dd>{formatScoreValue(ipo.publicScore?.totalScore ?? null)}</dd>
-                </div>
-                {ipo.listingOpenPrice != null ? (
-                  <>
-                    <div>
-                      <dt>시초가</dt>
-                      <dd>{formatMoney(ipo.listingOpenPrice)}</dd>
-                    </div>
-                    <div>
-                      <dt>공모가 대비</dt>
-                      <dd>{formatSignedPercentValue(ipo.listingOpenReturnRate)}</dd>
-                    </div>
-                  </>
-                ) : null}
-              </dl>
-            </Link>
-          ))}
+                <dl className={styles.ipoStats}>
+                  <div>
+                    <dt>청약</dt>
+                    <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>
+                  </div>
+                  <div>
+                    <dt>공모가</dt>
+                    <dd>{formatMoney(ipo.offerPrice)}</dd>
+                  </div>
+                  <div>
+                    <dt>최소청약주수</dt>
+                    <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>최소청약금액</dt>
+                    <dd>{formatMoney(minimumDepositAmount)}</dd>
+                  </div>
+                  <div className={styles.scoreHidden}>
+                    <dt>종합점수</dt>
+                    <dd>{formatScoreValue(ipo.publicScore?.totalScore ?? null)}</dd>
+                  </div>
+                  {ipo.listingOpenPrice != null ? (
+                    <>
+                      <div>
+                        <dt>시초가</dt>
+                        <dd>{formatMoney(ipo.listingOpenPrice)}</dd>
+                      </div>
+                      <div>
+                        <dt>공모가 대비</dt>
+                        <dd>{formatSignedPercentValue(ipo.listingOpenReturnRate)}</dd>
+                      </div>
+                    </>
+                  ) : null}
+                </dl>
+              </Link>
+            );
+          })}
         </div>
       </article>
     </section>

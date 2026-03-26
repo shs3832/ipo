@@ -11,8 +11,9 @@
 1. [project-overview.md](/Users/shs/Desktop/Study/ipo/docs/context/project-overview.md)
 2. [runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)
 3. [data-and-scoring.md](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
-4. [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
-5. 현재 스레드 맥락은 [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
+4. [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
+5. [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
+6. 현재 스레드 맥락은 [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
 
 ## Which Doc To Read For Which Task
 
@@ -23,6 +24,8 @@
 - 수집기, DB fact table, 점수 계산:
   - [data-and-scoring.md](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
   - [docs/ipo-score-architecture.md](/Users/shs/Desktop/Study/ipo/docs/ipo-score-architecture.md)
+- 점수 공개 상태, 비공개 이유, 재오픈 절차:
+  - [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 - 홈/상세/UI 배치, 공개/비공개 판단:
   - [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
 

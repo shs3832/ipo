@@ -6,6 +6,10 @@
   gap: 24px;
 }
 
+.scoreHidden {
+  display: none !important;
+}
+
 .hero {
   @include surface(34px, 32px);
 

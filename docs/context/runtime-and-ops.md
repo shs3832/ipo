@@ -87,6 +87,7 @@
 
 ## Current Operational Caveats
 
-- 공개 캐시는 점수 재계산 직후 최대 `5분` stale 할 수 있음
-- scoring store는 runtime mismatch 시 fail-soft 하도록 되어 있음
-- 개발 환경에서 `publicScore`가 많이 비면 먼저 Prisma client mismatch를 의심
+- 홈 `/`는 `revalidate = 300`
+- 공개 점수 rollout은 현재 pause 상태이며, public read path는 `ipo_score_snapshot`을 붙이지 않음
+- `src/lib/jobs.ts`의 점수 sync / 재계산 helper는 현재 no-op이다
+- admin score summary data는 남겨 두지만, 현재 UI는 숨겨져 있고 재오픈 전까지 최신성 보장을 전제로 두지 않는다

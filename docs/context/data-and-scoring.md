@@ -53,10 +53,10 @@
 1. source adapter fetch
 2. normalize + checksum
 3. legacy `Ipo` upsert
-4. scoring fact table sync
-5. `ipo_recalc_queue`
-6. score snapshot create
-7. public/admin/mail read
+4. public/admin/mail read
+
+점수 시스템 구현 코드는 별도로 유지하고 있지만, 현재 공개 rollout은 pause 상태다.
+자세한 상태와 재오픈 메모는 [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 본다.
 
 ## Scoring Tables
 
@@ -71,37 +71,13 @@
 
 세부 설계는 [docs/ipo-score-architecture.md](/Users/shs/Desktop/Study/ipo/docs/ipo-score-architecture.md)를 기준으로 본다.
 
-## Current Score Exposure Rules
+## Current Score System Status
 
-- 공개 화면은 `latest ipo_score_snapshot`을 사용
-- `READY`면 그대로 공개
-- `PARTIAL`도 `totalScore`가 있으면 공개
-- `publicScore.totalScore == null`이면 화면에는 `산출 대기`
-
-## Why A Score Can Be Missing Or Partial
-
-### `산출 대기`
-
-주로 두 경우다.
-
-1. 실제 최신 score snapshot이 없음
-2. public scoring read가 fail-soft로 `publicScore = null`이 됨
-
-현재 실DB 기준 latest snapshot 분포는 `READY 10 / PARTIAL 6 / NOT_READY 0`이었다.
-따라서 개발 환경에서 `산출 대기`가 다수 보이면 데이터 부족보다 runtime scoring read 문제를 먼저 본다.
-
-### `PARTIAL`
-
-총점은 있어도 일부 서브점수가 비는 상태다.
-
-대표 원인:
-
-- `유통점수` 부족:
-  - float / tradable / listed share 부족
-- `확약점수` 부족:
-  - lockup ratio 부족
-- `재무 보정` 부족:
-  - 최신 financial fact 부족
+- 점수 계산기와 fact table은 코드베이스에 유지
+- `daily-sync`의 점수 fact sync / queue / snapshot 갱신은 현재 멈춰 둔 상태
+- 공개 홈, 상세, 메일은 더 이상 `latest ipo_score_snapshot`을 읽지 않음
+- admin score summary data는 남기되, 현재 UI는 숨겨 둔다
+- 재오픈 체크리스트는 [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)에 정리
 
 ## Current Score Reality
 
@@ -116,6 +92,5 @@
 
 ## Known Non-Critical Review Notes
 
-- public cache invalidation이 즉시 붙지 않아 재계산 직후 최대 `5분` stale 가능
-- scoring availability fail-soft는 일시 mismatch 후 process lifetime 동안 latch-off 될 수 있음
-- delegate-missing guard는 현재 운영 보호용이며, 추후 더 정교하게 좁힐 여지가 있음
+- public rollout을 다시 열면 cache invalidation과 scoring availability review note를 먼저 다시 본다
+- delegate-missing guard와 fail-soft 동작은 재오픈 시 추가 정리가 필요하다

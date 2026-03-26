@@ -17,25 +17,22 @@
 
 ## Current Exposure Status
 
-현재 기준 공개 화면은 최신 `ipo_score_snapshot`을 직접 읽어 점수를 노출한다.
+현재 기준 공개 점수 rollout은 pause 상태다.
 
-- 홈 `/`
-  - 종목 카드에 `종합점수`와 상태 배지를 표시한다.
-- 상세 `/ipos/[slug]`
-  - 히어로 카드에 `종합점수`, `유통`, `확약`, `경쟁`, `마켓`, `재무 보정`을 표시한다.
-- 메일/리마인더
-  - 공개 화면과 같은 점수 스냅샷 설명을 우선 사용한다.
+- 홈 `/`, 상세 `/ipos/[slug]`, 메일/리마인더에서는 현재 정량 점수를 숨긴 상태다.
+- admin score summary data는 남기되, 현재 UI는 숨겨 둔 상태다.
+- 홈/상세 점수 DOM은 유지하되 `display: none`으로 가려 두었고, `jobs.ts`의 점수 sync / recalc helper는 no-op으로 멈춰 두었다.
+- 재오픈 절차는 [docs/context/score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 본다.
 
-현재 노출 규칙은 다음과 같다.
+현재 운영 규칙은 다음과 같다.
 
-- `total_score`가 있으면 `READY`뿐 아니라 `PARTIAL`도 공개한다.
-- `publicScore.totalScore == null`이면 화면에는 `산출 대기`로 표시한다.
-- `PARTIAL` 상태에서는 일부 서브점수가 `데이터 미확보`로 남을 수 있다.
+- 점수 시스템 구현과 fact table은 유지한다.
+- 공개 read path는 현재 `latest ipo_score_snapshot`을 붙이지 않는다.
+- 메일도 정량 점수 대신 공시 기반 체크 포인트 중심 문구를 사용한다.
 
 운영 메모:
 
-- 2026-03-26 실DB 기준 latest snapshot 분포는 `READY 10 / PARTIAL 6 / NOT_READY 0`이었다.
-- 따라서 개발 환경에서 `산출 대기`가 다수 보이면, 실제 미산출보다 public scoring read fail-soft를 먼저 의심하는 편이 맞다.
+- 공개 재오픈 전에는 source coverage, 공개 문구 정책, cache invalidation, scoring availability fail-soft 이슈를 다시 점검한다.
 
 ## Current Codebase Fit
 
@@ -92,9 +89,9 @@ OpenDART / KIND / SEIBro / KRX / Broker Web
 
 현재 구현 메모:
 
-- admin, public, mail이 같은 `ipo_score_snapshot`을 재사용하는 방향으로 맞춰졌다.
-- 다만 public cache는 아직 즉시 무효화가 붙지 않아 재계산 직후 최대 `5분` 정도 stale score가 노출될 수 있다.
-- scoring store는 runtime mismatch 시 fail-soft 하도록 되어 있지만, 현재 가드는 일시 실패 후 process lifetime 동안 latch-off 될 수 있는 `P2` 개선 여지가 남아 있다.
+- admin용 score summary read는 유지하고 있다.
+- public / mail score read는 현재 멈춰 둔 상태다.
+- 재오픈 시 public cache invalidation과 scoring availability 관련 `P2` 메모를 먼저 다시 본다.
 
 ## Source Responsibility
 

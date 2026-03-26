@@ -189,7 +189,7 @@ export default async function AdminPage({
             </div>
           </article>
 
-          <article className={styles.card}>
+          <article className={`${styles.card} ${styles.scoreHidden}`}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">V2 점수 상태</h2>
               <p className="section-copy">

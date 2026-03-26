@@ -13,6 +13,7 @@
 - 전체 개요: [docs/context/project-overview.md](/Users/shs/Desktop/Study/ipo/docs/context/project-overview.md)
 - 런타임/운영: [docs/context/runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)
 - 데이터/점수: [docs/context/data-and-scoring.md](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
+- 점수 공개 상태 / 재오픈 메모: [docs/context/score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 - 제품/UI: [docs/context/product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
 - AI 읽기 순서 안내: [docs/context/README.md](/Users/shs/Desktop/Study/ipo/docs/context/README.md)
 

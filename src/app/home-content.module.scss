@@ -6,6 +6,10 @@
   gap: 20px;
 }
 
+.scoreHidden {
+  display: none !important;
+}
+
 .calendarPanel,
 .sidePanel {
   @include surface(26px, 30px);
