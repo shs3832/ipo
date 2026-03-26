@@ -1,5 +1,209 @@
 # Issue Log
 
+## 2026-03-26
+
+### Follow-up: Documentation Restructure For AI Context
+
+이번 스레드에서는 길게 누적된 `README.md`, `AGENTS.md`, `issue.md`의 역할이 서로 섞이기 시작한 문제를 정리했다. 목표는 사람과 AI 작업자가 모두 같은 구조로 프로젝트 맥락을 빠르게 복원하는 것이었고, 이를 위해 `docs/README.md`를 문서 인덱스로 두고 `docs/context/` 아래에 역할별 맥락 문서를 분리했다. 동시에 `AGENTS.md`는 짧은 운영 규칙과 읽을 문서 링크만 남기는 식으로 압축하고, `README.md`는 사용자/운영자용 quick start 중심으로 되돌렸다.
+
+### What Changed In This Follow-up
+
+1. 문서 인덱스 역할의 `docs/README.md`를 추가했다.
+2. `docs/context/` 아래에 프로젝트 개요, 런타임/운영, 데이터/점수, 제품/UI 문서를 분리했다.
+3. `AGENTS.md`는 중복 설명을 줄이고, 반드시 알아야 할 운영 규칙과 문서 읽기 순서만 남기는 형태로 재정리했다.
+4. `README.md`는 사용자/운영자용 quick start와 핵심 명령 위주로 축약하고, 자세한 프로젝트 맥락은 `docs/`로 넘겼다.
+5. `agent.md`는 canonical 문서를 가리키는 얇은 안내 파일로 유지해 중복 문맥이 다시 벌어지지 않게 했다.
+
+### Main Code Changes In This Follow-up
+
+- 문서 인덱스 / context 분리
+  - `docs/README.md`
+  - `docs/context/README.md`
+  - `docs/context/project-overview.md`
+  - `docs/context/runtime-and-ops.md`
+  - `docs/context/data-and-scoring.md`
+  - `docs/context/product-surface.md`
+- 안내 문서 정리
+  - `AGENTS.md`
+  - `README.md`
+  - `agent.md`
+  - `issue.md`
+
+### Current Decisions To Remember In This Follow-up
+
+- `issue.md`는 계속 스레드별 변경 로그로만 쓴다.
+- AI/작업자 빠른 진입점은 `AGENTS.md -> docs/context/README.md -> 필요한 세부 문서` 순서다.
+- `README.md`는 설치/실행/운영 quick start 중심으로 유지하고, 긴 설계/운영 맥락은 `docs/`에 둔다.
+- 같은 내용을 여러 md 파일에 반복 복붙하지 않고, 기준 문서에 링크하는 방식으로 유지한다.
+
+### Follow-up: Public Score Exposure / Runtime Guard / Review Notes
+
+이번 스레드에서는 내부에서만 보이던 종목 점수를 공개 홈과 상세 화면까지 노출했다. `ipo_score_snapshot`의 최신 결과를 public read path에 연결해 홈 카드와 상세 히어로에 `종합점수`, `유통`, `확약`, `경쟁`, `마켓` 점수를 직접 보여주도록 바꿨고, 메일/리마인더 문구도 같은 점수 스냅샷을 쓰도록 정리했다. 구현 뒤에는 코드리뷰를 다시 진행했고, `prisma.ipoMaster` delegate가 없을 때 홈이 런타임 에러로 죽던 문제는 fail-soft guard로 막았다.
+
+### What Changed In This Follow-up
+
+1. `PublicIpoScoreRecord`를 추가하고 `getPublicHomeSnapshot()`, `getPublicIpoBySlug()`에서 `ipo_master -> latest ipo_score_snapshot`을 읽어 public read model에 병합했다.
+2. 홈 `종목 개요` 카드에서 기존 `정량 점수 비공개` 문구를 제거하고 `종합점수`와 점수 상태 배지를 직접 표시하도록 바꿨다.
+3. 상세 페이지 히어로 카드에서 `종합점수`, `유통`, `확약`, `경쟁`, `마켓`, `재무 보정`을 한 번에 확인할 수 있게 바꿨다.
+4. 상세의 `공시 기반 체크 포인트`는 이제 legacy analysis 문구보다 public score snapshot의 `explanations`, `warnings`를 우선 사용하게 했다.
+5. closing-day 메일과 closing-soon 리마인더도 더 이상 `정량 점수 비공개`라고 쓰지 않고, 공개 화면과 같은 점수/설명 데이터를 쓰도록 정리했다.
+6. 런타임에서 `prisma.ipoMaster.findMany`가 `undefined`로 터지는 경우를 위해 scoring store에 delegate 존재 여부 확인 가드를 넣어 홈/상세가 크래시하지 않고 `UNAVAILABLE`로 fail-soft 되게 했다.
+7. 점수 미표시 원인을 점검한 결과, 최신 DB 스냅샷은 `READY 10 / PARTIAL 6`이었고 `NOT_READY`는 없었다. 따라서 현재 보이는 `산출대기`는 대개 데이터 미산출보다 public score read가 fail-soft로 `null`이 된 경우일 가능성이 높다.
+
+### Main Code Changes In This Follow-up
+
+- public score read model / runtime guard
+  - `src/lib/types.ts`
+  - `src/lib/ipo-score-store.ts`
+  - `src/lib/jobs.ts`
+  - `src/lib/page-data.ts`
+- public UI
+  - `src/app/page.tsx`
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+  - `src/app/ipos/[slug]/page.tsx`
+  - `src/app/ipos/[slug]/page.module.scss`
+- 문서
+  - `issue.md`
+  - `docs/ipo-score-architecture.md`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test`
+  - `36` tests passed
+- `npm run lint`
+- `npm run build`
+- 실DB score snapshot 확인
+  - latest summary: `READY 10 / PARTIAL 6`
+  - `NOT_READY 0`
+  - 예시: `메쥬 75.8`, `아이엠바이오로직스 72.9`, `카나프테라퓨틱스 72.4`, `한패스 70.9`
+  - `PARTIAL` 예시: `채비 62.0`, `에스팀 71.2`, `코스모로보틱스 61.0`
+
+### Current Decisions To Remember In This Follow-up
+
+- 공개 화면은 이제 `publicScore.totalScore`가 있으면 바로 노출한다.
+- `PARTIAL`도 총점이 있으면 공개한다. 이 경우 일부 서브점수는 `데이터 미확보`로 남을 수 있다.
+- 현재 `산출대기`는 두 경우를 뜻한다.
+  - 실제 점수 스냅샷이 없는 경우
+  - scoring read가 fail-soft로 `publicScore = null`이 된 경우
+- 실DB 기준 최신 상태에는 `NOT_READY`가 없으므로, 개발 환경에서 `산출대기`가 많이 보이면 데이터 부족보다 runtime scoring read 문제를 먼저 의심한다.
+- 남아 있는 리뷰 finding 3건은 모두 `P2`이며, 커밋 전 즉시 차단할 치명 이슈로 보지는 않는다.
+  - public cache invalidation 미연동으로 최대 `5분` stale 가능
+  - scoring availability가 일시 실패 후 프로세스 생애 동안 latch-off 될 수 있음
+  - broad TypeError matching이 다른 scoring bug를 숨길 수 있음
+
+### Follow-up: Broker Notice Completion / V2.4 Competition Scoring / Live Review Fixes
+
+이번 스레드에서는 남아 있던 브로커 단계까지 마저 진행했다. `삼성증권`, `하나증권` 공식 수수료 가이드를 같은 registry에 추가했고, `대신증권` 모바일 공지 보드와 첨부 PDF를 읽어 종목별 `총경쟁률`, `일반배정물량`, `균등`, `비례` 데이터를 `ipo_subscription`에 적재하도록 확장했다. 동시에 경쟁점수는 `v2.4`로 올려 새 배정물량 팩트를 실제 경쟁 분석 증거로 반영하게 했고, 구현 후 라이브 동기화에서 드러난 `하나증권 수수료 fallback` 버그까지 같은 턴에 바로 수정했다.
+
+### What Changed In This Follow-up
+
+1. 브로커 웹 수집 범위를 `한국투자증권`, `신한투자증권`, `KB증권`, `미래에셋증권`에서 더 확장해 `삼성증권`, `하나증권` 공식 수수료 가이드도 같은 수집 레지스트리로 편입했다.
+2. `대신증권` 공지 보드 `DM_Basic_List.aspx?boardseq=114&m=3817`를 읽어 종목명 기준으로 현재 공지 엔트리를 찾고, 상세 페이지 `DM_Basic_Read.aspx?seq=...`에서 HTML 본문과 첨부 PDF URL을 함께 수집하도록 구현했다.
+3. 새 PDF 추출을 위해 `pdfjs-dist`를 추가했고, Node 서버에서 PDF 텍스트만 뽑아 `총경쟁률`, `일반배정물량`, `균등배정`, `비례배정` 값을 정규식으로 읽도록 했다.
+4. `SourceBrokerSubscriptionDetail` 경로에 대신 공지 기반 `generalCompetitionRate`, `allocatedShares`, `equalAllocatedShares`, `proportionalAllocatedShares`를 실제로 채우게 했다.
+5. 경쟁점수는 `v2.4`로 상향해 기존 `경쟁률/최소주수/최고한도/증거금률/수수료/온라인전용` 입력에 더해 `일반청약 배정물량`, `균등 배정물량`도 evidence와 소폭 가중치로 반영하게 했다.
+6. 라이브 셀프 리뷰에서 `하나증권` HTML fallback이 오프라인/온라인 행 숫자를 한 문자열로 합쳐 비정상적으로 큰 수수료를 만들던 문제를 발견했고, 온라인 row만 좁게 캡처하는 방식으로 즉시 수정했다.
+7. 같은 수정 이후 `daily-sync --force-refresh`를 다시 돌려 `하나증권 / 채비 / subscriptionFee=2000`이 실제 DB 최신 row로 반영되는 것까지 확인했다.
+
+### Main Code Changes In This Follow-up
+
+- 브로커 가이드 / 종목별 공지 / PDF 수집
+  - `src/lib/sources/broker-subscription.ts`
+  - `package.json`
+  - `package-lock.json`
+- 점수 엔진 / 버전 상향
+  - `src/lib/scoring/types.ts`
+  - `src/lib/scoring/v2.ts`
+  - `src/lib/ipo-score-store.ts`
+- 테스트
+  - `tests/broker-subscription.test.ts`
+  - `tests/ipo-scoring.test.ts`
+- 문서
+  - `issue.md`
+  - `docs/ipo-score-architecture.md`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test`
+  - `36` tests passed
+- `npm run lint`
+- `npm run build`
+- `npm run job:daily-sync -- --force-refresh`
+  - 브로커 공지/PDF 추가 직후: `queued=19`, `processed=19`, `createdSnapshots=19`, `failed=0`
+  - 하나 fallback 수정 후 재실행: `queued=1`, `processed=1`, `createdSnapshots=1`, `failed=0`
+- 실DB 확인
+  - `한패스 / 대신증권 / generalCompetitionRate=1411.14 / allocated=55,000 / equal=27,500 / proportional=27,500`
+  - `케이뱅크 / 삼성증권 / subscriptionFee=0`
+  - `채비 / 하나증권 / subscriptionFee=2000`
+  - 최신 `v2.4` 스냅샷 분포: `READY 10 / PARTIAL 6`
+  - 상위 점수 예시: `메쥬 75.8`, `아이엠바이오로직스 72.9`, `카나프테라퓨틱스 72.4`, `한패스 70.9`
+
+### Current Decisions To Remember In This Follow-up
+
+- 브로커 웹 확장은 이제 `공통 가이드 registry + 브로커별 종목 공지 resolver + PDF 보강` 3층 구조로 유지한다.
+- `대신증권`처럼 종목별 공지 소스가 있는 브로커는 generic guide보다 issue notice 값을 우선 fact source로 본다.
+- PDF는 브라우저 렌더링 HTML이 아니라 서버에서 텍스트 추출 후 필요한 수치만 정규식으로 해석한다.
+- `allocatedShares`, `equalAllocatedShares`, `proportionalAllocatedShares`는 단순 보조 메모가 아니라 `competitionScore v2.4` 입력 증거로 계속 유지한다.
+- 브로커 HTML fallback은 넓은 블록 전체가 아니라 실제 row 범위를 좁게 잡아야 한다. 그렇지 않으면 여러 fee 숫자가 한 문자열로 붙어 비정상 값이 생길 수 있다.
+
+### Follow-up: Broker Guide Expansion / V2.3 Competition Scoring / Self Review Fixes
+
+이번 스레드에서는 브로커 웹 수집을 다음 단계로 확장해 `KB증권`, `미래에셋증권` 공식 가이드를 `ipo_subscription` 보강 경로에 추가했다. 동시에 브로커 표기 정규화와 `EUC-KR` 문자셋 디코딩을 정리해 실수집 안정성을 높였고, 경쟁점수도 `v2.3`으로 올려 `온라인 전용 청약 제한`을 반영하게 했다. 구현 뒤에는 바로 셀프 리뷰를 진행했고, 실제 동기화에서 드러난 `미래에셋 수수료 누락`과 `한투 카탈로그 fetch fail-soft 회귀`를 즉시 수정했다.
+
+### What Changed In This Follow-up
+
+1. 브로커 수집 모듈을 registry 형태로 확장해 `한국투자증권`, `신한투자증권`, `KB증권`, `미래에셋증권` 공식 가이드를 같은 흐름으로 읽도록 정리했다.
+2. `fetchText()`를 header/meta charset 기반 디코딩으로 바꿔 `EUC-KR` 공식 페이지도 런타임 fetch에서 안정적으로 파싱되게 했다.
+3. `KB증권` 가이드에서 `온라인 청약 수수료 1,500원`과 `일반 고객 온라인 전용 제한`을 수집해 `ipo_subscription.subscription_fee`, `has_online_only_condition`에 반영했다.
+4. `미래에셋증권` 가이드에서 `온라인 청약 수수료 2,000원`과 `미배정 시 수수료 면제` 안내를 읽어 브로커 메모에 반영했다.
+5. 브로커명 정규화에 `케이비증권 -> kb증권`, `엔에이치투자증권 -> nh투자증권` 같은 canonical alias를 추가해 한글 표기와 영문 브랜드 표기가 같은 브로커로 합쳐지게 했다.
+6. 경쟁점수는 `v2.3`으로 상향해 기존 `경쟁률/최소주수/최고한도/증거금률/수수료`에 더해 `온라인 전용 제한 증권사 수`를 감점 신호로 반영했다.
+7. 셀프 리뷰에서 `미래에셋` 통합 수수료표 안에서 첫 `온라인` 행을 잘못 잡아 수수료가 `null`로 들어가던 문제를 재현했고, `공모주 청약(일반)` 섹션 범위로 파서를 좁혀 수정했다.
+8. 같은 리뷰에서 `한투 청약종목안내` fetch를 `Promise.all`로 바꾸며 부분 실패 허용이 깨졌던 회귀를 발견했고, 다시 fail-soft 구조로 되돌렸다.
+
+### Main Code Changes In This Follow-up
+
+- 브로커 정규화 / 가이드 수집
+  - `src/lib/broker-brand.ts`
+  - `src/lib/sources/broker-subscription.ts`
+- 점수 엔진 / 버전 상향
+  - `src/lib/scoring/types.ts`
+  - `src/lib/scoring/v2.ts`
+  - `src/lib/ipo-score-store.ts`
+- 테스트
+  - `tests/broker-subscription.test.ts`
+  - `tests/ipo-scoring.test.ts`
+- 문서
+  - `issue.md`
+  - `docs/ipo-score-architecture.md`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test`
+  - `30` tests passed
+- `npm run lint`
+- `npm run build`
+- `npm run job:daily-sync -- --force-refresh`
+  - 첫 실행: `v2.3` 기준 `queued=19`, `processed=19`, `createdSnapshots=19`, `failed=0`
+  - 수정 후 재실행: `queued=1`, `processed=1`, `createdSnapshots=1`, `failed=0`
+- 실DB 확인
+  - `미래에셋증권 / 액스비스 / subscriptionFee=2000`
+  - `케이비증권 / 리센스메디컬 / subscriptionFee=1500 / hasOnlineOnlyCondition=true`
+  - `케이비증권 / 채비 / subscriptionFee=1500 / hasOnlineOnlyCondition=true`
+  - 최신 `v2.3` 스냅샷 분포: `READY 10 / PARTIAL 6`
+
+### Current Decisions To Remember In This Follow-up
+
+- 브로커 웹 수집은 단일 parser if/else로 키우지 않고 registry 기반으로 계속 확장한다.
+- 브로커 HTML은 `UTF-8` 가정 금지, charset-aware decode를 유지한다.
+- 브로커명은 저장 label과 별개로 canonical normalize key를 사용해 source merge / dedupe / scoring join을 안정화한다.
+- `has_online_only_condition`은 단순 메모가 아니라 경쟁점수 입력으로 계속 유지한다.
+- 현재 브로커 웹이 안정적으로 채우는 값은 `수수료`, `온라인 전용 여부`, `최고청약한도(한투)` 중심이고, `균등/비례 배정 수량`은 종목별 공지 소스가 더 필요하다.
+
 ## 2026-03-25
 
 ### Follow-up: Admin Recipient Email Management / Direct Delivery Test

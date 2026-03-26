@@ -22,6 +22,13 @@ type BrokerBrand = {
       };
 };
 
+const BROKER_CANONICAL_ALIASES: Record<string, string> = {
+  "케이비증권": "kb증권",
+  "엔에이치투자증권": "nh투자증권",
+  "한국투자": "한국투자증권",
+  "미래에셋": "미래에셋증권",
+};
+
 const BROKER_BRANDS: Record<string, BrokerBrand> = {
   "nh투자증권": {
     label: "NH투자증권",
@@ -107,12 +114,15 @@ const BROKER_BRANDS: Record<string, BrokerBrand> = {
   },
 };
 
-export const normalizeBrokerName = (value: string) =>
-  value
+export const normalizeBrokerName = (value: string) => {
+  const normalized = value
     .trim()
     .replace(/\s+/g, "")
     .replace(/주식회사|\(주\)|㈜/g, "")
     .toLowerCase();
+
+  return BROKER_CANONICAL_ALIASES[normalized] ?? normalized;
+};
 
 const toFallbackMark = (value: string) => {
   const cleaned = value.replace(/[^\p{Script=Hangul}A-Za-z0-9]/gu, "");

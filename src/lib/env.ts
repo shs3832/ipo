@@ -27,6 +27,8 @@ export const env = {
   ipoSourceUrl: process.env.IPO_SOURCE_URL ?? "",
   opendartApiKey: process.env.OPENDART_API_KEY ?? "",
   opendartBaseUrl: process.env.OPENDART_BASE_URL ?? "https://opendart.fss.or.kr",
+  seibroServiceKey: process.env.SEIBRO_SERVICE_KEY ?? process.env.SEIBRO_API_KEY ?? "",
+  seibroBaseUrl: process.env.SEIBRO_BASE_URL ?? "https://api.seibro.or.kr/openapi/service",
 };
 
 export const isDatabaseEnabled = () => Boolean(env.databaseUrl);

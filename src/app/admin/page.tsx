@@ -36,6 +36,23 @@ const schedulerToneClassNames = {
   FAILED: styles.schedulerBadgeFailed,
 } as const;
 
+const scoreStatusToneClassNames = {
+  READY: styles.scoreBadgeReady,
+  PARTIAL: styles.scoreBadgePartial,
+  NOT_READY: styles.scoreBadgeMissing,
+  STALE: styles.scoreBadgeMissing,
+  UNAVAILABLE: styles.scoreBadgeMissing,
+} as const;
+
+const coverageToneClassNames = {
+  SUFFICIENT: styles.coverageBadgeSufficient,
+  PARTIAL: styles.coverageBadgePartial,
+  EMPTY: styles.coverageBadgeEmpty,
+  UNAVAILABLE: styles.coverageBadgeEmpty,
+} as const;
+
+const formatScoreValue = (value: number | null) => (value == null ? "-" : value.toFixed(1));
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -167,6 +184,71 @@ export default async function AdminPage({
               ) : (
                 <div className={styles.row}>
                   <p>DB fallback 상태에서는 일일 스케줄 검증 이력을 집계하지 않습니다.</p>
+                </div>
+              )}
+            </div>
+          </article>
+
+          <article className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">V2 점수 상태</h2>
+              <p className="section-copy">
+                유통, 확약, 경쟁, 재무 보정 기반의 V2 점수 적재 상태와 재계산 큐 상태를 함께 확인합니다.
+              </p>
+            </div>
+            <div className={styles.list}>
+              {snapshot.ipoScoreSummaries.length ? (
+                snapshot.ipoScoreSummaries.map((score) => (
+                  <div className={styles.row} key={score.legacyIpoId}>
+                    <div className={styles.rowHead}>
+                      <div>
+                        <strong>{score.name}</strong>
+                        <p>
+                          총점 {formatScoreValue(score.totalScore)}
+                          {score.calculatedAt ? ` · 계산 ${formatDateTime(score.calculatedAt)}` : " · 아직 계산 전"}
+                        </p>
+                      </div>
+                      <div className={styles.badgeCluster}>
+                        <span
+                          className={`${styles.schedulerBadge} ${scoreStatusToneClassNames[score.status]}`}
+                        >
+                          {score.status}
+                        </span>
+                        <span
+                          className={`${styles.schedulerBadge} ${coverageToneClassNames[score.coverageStatus]}`}
+                        >
+                          {score.coverageStatus}
+                        </span>
+                      </div>
+                    </div>
+                    <p>
+                      유통 {formatScoreValue(score.supplyScore)} / 확약 {formatScoreValue(score.lockupScore)} /
+                      경쟁 {formatScoreValue(score.competitionScore)} / 재무보정 {formatScoreValue(score.financialAdjustmentScore)}
+                    </p>
+                    <p>
+                      큐 {score.queueStatus ?? "-"}
+                      {score.queueReason ? ` · ${score.queueReason}` : ""}
+                      {score.queueAttempts ? ` · 시도 ${score.queueAttempts}` : ""}
+                    </p>
+                    {score.explanations.length ? (
+                      <ul className={styles.bulletList}>
+                        {score.explanations.slice(0, 2).map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {score.warnings.length ? (
+                      <ul className={styles.bulletList}>
+                        {score.warnings.slice(0, 2).map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <div className={styles.row}>
+                  <p>점수 스냅샷이 아직 없습니다. 마이그레이션 적용 후 `daily-sync`를 다시 실행해 주세요.</p>
                 </div>
               )}
             </div>

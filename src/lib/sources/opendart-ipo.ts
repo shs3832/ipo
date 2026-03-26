@@ -415,6 +415,10 @@ const fetchOpendartCurrentMonthIposUncached = async (
       const insiderSalesShares = sellerRows.reduce((sum, row) => sum + (parseNumber(row.slstk) ?? 0), 0);
       const insiderSalesRatio =
         totalOfferedShares && insiderSalesShares ? Number(((insiderSalesShares / totalOfferedShares) * 100).toFixed(1)) : null;
+      const newShares =
+        totalOfferedShares != null
+          ? Math.max(totalOfferedShares - insiderSalesShares, 0)
+          : null;
 
       const notes = [
         `OpenDART ${disclosureRange.label} 공시 기준`,
@@ -427,6 +431,9 @@ const fetchOpendartCurrentMonthIposUncached = async (
 
       return {
         sourceKey: `opendart-estk:${displayRange.key}:${disclosure.corp_code}`,
+        corpCode: disclosure.corp_code,
+        stockCode: disclosure.stock_code?.trim() || null,
+        latestDisclosureNo: disclosure.rcept_no,
         name: disclosure.corp_name,
         market: mapMarket(general.corp_cls || disclosure.corp_cls),
         leadManager: representative,
@@ -436,6 +443,10 @@ const fetchOpendartCurrentMonthIposUncached = async (
         offerPrice: parseNumber(security.slprc),
         minimumSubscriptionShares: prospectus?.minimumSubscriptionShares ?? null,
         depositRate: prospectus?.depositRate ?? null,
+        totalOfferedShares,
+        newShares,
+        secondaryShares: insiderSalesShares || null,
+        listedShares: null,
         subscriptionStart: start,
         subscriptionEnd: end,
         // OpenDART estkRs exposes payment date (`pymd`) but not a stable refund date field.

@@ -25,6 +25,11 @@ type HomeIpoSummary = {
   offerPrice: number | null;
   listingOpenPrice: number | null;
   listingOpenReturnRate: number | null;
+  publicScore: {
+    totalScore: number | null;
+    status: "NOT_READY" | "PARTIAL" | "READY" | "STALE" | "UNAVAILABLE";
+    coverageStatus: "EMPTY" | "PARTIAL" | "SUFFICIENT" | "UNAVAILABLE";
+  } | null;
 };
 
 type Props = {
@@ -77,6 +82,40 @@ const isStoredFilters = (value: unknown): value is Record<EventType, boolean> =>
   && ["SUBSCRIPTION", "REFUND", "LISTING"].every(
     (type) => typeof (value as Record<string, unknown>)[type] === "boolean",
   );
+
+const formatScoreValue = (value: number | null) => (value == null ? "산출 대기" : `${value.toFixed(1)}점`);
+
+const getScoreStatusLabel = (score: HomeIpoSummary["publicScore"]) => {
+  if (!score || score.status === "UNAVAILABLE" || score.status === "NOT_READY") {
+    return "점수 준비 중";
+  }
+
+  if (score.status === "PARTIAL") {
+    return "부분 산출";
+  }
+
+  if (score.status === "STALE") {
+    return "재점검 중";
+  }
+
+  return score.coverageStatus === "SUFFICIENT" ? "점수 공개" : "보강 반영";
+};
+
+const getScoreBadgeToneClassName = (score: HomeIpoSummary["publicScore"]) => {
+  if (!score || score.status === "UNAVAILABLE" || score.status === "NOT_READY") {
+    return styles.ipoScoreBadgePending;
+  }
+
+  if (score.status === "PARTIAL" || score.status === "STALE") {
+    return styles.ipoScoreBadgePartial;
+  }
+
+  if ((score.totalScore ?? 0) >= 70) {
+    return styles.ipoScoreBadgeStrong;
+  }
+
+  return styles.ipoScoreBadgeReady;
+};
 
 export function HomeContent({
   calendarMonthLabel,
@@ -290,6 +329,9 @@ export function HomeContent({
                   <p>{ipo.market}</p>
                   <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
                 </div>
+                <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)}`}>
+                  {getScoreStatusLabel(ipo.publicScore)}
+                </span>
               </div>
               <dl className={styles.ipoStats}>
                 <div>
@@ -299,6 +341,10 @@ export function HomeContent({
                 <div>
                   <dt>공모가</dt>
                   <dd>{formatMoney(ipo.offerPrice)}</dd>
+                </div>
+                <div>
+                  <dt>종합점수</dt>
+                  <dd>{formatScoreValue(ipo.publicScore?.totalScore ?? null)}</dd>
                 </div>
                 {ipo.listingOpenPrice != null ? (
                   <>
@@ -311,12 +357,7 @@ export function HomeContent({
                       <dd>{formatSignedPercentValue(ipo.listingOpenReturnRate)}</dd>
                     </div>
                   </>
-                ) : (
-                  <div>
-                    <dt>정량 점수</dt>
-                    <dd>비공개</dd>
-                  </div>
-                )}
+                ) : null}
               </dl>
             </Link>
           ))}

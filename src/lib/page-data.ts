@@ -61,6 +61,12 @@ const reviveIpoRecord = <T extends IpoRecord | PublicIpoDetailRecord>(ipo: T): T
       : fallbackScoreDisplay,
     generatedAt: toDate(ipo.latestAnalysis.generatedAt) ?? new Date(),
   },
+  publicScore: ipo.publicScore
+    ? {
+        ...ipo.publicScore,
+        calculatedAt: toDate(ipo.publicScore.calculatedAt),
+      }
+    : null,
   ...("sourceFetchedAt" in ipo
     ? {
         sourceFetchedAt: toDate(ipo.sourceFetchedAt) ?? new Date(),

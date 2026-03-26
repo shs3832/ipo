@@ -16,6 +16,7 @@ import {
 import { assessIpoDataQuality } from "@/lib/ipo-data-quality";
 import { getIpoAdminMetadataBySlug } from "@/lib/jobs";
 import { getCachedIpoDetail } from "@/lib/page-data";
+import type { PublicIpoScoreRecord } from "@/lib/types";
 import styles from "@/app/ipos/[slug]/page.module.scss";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +106,28 @@ const renderNumericValue = (
     : <span className={styles.unavailableValue}>{unavailableLabel}</span>
 );
 
+const formatScoreValue = (value: number | null, withUnit = true) =>
+  value == null ? null : `${value.toFixed(1)}${withUnit ? "점" : ""}`;
+
+const formatAdjustmentScoreValue = (value: number | null) =>
+  value == null ? unavailableLabel : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+
+const getPublicScoreStatusLabel = (score: PublicIpoScoreRecord | null) => {
+  if (!score || score.status === "UNAVAILABLE" || score.status === "NOT_READY") {
+    return "점수 준비 중";
+  }
+
+  if (score.status === "PARTIAL") {
+    return "부분 산출";
+  }
+
+  if (score.status === "STALE") {
+    return "재점검 중";
+  }
+
+  return score.coverageStatus === "SUFFICIENT" ? "점수 공개" : "보강 반영";
+};
+
 export default async function IpoDetailPage({
   params,
 }: {
@@ -134,16 +157,51 @@ export default async function IpoDetailPage({
           {isListedYet ? unavailableLabel : pendingListingLabel}
         </span>
       );
-  const analysisSummary =
-    "정량 점수는 데이터 신뢰도 보강 전까지 공개하지 않고, 현재는 공시에서 확인된 핵심 근거와 주의 포인트만 먼저 정리해 제공합니다.";
-  const keyPoints = ipo.latestAnalysis.keyPoints.length
-    ? ipo.latestAnalysis.keyPoints
-    : ["핵심 지표는 계속 보강 중이며, 현재는 확인된 공시 사실 위주로 요약합니다."];
-  const warnings = ipo.latestAnalysis.warnings.length
-    ? ipo.latestAnalysis.warnings
-    : ["최종 청약 결정 전 증권신고서와 주관사 공고를 함께 확인해 주세요."];
   const minimumDepositAmount = getMinimumDepositAmount(ipo);
   const dataQuality = assessIpoDataQuality(ipo);
+  const publicScore = ipo.publicScore;
+  const analysisSummary = publicScore?.totalScore != null
+    ? `종합점수 ${formatScoreValue(publicScore.totalScore)}는 유통, 확약, 경쟁, 마켓 분석에 재무 보정을 더해 계산한 현재 기준 값입니다.`
+    : publicScore?.explanations[0]
+      ?? "현재는 확보된 공시와 청약 데이터를 바탕으로 종목 점수를 계산하고 있습니다.";
+  const keyPoints = publicScore?.explanations.length
+    ? publicScore.explanations
+    : ipo.latestAnalysis.keyPoints.length
+      ? ipo.latestAnalysis.keyPoints
+      : ["핵심 지표는 계속 보강 중이며, 현재는 확인된 공시 사실 위주로 요약합니다."];
+  const warnings = publicScore?.warnings.length
+    ? publicScore.warnings
+    : ipo.latestAnalysis.warnings.length
+      ? ipo.latestAnalysis.warnings
+      : ["최종 청약 결정 전 증권신고서와 주관사 공고를 함께 확인해 주세요."];
+  const scoreBreakdown = [
+    {
+      label: "유통",
+      value: formatScoreValue(publicScore?.supplyScore ?? null),
+    },
+    {
+      label: "확약",
+      value: formatScoreValue(publicScore?.lockupScore ?? null),
+    },
+    {
+      label: "경쟁",
+      value: formatScoreValue(publicScore?.competitionScore ?? null),
+    },
+    {
+      label: "마켓",
+      value: formatScoreValue(publicScore?.marketScore ?? null),
+    },
+  ];
+  const scoreHelpText = publicScore?.totalScore != null
+    ? `재무 보정 ${formatAdjustmentScoreValue(publicScore.financialAdjustmentScore)}가 현재 종합점수에 반영돼 있습니다.`
+    : publicScore?.explanations[1]
+      ?? "핵심 공급, 확약, 청약 데이터를 더 확보하면 종합점수가 계산됩니다.";
+  const scoreDisclaimer = publicScore?.calculatedAt
+    ? `${formatDateTime(publicScore.calculatedAt)} 기준 재계산된 점수입니다. 정정 공시나 일정 변경이 생기면 다시 산출합니다.`
+    : "점수는 매일 최소 1회 재계산되며, 정정 공시나 일정 변경이 생기면 다시 산출합니다.";
+  const scoreMetaLabel = publicScore?.totalScore != null
+    ? `종합점수 ${formatScoreValue(publicScore.totalScore)}`
+    : getPublicScoreStatusLabel(publicScore);
   const quickFacts = [
     {
       label: "확정 공모가",
@@ -238,16 +296,28 @@ export default async function IpoDetailPage({
             <div className={styles.metaRow}>
               <span className="status-pill">청약 마감 {formatDate(ipo.subscriptionEnd)}</span>
               <span className="status-pill status-pill-soft">데이터 {dataQuality.label}</span>
-              <span className="status-pill status-pill-soft">정량 점수 비공개</span>
+              <span className="status-pill status-pill-soft">{scoreMetaLabel}</span>
             </div>
           </div>
 
           <div className={styles.scoreCard}>
-            <span className={styles.scoreLabel}>분석 안내</span>
-            <strong className={styles.scoreValueMuted}>공시 기반</strong>
-            <span className={styles.scoreRating}>신뢰도 보강 후 정량 점수 재공개 예정</span>
-            <p className={styles.scoreHelpText}>현재는 일정, 가격, 주관사와 핵심 체크 포인트를 우선 제공합니다.</p>
-            <p className={styles.scoreDisclaimer}>점수형 판단은 OpenDART 외 추가 데이터 소스와 검증 기준을 보강한 뒤 다시 검토합니다.</p>
+            <span className={styles.scoreLabel}>종합 점수</span>
+            {publicScore?.totalScore != null ? (
+              <strong>{formatScoreValue(publicScore.totalScore, false)}</strong>
+            ) : (
+              <strong className={styles.scoreValueMuted}>산출 대기</strong>
+            )}
+            <span className={styles.scoreRating}>{getPublicScoreStatusLabel(publicScore)}</span>
+            <div className={styles.scoreBreakdownGrid}>
+              {scoreBreakdown.map((item) => (
+                <div className={styles.scoreBreakdownItem} key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value ?? unavailableLabel}</strong>
+                </div>
+              ))}
+            </div>
+            <p className={styles.scoreHelpText}>{scoreHelpText}</p>
+            <p className={styles.scoreDisclaimer}>{scoreDisclaimer}</p>
           </div>
         </section>
 
@@ -270,7 +340,7 @@ export default async function IpoDetailPage({
           <article className={`${styles.card} ${styles.cardWide}`}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">공시 기반 체크 포인트</h2>
-              <p className="section-copy">정량 점수 대신 공시에서 확인된 핵심 근거와 주의 포인트를 먼저 정리했습니다.</p>
+              <p className="section-copy">종합점수를 만든 핵심 근거와 주의 포인트를 함께 정리했습니다.</p>
             </div>
             <p className={styles.analysisSummary}>{analysisSummary}</p>
             <p className={styles.analysisDisclaimer}>세부 숫자는 아래 항목과 증권신고서 원문을 함께 확인해 주세요.</p>

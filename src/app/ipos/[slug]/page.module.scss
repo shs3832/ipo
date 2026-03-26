@@ -43,7 +43,7 @@
   text-align: center;
 }
 
-.scoreCard strong {
+.scoreCard > strong {
   font-size: clamp(2.8rem, 5vw, 4rem);
   line-height: 1;
   letter-spacing: -0.05em;
@@ -67,6 +67,34 @@
   line-height: 1.6;
 }
 
+.scoreBreakdownGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 4px;
+}
+
+.scoreBreakdownItem {
+  @include softSurface(14px, 14px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.scoreBreakdownItem span {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.scoreBreakdownItem strong {
+  font-size: 1rem;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
 .scoreHelpText,
 .analysisDisclaimer {
   font-size: 0.92rem;
@@ -86,7 +114,7 @@
 .quickGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .quickItem {
@@ -248,6 +276,10 @@
   .scoreCard {
     padding: 18px;
     border-radius: 22px;
+  }
+
+  .scoreBreakdownGrid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .grid,

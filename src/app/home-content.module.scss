@@ -403,6 +403,40 @@
   min-width: 0;
 }
 
+.ipoScoreBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ipoScoreBadgePending {
+  background: rgba(148, 163, 184, 0.14);
+  color: #64748b;
+}
+
+.ipoScoreBadgePartial {
+  background: rgba(217, 119, 6, 0.12);
+  color: #a16207;
+}
+
+.ipoScoreBadgeReady {
+  background: rgba(42, 115, 245, 0.12);
+  color: var(--primary-strong);
+}
+
+.ipoScoreBadgeStrong {
+  background: rgba(22, 163, 74, 0.14);
+  color: #15803d;
+}
+
 .ipoCardHead h3 {
   margin-bottom: 6px;
   font-size: 1.04rem;
@@ -567,6 +601,12 @@
   .ipoCardHead {
     flex-direction: column;
     gap: 10px;
+  }
+
+  .ipoScoreBadge {
+    min-height: 30px;
+    padding: 0 10px;
+    font-size: 0.72rem;
   }
 
   .ipoStats {

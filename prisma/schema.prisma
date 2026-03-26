@@ -55,6 +55,42 @@ enum DeliveryStatus {
   SKIPPED
 }
 
+enum IpoFactSourceType {
+  OPENDART
+  KIND
+  SEIBRO
+  KRX
+  BROKER
+  INTERNAL
+  MANUAL
+}
+
+enum ScoreSnapshotStatus {
+  NOT_READY
+  PARTIAL
+  READY
+  STALE
+}
+
+enum ScoreCoverageStatus {
+  EMPTY
+  PARTIAL
+  SUFFICIENT
+}
+
+enum ScoreQueueStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ScoreRecalcReason {
+  DAILY_AUDIT
+  SOURCE_REFRESH
+  MANUAL
+}
+
 model Ipo {
   id                String              @id @default(cuid())
   slug              String              @unique
@@ -81,6 +117,7 @@ model Ipo {
   sourceSnapshots   IpoSourceSnapshot[]
   analyses          IpoAnalysis[]
   notificationJobs  NotificationJob[]
+  master            IpoMaster?
 }
 
 model IpoEvent {
@@ -133,6 +170,245 @@ model IpoAnalysis {
   ipo          Ipo      @relation(fields: [ipoId], references: [id], onDelete: Cascade)
 
   @@index([ipoId, generatedAt])
+}
+
+model IpoMaster {
+  id                   String               @id @default(cuid())
+  legacyIpoId          String               @unique
+  slug                 String               @unique
+  issuerName           String
+  market               String
+  corpCode             String?
+  stockCode            String?
+  kindIssueCode        String?
+  kindBizProcessNo     String?
+  leadManager          String?
+  coManagers           Json?
+  priceBandLow         Int?
+  priceBandHigh        Int?
+  offerPrice           Int?
+  subscriptionStart    DateTime?
+  subscriptionEnd      DateTime?
+  refundDate           DateTime?
+  listingDate          DateTime?
+  status               IpoStatus            @default(UPCOMING)
+  latestDisclosureNo   String?
+  sourcePriorityVersion String?
+  lastSourceSeenAt     DateTime?
+  lastFactRefreshedAt  DateTime?
+  lastScoreCalculatedAt DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  legacyIpo            Ipo                  @relation(fields: [legacyIpoId], references: [id], onDelete: Cascade)
+  supplyFacts          IpoSupply[]
+  demandFacts          IpoDemand[]
+  subscriptionFacts    IpoSubscription[]
+  marketPerfFacts      IpoMarketPerf[]
+  financials           IssuerFinancial[]
+  scoreSnapshots       IpoScoreSnapshot[]
+  recalcQueue          IpoScoreRecalcQueue[]
+
+  @@index([status, subscriptionEnd])
+  @@map("ipo_master")
+}
+
+model IpoSupply {
+  id                    String            @id @default(cuid())
+  ipoId                 String
+  sourceType            IpoFactSourceType
+  sourceKey             String
+  sourceRef             String?
+  asOfDate              DateTime?
+  totalOfferedShares    BigInt?
+  newShares             BigInt?
+  secondaryShares       BigInt?
+  listedShares          BigInt?
+  tradableShares        BigInt?
+  floatRatio            Float?
+  insiderSalesRatio     Float?
+  lockupConfirmedShares BigInt?
+  lockupRatio           Float?
+  lockupDetailJson      Json?
+  confidence            Float?
+  checksum              String
+  isLatest              Boolean           @default(true)
+  collectedAt           DateTime          @default(now())
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  ipo                   IpoMaster         @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@unique([ipoId, sourceKey, checksum])
+  @@index([ipoId, isLatest, collectedAt])
+  @@map("ipo_supply")
+}
+
+model IpoDemand {
+  id                         String            @id @default(cuid())
+  ipoId                      String
+  sourceType                 IpoFactSourceType
+  sourceKey                  String
+  sourceRef                  String?
+  demandForecastStart        DateTime?
+  demandForecastEnd          DateTime?
+  institutionalCompetitionRate Float?
+  priceBandTopAcceptanceRatio Float?
+  priceBandExceedRatio       Float?
+  participatingInstitutions  Int?
+  orderQuantity              BigInt?
+  bidDistributionJson        Json?
+  confidence                 Float?
+  checksum                   String
+  isLatest                   Boolean           @default(true)
+  collectedAt                DateTime          @default(now())
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  ipo                        IpoMaster         @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@unique([ipoId, sourceKey, checksum])
+  @@index([ipoId, isLatest, collectedAt])
+  @@map("ipo_demand")
+}
+
+model IpoSubscription {
+  id                        String            @id @default(cuid())
+  ipoId                     String
+  brokerName                String
+  brokerCode                String?
+  sourceType                IpoFactSourceType
+  sourceKey                 String
+  sourceRef                 String?
+  subscriptionStart         DateTime?
+  subscriptionEnd           DateTime?
+  generalCompetitionRate    Float?
+  allocatedShares           BigInt?
+  equalAllocatedShares      BigInt?
+  proportionalAllocatedShares BigInt?
+  minimumSubscriptionShares Int?
+  maximumSubscriptionShares Int?
+  depositRate               Float?
+  subscriptionFee           Int?
+  hasOnlineOnlyCondition    Boolean           @default(false)
+  confidence                Float?
+  checksum                  String
+  isLatest                  Boolean           @default(true)
+  collectedAt               DateTime          @default(now())
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  ipo                       IpoMaster         @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@unique([ipoId, brokerName, sourceKey, checksum])
+  @@index([ipoId, isLatest, collectedAt])
+  @@map("ipo_subscription")
+}
+
+model IpoMarketPerf {
+  id                     String            @id @default(cuid())
+  ipoId                  String
+  sourceType             IpoFactSourceType
+  sourceKey              String
+  asOfDate               DateTime?
+  listingOpenPrice       Int?
+  listingOpenReturnRate  Float?
+  day1ClosePrice         Int?
+  day1CloseReturnRate    Float?
+  week1ReturnRate        Float?
+  month1ReturnRate       Float?
+  kospiReturnSameWindow  Float?
+  kosdaqReturnSameWindow Float?
+  sectorReturnSameWindow Float?
+  recentIpoHeatScore     Float?
+  checksum               String
+  isLatest               Boolean           @default(true)
+  collectedAt            DateTime          @default(now())
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  ipo                    IpoMaster         @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@unique([ipoId, sourceKey, checksum])
+  @@index([ipoId, isLatest, collectedAt])
+  @@map("ipo_market_perf")
+}
+
+model IssuerFinancial {
+  id                     String            @id @default(cuid())
+  ipoId                  String
+  corpCode               String?
+  reportReceiptNo        String?
+  reportCode             String?
+  reportLabel            String
+  statementType          String?
+  fiscalYear             Int?
+  fiscalPeriod           String?
+  revenue                BigInt?
+  previousRevenue        BigInt?
+  revenueGrowthRate      Float?
+  operatingIncome        BigInt?
+  previousOperatingIncome BigInt?
+  operatingMarginRate    Float?
+  netIncome              BigInt?
+  previousNetIncome      BigInt?
+  totalAssets            BigInt?
+  totalLiabilities       BigInt?
+  totalEquity            BigInt?
+  debtRatio              Float?
+  sourceKey              String
+  checksum               String
+  isLatest               Boolean           @default(true)
+  collectedAt            DateTime          @default(now())
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  ipo                    IpoMaster         @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@unique([ipoId, sourceKey, checksum])
+  @@index([ipoId, isLatest, collectedAt])
+  @@map("issuer_financials")
+}
+
+model IpoScoreSnapshot {
+  id                       String               @id @default(cuid())
+  ipoId                    String
+  scoreVersion             String
+  status                   ScoreSnapshotStatus
+  coverageStatus           ScoreCoverageStatus
+  supplyScore              Float?
+  lockupScore              Float?
+  competitionScore         Float?
+  marketScore              Float?
+  financialAdjustmentScore Float?
+  totalScore               Float?
+  componentWeights         Json?
+  inputsChecksum           String
+  evidenceSummary          Json?
+  warnings                 Json?
+  explanations             Json?
+  calculatedAt             DateTime             @default(now())
+  createdAt                DateTime             @default(now())
+  ipo                      IpoMaster            @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@index([ipoId, calculatedAt])
+  @@index([ipoId, scoreVersion, calculatedAt])
+  @@map("ipo_score_snapshot")
+}
+
+model IpoScoreRecalcQueue {
+  id            String            @id @default(cuid())
+  ipoId          String
+  reason         ScoreRecalcReason
+  triggerSource  String
+  triggerPayload Json?
+  dedupeKey      String            @unique
+  status         ScoreQueueStatus  @default(PENDING)
+  runAfter       DateTime          @default(now())
+  attempts       Int               @default(0)
+  lastError      String?
+  processedAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  ipo            IpoMaster         @relation(fields: [ipoId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([ipoId, createdAt])
+  @@map("ipo_recalc_queue")
 }
 
 model Recipient {

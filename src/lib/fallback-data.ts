@@ -26,6 +26,7 @@ export const buildFallbackDashboard = (): DashboardSnapshot => ({
   overrides: [],
   operationLogs: buildFallbackLogs(),
   schedulerStatuses: [],
+  ipoScoreSummaries: [],
 });
 
 export const buildFallbackPublicHomeSnapshot = (): PublicHomeSnapshot => ({

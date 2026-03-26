@@ -6,224 +6,48 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 
 # Agent Notes
 
-이 파일은 다음 작업자가 빠르게 프로젝트 맥락을 복원하기 위한 메모입니다.
+이 파일은 짧은 운영 규칙과 문서 진입점만 담습니다.
+자세한 프로젝트 맥락은 `docs/context/` 아래 문서를 기준으로 읽습니다.
 
-## Project Identity
+## Read Order
 
-- 개인용 공모주 일정/분석/알림 서비스
-- 현재 목표는 `캘린더 + 10시 분석 메일 + 관리자 운영`
-- 서비스 특성상 `정확한 일정`, `중복 없는 알림`, `운영 로그`가 중요
+1. [`docs/context/README.md`](/Users/shs/Desktop/Study/ipo/docs/context/README.md)
+2. 작업과 관련된 세부 문서
+3. [`issue.md`](/Users/shs/Desktop/Study/ipo/issue.md)
 
-## Current Stack
+## Must-Know Rules
 
-- Next.js 16 App Router
-- React 19
-- Prisma + PostgreSQL
-- Neon DB
-- Vercel deployment + Cron
-- Nodemailer + Gmail SMTP
-- OpenDART disclosure source + KIND schedule/detail/price enrichment
+- 작업 전 항상 `source ~/.nvm/nvm.sh && nvm use`
+- 프로젝트 Node 버전은 `v24.14.0`
+- 시간대 기준은 항상 `Asia/Seoul`
+- 사용자가 `md 파일 업데이트`를 요청하면 먼저 [`issue.md`](/Users/shs/Desktop/Study/ipo/issue.md)에 이번 스레드 변경 요약을 기록
+- 공개 read path에서는 recipient bootstrap 같은 DB write를 하지 않음
+- 알림/발송 로직은 항상 idempotent 유지
+- admin 전용 메타데이터는 공개 화면에 노출하지 않음
+- 점수는 현재 `ipo_score_snapshot` 기반으로 공개 노출 중이며, `PARTIAL`도 총점이 있으면 표시
+- 홈 `/`는 `revalidate = 300`이므로 점수 재계산 직후 잠시 stale 할 수 있음
 
-## Must-Know Runtime Notes
+## Fast Links
 
-- Always run `nvm use` before build or scripts
-- Project Node version is `v24.14.0`
-- Running with old Node versions breaks `tsx` and `next build`
+- 문서 인덱스: [`docs/README.md`](/Users/shs/Desktop/Study/ipo/docs/README.md)
+- 프로젝트 개요: [`docs/context/project-overview.md`](/Users/shs/Desktop/Study/ipo/docs/context/project-overview.md)
+- 런타임/운영: [`docs/context/runtime-and-ops.md`](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)
+- 데이터/점수: [`docs/context/data-and-scoring.md`](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
+- 제품/UI: [`docs/context/product-surface.md`](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
+- 점수 설계 상세: [`docs/ipo-score-architecture.md`](/Users/shs/Desktop/Study/ipo/docs/ipo-score-architecture.md)
+- 스레드 로그: [`issue.md`](/Users/shs/Desktop/Study/ipo/issue.md)
 
-## Current Data Flow
+## Code Starting Points
 
-1. `fetchSourceRecords()`
-2. source priority:
-   - `IPO_SOURCE_URL`
-   - `OPENDART_API_KEY`
-   - empty fallback
-3. `daily-sync` normalizes records and upserts DB
-4. `daily-sync` also reruns at `10:10 KST` and `10:30 KST` to capture listing-day opening prices
-5. `prepare-daily-alerts` creates payloads for closing-day emails after freshness / data-quality checks
-6. `dispatch-alerts` sends deliveries and logs status
+- 잡/배치/공개 조회: [`src/lib/jobs.ts`](/Users/shs/Desktop/Study/ipo/src/lib/jobs.ts)
+- 점수 저장/재계산: [`src/lib/ipo-score-store.ts`](/Users/shs/Desktop/Study/ipo/src/lib/ipo-score-store.ts)
+- 점수 계산기: [`src/lib/scoring`](/Users/shs/Desktop/Study/ipo/src/lib/scoring)
+- 공개 홈 캐시: [`src/lib/page-data.ts`](/Users/shs/Desktop/Study/ipo/src/lib/page-data.ts)
+- 관리자 인증: [`src/lib/admin-auth.ts`](/Users/shs/Desktop/Study/ipo/src/lib/admin-auth.ts)
+- 운영 로그: [`src/lib/ops-log.ts`](/Users/shs/Desktop/Study/ipo/src/lib/ops-log.ts)
 
-Additional notes:
+## Documentation Policy
 
-- public home/detail read paths are split from admin dashboard reads
-- home `/` is intended to stay static with `revalidate = 300`
-- read paths should not perform recipient bootstrap or other DB writes
-- stale IPOs in the current display range are marked `WITHDRAWN` during sync after a `2-day` grace period based on the latest source-seen timestamp
-- except records explicitly classified as rights/public-offering non-IPO, which are withdrawn immediately
-- `prepare-daily-alerts` / `prepare-closing-alerts` should not send on stale data; if no successful `daily-sync` exists within the last `90 minutes`, they force a refresh first
-- alerts are blocked when any of `offerPrice`, `refundDate`, `leadManager` is missing
-- missing `listingDate` downgrades alerts to `PARTIAL` but does not block automatic send
-
-## OpenDART Scope Right Now
-
-Currently implemented in:
-
-- [src/lib/sources/opendart-ipo.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-ipo.ts)
-- [src/lib/sources/opendart-financials.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-financials.ts)
-- [src/lib/sources/opendart-prospectus.ts](/Users/shs/Desktop/Study/ipo/src/lib/sources/opendart-prospectus.ts)
-
-Behavior:
-
-- Display range is `current month + next month`
-- Disclosure lookup range is `two months back + current month`
-- Records are filtered by `subscriptionStart` / `subscriptionEnd` being within display range
-- estkRs `일반사항.asstd` is currently used as a temporary exclusion signal for rights/public-offering non-IPO cases
-- Month boundary and "today" logic must use `Asia/Seoul` helpers, not server local timezone
-
-OpenDART currently provides:
-
-- name
-- market
-- lead/co managers
-- subscription start/end
-- offer price
-- insider sales ratio (partial)
-- financial metrics (if available)
-
-Additional enrichment notes:
-
-- prospectus fallback now parses official `document.xml` zip, not the DART viewer HTML
-- field-level fallback merge is used so older filings can fill blanks left in later amendments
-- prospectus financial fallback values are normalized to KRW units to match the API path
-
-OpenDART still does not reliably provide:
-
-- float ratio
-- reliable refund date
-- reliable listing date
-- authoritative IPO-vs-rights-offering classification without extra heuristics or supplementary sources
-
-## Scoring Reality
-
-Scoring logic lives in:
-
-- [src/lib/analysis.ts](/Users/shs/Desktop/Study/ipo/src/lib/analysis.ts)
-
-Important:
-
-- Base score starts at `50`
-- 점수는 아직 내부 휴리스틱으로만 유지하고, 공개 화면/메일의 정량 점수는 현재 비공개 상태다
-- `scoreDisplay` 메타데이터는 남겨두되, 추후 재공개 판단과 내부 검증 용도로만 본다
-- Financial enrichment now affects:
-  - revenue growth
-  - operating income
-  - net income
-  - debt ratio
-  - equity risk
-
-This is still not a production-grade IPO recommendation engine.
-Treat it as a structured heuristic.
-
-## UI / Product Decisions Already Made
-
-- Calendar is above, IPO overview is below
-- Mobile hides the calendar and shows IPO overview first
-- Responsive mobile breakpoint is currently `1024px`
-- Calendar currently hides Saturday/Sunday columns, but this is implemented as a render toggle so it can be restored later
-- Calendar highlights today with a dedicated badge and stronger cell emphasis
-- Subscription events are shown by `closing date`, not start date
-- Event labels use badges:
-  - `청약마감`
-  - `환불`
-  - `상장`
-- Calendar has checkbox filters for those event types
-- Calendar event titles are clamped to 2 lines with ellipsis
-- Detail page hides source metadata unless admin
-- Detail page prioritizes `지금 판단용` quick facts before analysis and lower-priority detail
-- Current top quick facts are `확정 공모가`, `최소청약금액`, `환불일`, `상장예정일`, `유통가능물량`, `주관사`
-- Public detail and alert copy currently use checklist-style analysis instead of public numeric scores
-- Public detail event timeline has been removed
-- `유통가능물량`(`floatRatio`) is already stored as a percent value, so UI must not multiply it again
-- Admin page is protected by login
-
-## Admin / Security
-
-- Admin auth is simple password + signed cookie
-- Relevant files:
-  - [src/lib/admin-auth.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-auth.ts)
-  - [src/app/login/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/login/page.tsx)
-  - [src/app/login/actions.ts](/Users/shs/Desktop/Study/ipo/src/app/login/actions.ts)
-- Required env for proper prod setup:
-  - `ADMIN_ACCESS_PASSWORD`
-  - `ADMIN_SESSION_SECRET`
-  - `ADMIN_EMAIL`
-  - `CRON_SECRET`
-  - `JOB_SECRET`
-- Missing auth env should fail closed, not fall back to development-style secrets
-- Never commit `.env`
-
-## Logging / Debugging
-
-Operational logs are important in this project.
-
-Relevant files:
-
-- [src/lib/ops-log.ts](/Users/shs/Desktop/Study/ipo/src/lib/ops-log.ts)
-- [src/app/admin/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/admin/page.tsx)
-- [src/app/admin-log-panel.tsx](/Users/shs/Desktop/Study/ipo/src/app/admin-log-panel.tsx)
-
-Current behavior:
-
-- `daily-sync`, `prepare-daily-alerts`, `dispatch-alerts` log `started/completed/failed`
-- Admin UI can filter `전체 / ERROR / WARN / INFO`
-- unauthorized or misconfigured job calls should also be treated as operational signals worth checking
-
-When debugging:
-
-1. Check `/admin`
-2. Check Vercel function logs
-3. Check `notification_job` and `notification_delivery`
-4. Check `OperationLog`
-
-## Documentation Memory
-
-- Use [issue.md](/Users/shs/Desktop/Study/ipo/issue.md) as the running per-thread change log.
-- If the user asks to "update md files", update `issue.md` first with what happened in the thread, what changed, and which files were touched, then sync other docs if needed.
-
-## Email Notes
-
-- Message payload includes tags, quick summary, schedule, analysis, and `웹에서 보기`
-- `APP_BASE_URL` controls the link target
-- If `APP_BASE_URL` is localhost, emails will include localhost links
-- Preview email command:
-
-```bash
-npm run mail:sample
-```
-
-Notes:
-
-- The script name remains `mail:sample`, but sample IPO data has been removed.
-- It now works as a preview sender for whatever prepared alert payload currently exists.
-- Alert payloads now include a `데이터 상태` section derived from `assessIpoDataQuality()`.
-- `BLOCKED` IPOs are skipped from automatic mail generation and should appear in ops logs as a quality signal.
-
-## Known Product Gaps
-
-- Data quality is still uneven
-- Some IPOs have financial data, some do not
-- 정량 점수는 현재 비공개이며, 재공개 기준과 검증 절차를 아직 확정하지 않았다
-- No public multi-recipient UI yet
-- Telegram adapter data model exists, but sending is not implemented
-- 캘린더 베이스가 아직 KIND-first가 아니라서, KIND에만 있는 일정 누락과 OpenDART 임시 분류 휴리스틱 의존이 남아 있다
-- KIND 캘린더에만 있는 `schedule-only` 상장 종목은 아직 `searchListingTypeSub` / KIND 상세 연결 여부에 따라 생성이 갈릴 수 있다
-- `kind-listing-schedule`가 시장 badge를 아직 읽지 않아, 일정 전용 종목은 `기타법인`으로 남을 수 있다
-
-## Best Next Steps
-
-If continuing feature work, highest-impact next tasks are:
-
-1. add demand competition / lockup / float data source
-2. add minimum subscription shares and deposit rate source
-3. validate score against live outcomes and define re-open conditions for public exposure
-4. split score into sub-scores
-5. expose data-completeness indicator more explicitly in UI
-6. redesign the calendar ingest to be KIND-first and replace the temporary `asstd` non-IPO filter with richer document/source classification
-
-## Safe Working Rules
-
-- Prefer additive changes over rewrites
-- Do not replace the current empty fallback with fake/sample IPO data unless explicitly requested
-- Keep admin-only metadata hidden from general users
-- Preserve idempotency in notification jobs
-- Be careful with schedules: timezone is `Asia/Seoul`
-- For notification sending, prefer verified email channels and keep delivery idempotency address-aware
+- 같은 맥락을 여러 md 파일에 반복해서 복붙하지 않음
+- 짧은 요약은 상위 문서에 두고, 세부 내용은 하위 문서로 분리
+- 기준 문서가 바뀌면 링크 문서를 고치고, 중복 설명은 줄이는 방향을 우선함

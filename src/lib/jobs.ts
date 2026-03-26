@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import {
+  type AdminIpoScoreRecord,
   type AdminOverrideRecord,
   type AdminStatusSummary,
   type DashboardSnapshot,
@@ -12,6 +14,7 @@ import {
   type NotificationJobRecord,
   type PreparedAlertsResult,
   type PublicHomeSnapshot,
+  type PublicIpoScoreRecord,
   type RecipientChannelRecord,
   type PublicIpoDetailRecord,
   type RecipientRecord,
@@ -40,12 +43,26 @@ import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { buildFallbackDashboard, buildFallbackPublicHomeSnapshot } from "@/lib/fallback-data";
+import {
+  enqueueDailyScoreAuditForLegacyIpos,
+  getAdminIpoScoreSummaries,
+  getPublicIpoScoreMap,
+  processPendingIpoScoreRecalcQueue,
+  syncIpoScoringArtifacts,
+} from "@/lib/ipo-score-store";
 import { getRecentOperationLogs, logOperation, toErrorContext } from "@/lib/ops-log";
 import { fetchKindListingDates } from "@/lib/sources/kind-listings";
 import { fetchKindListingSchedule } from "@/lib/sources/kind-listing-schedule";
 import { fetchKindOfferDetails } from "@/lib/sources/kind-offer-details";
 import { fetchKindStockPriceSnapshot } from "@/lib/sources/kind-stock-prices";
+import { enrichBrokerSubscriptionMetadata } from "@/lib/sources/broker-subscription";
 import { fetchOpendartCurrentMonthIpoResult, fetchOpendartCurrentMonthIpos } from "@/lib/sources/opendart-ipo";
+import {
+  fetchSeibroDutyDepoSnapshot,
+  type SeibroDutyDepoMarketTypeCode,
+  type SeibroDutyDepoSnapshot,
+  type SeibroDutyDepoStatusItem,
+} from "@/lib/sources/seibro-duty-depo";
 import nodemailer from "nodemailer";
 
 let databaseReachableCache: { value: boolean; expiresAt: number } | null = null;
@@ -319,6 +336,10 @@ const mergeKindListingMetadata = async (
         irEnd: kindDetails.irEnd,
         demandForecastStart: kindDetails.demandForecastStart,
         demandForecastEnd: kindDetails.demandForecastEnd,
+        totalOfferedShares: null,
+        newShares: null,
+        secondaryShares: null,
+        listedShares: kindDetails.listedShares,
         tradableShares: kindDetails.tradableShares,
         floatRatio: kindDetails.floatRatio,
         subscriptionStart: kindDetails.subscriptionStart,
@@ -374,10 +395,17 @@ const mergeOpendartScoringEnrichment = (
 
     return {
       ...record,
+      corpCode: record.corpCode ?? opendart.corpCode ?? null,
+      stockCode: record.stockCode ?? opendart.stockCode ?? null,
+      latestDisclosureNo: record.latestDisclosureNo ?? opendart.latestDisclosureNo ?? null,
       priceBandLow: record.priceBandLow ?? opendart.priceBandLow ?? null,
       priceBandHigh: record.priceBandHigh ?? opendart.priceBandHigh ?? null,
       minimumSubscriptionShares: record.minimumSubscriptionShares ?? opendart.minimumSubscriptionShares ?? null,
       depositRate: record.depositRate ?? opendart.depositRate ?? null,
+      totalOfferedShares: record.totalOfferedShares ?? opendart.totalOfferedShares ?? null,
+      newShares: record.newShares ?? opendart.newShares ?? null,
+      secondaryShares: record.secondaryShares ?? opendart.secondaryShares ?? null,
+      listedShares: record.listedShares ?? opendart.listedShares ?? null,
       demandCompetitionRate: record.demandCompetitionRate ?? opendart.demandCompetitionRate ?? null,
       lockupRate: record.lockupRate ?? opendart.lockupRate ?? null,
       insiderSalesRatio: record.insiderSalesRatio ?? opendart.insiderSalesRatio ?? null,
@@ -453,10 +481,171 @@ const enrichKindOfferMetadata = async (
         irEnd: kindDetails.irEnd ?? record.irEnd ?? null,
         demandForecastStart: kindDetails.demandForecastStart ?? record.demandForecastStart ?? null,
         demandForecastEnd: kindDetails.demandForecastEnd ?? record.demandForecastEnd ?? null,
+        listedShares: kindDetails.listedShares ?? record.listedShares ?? null,
         tradableShares: kindDetails.tradableShares ?? record.tradableShares ?? null,
         floatRatio: kindDetails.floatRatio ?? record.floatRatio ?? null,
         refundDate: kindDetails.refundDate ?? record.refundDate ?? null,
         listingDate: record.listingDate ?? kindDetails.listingDate ?? null,
+        notes: nextNotes,
+      } satisfies SourceIpoRecord;
+    }),
+  );
+};
+
+const seibroMarketLabels: Record<SeibroDutyDepoMarketTypeCode, string> = {
+  "11": "유가증권시장",
+  "12": "코스닥시장",
+  "13": "K-OTC시장",
+  "14": "코넥스시장",
+  "50": "기타비상장",
+};
+
+type SeibroLockupContext = {
+  source: "SEIBRO";
+  standardDate: string;
+  marketTypeCode: SeibroDutyDepoMarketTypeCode;
+  marketLabel: string;
+  summary: {
+    stockKindName: string | null;
+    companyCount: number | null;
+    issueCount: number | null;
+    totalIssuedShares: number | null;
+    dutyDepoShares: number | null;
+    dutyDepoRatio: number | null;
+  } | null;
+  reasonBreakdown: Array<{
+    reasonCode: string | null;
+    reasonName: string | null;
+    shares: number | null;
+    companyCount: number | null;
+    issueCount: number | null;
+  }>;
+};
+
+const toSeibroMarketTypeCode = (market: string): SeibroDutyDepoMarketTypeCode => {
+  switch (market) {
+    case "KOSPI":
+      return "11";
+    case "KOSDAQ":
+      return "12";
+    case "KONEX":
+      return "14";
+    default:
+      return "50";
+  }
+};
+
+const toCompactDateKey = (value: string) => value.replace(/-/g, "");
+
+const formatCompactDateKey = (value: string) =>
+  value.length === 8
+    ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+    : value;
+
+const getSeibroReferenceDate = (record: SourceIpoRecord) => {
+  const todayKey = getKstTodayKey();
+  const referenceDate = record.subscriptionEnd ?? record.listingDate ?? record.subscriptionStart ?? null;
+  if (!referenceDate || referenceDate > todayKey) {
+    return null;
+  }
+
+  return referenceDate;
+};
+
+const pickPreferredSeibroStatusItem = (items: SeibroDutyDepoStatusItem[]) =>
+  items.find((item) => item.stockKindName === "보통주")
+  ?? items.find((item) => item.stockKindCode === "01")
+  ?? items[0]
+  ?? null;
+
+const buildSeibroLockupContext = (snapshot: SeibroDutyDepoSnapshot): SeibroLockupContext => {
+  const summary = pickPreferredSeibroStatusItem(snapshot.statusItems);
+  const reasons = [...snapshot.reasonItems]
+    .sort(
+      (left, right) =>
+        (right.safeDepoShares ?? right.dutyDepoShares ?? 0) - (left.safeDepoShares ?? left.dutyDepoShares ?? 0),
+    )
+    .slice(0, 3)
+    .map((reason) => ({
+      reasonCode: reason.reasonCode,
+      reasonName: reason.reasonName,
+      shares: reason.safeDepoShares ?? reason.dutyDepoShares,
+      companyCount: reason.safeDepoCompanyCount ?? reason.dutyDepoCompanyCount,
+      issueCount: reason.safeDepoIssueCount ?? reason.dutyDepoIssueCount,
+    }));
+
+  return {
+    source: "SEIBRO",
+    standardDate: snapshot.standardDate,
+    marketTypeCode: snapshot.marketTypeCode,
+    marketLabel: seibroMarketLabels[snapshot.marketTypeCode],
+    summary:
+      summary == null
+        ? null
+        : {
+            stockKindName: summary.stockKindName,
+            companyCount: summary.companyCount,
+            issueCount: summary.issueCount,
+            totalIssuedShares: summary.totalIssuedShares,
+            dutyDepoShares: summary.dutyDepoShares,
+            dutyDepoRatio: summary.dutyDepoRatio,
+          },
+    reasonBreakdown: reasons,
+  };
+};
+
+const enrichSeibroLockupMetadata = async (
+  records: SourceIpoRecord[],
+  { forceRefresh = false }: SyncOptions = {},
+): Promise<SourceIpoRecord[]> => {
+  if (records.length === 0 || !env.seibroServiceKey) {
+    return records;
+  }
+
+  return Promise.all(
+    records.map(async (record) => {
+      const standardDate = getSeibroReferenceDate(record);
+      if (!standardDate) {
+        return record;
+      }
+
+      const marketTypeCode = toSeibroMarketTypeCode(record.market);
+
+      const snapshot = await fetchSeibroDutyDepoSnapshot(toCompactDateKey(standardDate), marketTypeCode, {
+        forceRefresh,
+      }).catch(() => null);
+
+      if (!snapshot || snapshot.statusItems.length === 0) {
+        return record;
+      }
+
+      const lockupContext = buildSeibroLockupContext(snapshot);
+      const summary = lockupContext.summary;
+      const topReason = lockupContext.reasonBreakdown[0] ?? null;
+
+      const nextNotes = [...(record.notes ?? [])];
+      const summaryNote = summary
+        ? `SEIBro 의무보호예수 시장현황(${seibroMarketLabels[marketTypeCode]}, ${formatCompactDateKey(snapshot.standardDate)}) 보호예수비율 ${summary.dutyDepoRatio ?? "-"}%`
+        : null;
+      const reasonNote =
+        topReason?.reasonName && topReason.shares != null
+          ? `SEIBro 사유별 상위 ${topReason.reasonName} ${topReason.shares.toLocaleString("ko-KR")}주`
+          : null;
+
+      if (summaryNote && !nextNotes.includes(summaryNote)) {
+        nextNotes.push(summaryNote);
+      }
+
+      if (reasonNote && !nextNotes.includes(reasonNote)) {
+        nextNotes.push(reasonNote);
+      }
+
+      return {
+        ...record,
+        lockupDetailJson: {
+          ...(record.lockupDetailJson ?? {}),
+          seibroMarketContext: lockupContext,
+        },
         notes: nextNotes,
       } satisfies SourceIpoRecord;
     }),
@@ -556,9 +745,74 @@ const getDetailUrl = (slug: string) => {
   return `${baseUrl}/ipos/${encodeURIComponent(slug)}`;
 };
 
+const formatPublicScoreValue = (value: number | null, withUnit = true) =>
+  value == null ? null : `${value.toFixed(1)}${withUnit ? "점" : ""}`;
+
+const formatPublicAdjustmentScoreValue = (value: number | null) =>
+  value == null ? "-" : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+
+const getPublicScoreStatusLabel = (score: IpoRecord["publicScore"]) => {
+  if (!score || score.status === "UNAVAILABLE" || score.status === "NOT_READY") {
+    return "점수 준비 중";
+  }
+
+  if (score.status === "PARTIAL") {
+    return "부분 산출";
+  }
+
+  if (score.status === "STALE") {
+    return "재점검 중";
+  }
+
+  return score.coverageStatus === "SUFFICIENT" ? "점수 공개" : "보강 반영";
+};
+
+const getAnalysisKeyPoints = (ipo: IpoRecord) =>
+  ipo.publicScore?.explanations.length
+    ? ipo.publicScore.explanations
+    : ipo.latestAnalysis.keyPoints;
+
+const getAnalysisWarnings = (ipo: IpoRecord) =>
+  ipo.publicScore?.warnings.length
+    ? ipo.publicScore.warnings
+    : ipo.latestAnalysis.warnings;
+
 const getAnalysisSummaryLine = (ipo: IpoRecord) =>
-  ipo.latestAnalysis.keyPoints[0]
-  ?? "정량 점수는 비공개 상태이며, 공시 기반 핵심 근거와 주의 포인트만 제공합니다.";
+  ipo.publicScore?.totalScore != null
+    ? `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}. ${ipo.publicScore.explanations[0] ?? "유통, 확약, 경쟁, 마켓 분석을 합산한 현재 기준 값입니다."}`
+    : ipo.publicScore?.explanations[0]
+      ?? ipo.latestAnalysis.keyPoints[0]
+      ?? "현재는 확보된 공시와 청약 데이터를 바탕으로 종목 점수를 계산하고 있습니다.";
+
+const buildPublicScoreQuickLines = (ipo: IpoRecord) => {
+  if (ipo.publicScore?.totalScore != null) {
+    return [
+      `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}`,
+      `유통 ${formatPublicScoreValue(ipo.publicScore.supplyScore) ?? "-"} / 확약 ${formatPublicScoreValue(ipo.publicScore.lockupScore) ?? "-"} / 경쟁 ${formatPublicScoreValue(ipo.publicScore.competitionScore) ?? "-"} / 마켓 ${formatPublicScoreValue(ipo.publicScore.marketScore) ?? "-"}`,
+      `재무 보정 ${formatPublicAdjustmentScoreValue(ipo.publicScore.financialAdjustmentScore)}`,
+    ];
+  }
+
+  return [
+    `종목점수 ${getPublicScoreStatusLabel(ipo.publicScore)}`,
+    getAnalysisSummaryLine(ipo),
+  ];
+};
+
+const toPublicIpoScoreRecord = (score: AdminIpoScoreRecord): PublicIpoScoreRecord => ({
+  scoreVersion: score.scoreVersion,
+  status: score.status,
+  coverageStatus: score.coverageStatus,
+  totalScore: score.totalScore,
+  supplyScore: score.supplyScore,
+  lockupScore: score.lockupScore,
+  competitionScore: score.competitionScore,
+  marketScore: score.marketScore,
+  financialAdjustmentScore: score.financialAdjustmentScore,
+  warnings: score.warnings,
+  explanations: score.explanations,
+  calculatedAt: score.calculatedAt,
+});
 
 const buildDataQualityLines = (dataQuality: IpoDataQualitySummary) => {
   const lines = [
@@ -589,8 +843,12 @@ const buildDecisionTags = (ipo: IpoRecord, dataQuality: IpoDataQualitySummary) =
     tags.push("#증거금확인");
   }
 
-  if (ipo.latestAnalysis.warnings.length > 0) {
+  if (getAnalysisWarnings(ipo).length > 0) {
     tags.push("#변동성주의");
+  }
+
+  if (ipo.publicScore?.totalScore != null) {
+    tags.push("#종목점수");
   }
 
   if (dataQuality.status === "VERIFIED") {
@@ -601,9 +859,6 @@ const buildDecisionTags = (ipo: IpoRecord, dataQuality: IpoDataQualitySummary) =
 
   return [...new Set(tags)];
 };
-
-// TODO: Re-enable public score and recommendation tags after validating the heuristic
-// with additional data sources beyond OpenDART and live outcome checks.
 const buildClosingDayAnalysisMessage = (
   ipo: IpoRecord,
   dataQuality: IpoDataQualitySummary,
@@ -620,8 +875,7 @@ const buildClosingDayAnalysisMessage = (
       lines: [
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
         `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
-        "정량 점수 비공개",
-        "OpenDART 단독 기준의 신뢰도 보강 전까지는 점수형 판단을 노출하지 않습니다.",
+        ...buildPublicScoreQuickLines(ipo),
       ],
     },
     {
@@ -650,19 +904,21 @@ const buildClosingDayAnalysisMessage = (
     {
       label: "10시 분석",
       lines: [
-        ...ipo.latestAnalysis.keyPoints,
+        ...getAnalysisKeyPoints(ipo),
       ],
     },
     {
       label: "주의 포인트",
-      lines: ipo.latestAnalysis.warnings.length
-        ? ipo.latestAnalysis.warnings
+      lines: getAnalysisWarnings(ipo).length
+        ? getAnalysisWarnings(ipo)
         : ["특별한 경고 신호는 없지만 최종 판단은 공시와 증권사 안내를 함께 확인하세요."],
     },
   ],
   footer: [
     `데이터 상태: ${dataQuality.label}`,
-    "정량 점수는 데이터 신뢰도 보강 전까지 비공개 상태입니다.",
+    ipo.publicScore?.totalScore != null
+      ? `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}`
+      : `종목점수 ${getPublicScoreStatusLabel(ipo.publicScore)}`,
     "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
@@ -682,8 +938,7 @@ const buildClosingSoonReminderMessage = (
         `청약 마감 오늘 16:00`,
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
         `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
-        "정량 점수 비공개",
-        "현재는 점수 대신 공시 기반 체크 포인트만 제공합니다.",
+        ...buildPublicScoreQuickLines(ipo),
       ],
     },
     {
@@ -703,26 +958,84 @@ const buildClosingSoonReminderMessage = (
       label: "빠른 리마인드",
       lines: [
         getAnalysisSummaryLine(ipo),
-        ...ipo.latestAnalysis.keyPoints.slice(0, 2),
+        ...getAnalysisKeyPoints(ipo).slice(0, 2),
       ],
     },
     {
       label: "마감 전 체크",
-      lines: ipo.latestAnalysis.warnings.length
-        ? ipo.latestAnalysis.warnings
+      lines: getAnalysisWarnings(ipo).length
+        ? getAnalysisWarnings(ipo)
         : ["최종 청약 전 증권사 주문 가능 시간과 환불일, 상장 예정일을 함께 확인하세요."],
     },
   ],
   footer: [
     `데이터 상태: ${dataQuality.label}`,
     "마감 직전에는 증권사별 주문 마감이 조금 다를 수 있으니 최종 화면을 다시 확인해 주세요.",
-    "정량 점수는 데이터 신뢰도 보강 전까지 비공개 상태입니다.",
+    ipo.publicScore?.totalScore != null
+      ? `종합점수 ${formatPublicScoreValue(ipo.publicScore.totalScore)}`
+      : `종목점수 ${getPublicScoreStatusLabel(ipo.publicScore)}`,
     "최종 청약 결정 전 증권신고서와 공식 공고를 함께 확인해 주세요.",
   ],
 });
 
 const toChecksum = (record: SourceIpoRecord) =>
   createHash("sha256").update(JSON.stringify(record)).digest("hex");
+
+const toPrismaJsonValue = (value: unknown) =>
+  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+
+const syncScoringArtifactsSafely = async ({
+  legacyIpoId,
+  slug,
+  record,
+  sourceChecksum,
+  seenAt,
+}: {
+  legacyIpoId: string;
+  slug: string;
+  record: SourceIpoRecord;
+  sourceChecksum: string;
+  seenAt: Date;
+}) => {
+  try {
+    await syncIpoScoringArtifacts({
+      legacyIpoId,
+      slug,
+      record,
+      sourceChecksum,
+      seenAt,
+    });
+  } catch (error) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "score_sync_skipped",
+      message: `신규 점수 저장 경로 동기화를 건너뛰었습니다. ipo=${slug}`,
+      context: toErrorContext(error, {
+        slug,
+        legacyIpoId,
+      }),
+    });
+  }
+};
+
+const runScoringAuditSafely = async (legacyIpoIds: string[]) => {
+  try {
+    await enqueueDailyScoreAuditForLegacyIpos(legacyIpoIds, "job:daily-sync");
+    return await processPendingIpoScoreRecalcQueue("job:daily-sync");
+  } catch (error) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "score_recalc_skipped",
+      message: "신규 점수 재계산 경로를 건너뛰었습니다.",
+      context: toErrorContext(error, {
+        legacyIpoIds,
+      }),
+    });
+    return null;
+  }
+};
 
 const getTodayClosingIpos = (dashboard: DashboardSnapshot, today: Date) =>
   dashboard.ipos.filter(
@@ -899,6 +1212,7 @@ const normalizeIpo = (record: SourceIpoRecord): IpoRecord => {
       ...event,
     })),
     latestAnalysis: analysis,
+    publicScore: null,
     latestSourceKey: record.sourceKey,
     sourceFetchedAt: new Date(),
   };
@@ -962,9 +1276,30 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
 
   const recordsWithListingMetadata = await mergeKindListingMetadata(recordsWithOpendartEnrichment, { forceRefresh });
   const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(recordsWithListingMetadata, { forceRefresh });
+  const recordsWithSeibroLockupMetadata = await enrichSeibroLockupMetadata(recordsWithKindOfferMetadata, {
+    forceRefresh,
+  });
+  let recordsWithBrokerSubscriptionMetadata = recordsWithSeibroLockupMetadata;
+
+  try {
+    recordsWithBrokerSubscriptionMetadata = await enrichBrokerSubscriptionMetadata(recordsWithSeibroLockupMetadata, {
+      forceRefresh,
+    });
+  } catch (error) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "broker_subscription_enrichment_failed",
+      message: "증권사 청약 안내 보강을 적용하지 못해 기존 공시/KIND 데이터만 사용합니다.",
+      context: toErrorContext(error, {
+        forceRefresh,
+        sourceRecords: recordsWithSeibroLockupMetadata.length,
+      }),
+    });
+  }
 
   return {
-    records: await enrichListingOpenMetrics(recordsWithKindOfferMetadata, { forceRefresh }),
+    records: await enrichListingOpenMetrics(recordsWithBrokerSubscriptionMetadata, { forceRefresh }),
     excludedNonIpoSlugs,
   };
 };
@@ -1279,7 +1614,7 @@ const toIpoRecord = (ipo: {
     fetchedAt: Date;
     payload: unknown;
   }>;
-}): IpoRecord => ({
+}, publicScore: PublicIpoScoreRecord | null = null): IpoRecord => ({
   ...(() => {
     const snapshotFields = getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload);
     const {
@@ -1350,6 +1685,7 @@ const toIpoRecord = (ipo: {
         }),
         generatedAt: ipo.analyses[0].generatedAt,
       },
+      publicScore,
       latestSourceKey: ipo.sourceSnapshots[0].sourceKey,
       sourceFetchedAt: ipo.sourceSnapshots[0].fetchedAt,
     };
@@ -1393,7 +1729,7 @@ const toPublicIpoDetailRecord = (ipo: {
   sourceSnapshots: Array<{
     payload: unknown;
   }>;
-}): PublicIpoDetailRecord => ({
+}, publicScore: PublicIpoScoreRecord | null = null): PublicIpoDetailRecord => ({
   ...(() => {
     const snapshotFields = getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload);
     const {
@@ -1464,6 +1800,7 @@ const toPublicIpoDetailRecord = (ipo: {
         }),
         generatedAt: ipo.analyses[0].generatedAt,
       },
+      publicScore,
     };
   })(),
 });
@@ -1490,7 +1827,8 @@ const toIpoRecordFromDb = async (slug: string): Promise<IpoRecord | null> => {
     return null;
   }
 
-  return toIpoRecord(ipo);
+  const publicScoreMap = await getPublicIpoScoreMap([ipo.id]);
+  return toIpoRecord(ipo, publicScoreMap.get(ipo.id) ?? null);
 };
 
 const listRecipientEmailChannels = async (recipientId: string) =>
@@ -2176,6 +2514,16 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       });
     }
 
+    if (latestSnapshot.id) {
+      await syncScoringArtifactsSafely({
+        legacyIpoId: latestSnapshot.id,
+        slug,
+        record: persistedRecord,
+        sourceChecksum: checksum,
+        seenAt,
+      });
+    }
+
     const unchanged = await toIpoRecordFromDb(slug);
     if (unchanged) {
       return unchanged;
@@ -2243,7 +2591,7 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       ipoId: ipo.id,
       sourceKey: persistedRecord.sourceKey,
       checksum,
-      payload: persistedRecord,
+      payload: toPrismaJsonValue(persistedRecord),
     },
   });
 
@@ -2257,6 +2605,14 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       warnings: analysis.warnings,
       generatedAt: analysis.generatedAt,
     },
+  });
+
+  await syncScoringArtifactsSafely({
+    legacyIpoId: ipo.id,
+    slug,
+    record: persistedRecord,
+    sourceChecksum: checksum,
+    seenAt,
   });
 
   return toIpoRecordFromDb(slug);
@@ -2299,6 +2655,16 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
       }),
       getSchedulerValidationLogs(),
     ]);
+    const ipoScoreSummaries = await getAdminIpoScoreSummaries(
+      ipos.map((ipo) => ({
+        legacyIpoId: ipo.id,
+        slug: ipo.slug,
+        name: ipo.name,
+      })),
+    );
+    const publicScoreByLegacyIpoId = new Map(
+      ipoScoreSummaries.map((score) => [score.legacyIpoId, toPublicIpoScoreRecord(score)] as const),
+    );
 
     const operationLogs = await getRecentOperationLogs(24);
 
@@ -2306,13 +2672,18 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
-      ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
+      ipos: ipos.flatMap((ipo) => (
+        ipo.analyses.length && ipo.sourceSnapshots.length
+          ? [toIpoRecord(ipo, publicScoreByLegacyIpoId.get(ipo.id) ?? null)]
+          : []
+      )),
       recipients: recipients.map(toRecipientRecord),
       jobs: jobs.map(toNotificationJobRecord),
       deliveries: deliveries.map(toNotificationDeliveryRecord),
       overrides: overrides.map(toAdminOverrideRecord),
       operationLogs,
       schedulerStatuses: buildSchedulerStatuses(schedulerLogs),
+      ipoScoreSummaries,
     };
   } catch (error) {
     if (isMissingSchemaError(error)) {
@@ -2355,11 +2726,17 @@ export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
       }),
     ]);
 
+    const publicScoreMap = await getPublicIpoScoreMap(ipos.map((ipo) => ipo.id));
+
     return {
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
-      ipos: ipos.flatMap((ipo) => (ipo.analyses.length && ipo.sourceSnapshots.length ? [toIpoRecord(ipo)] : [])),
+      ipos: ipos.flatMap((ipo) => (
+        ipo.analyses.length && ipo.sourceSnapshots.length
+          ? [toIpoRecord(ipo, publicScoreMap.get(ipo.id) ?? null)]
+          : []
+      )),
       recipientCount,
       jobCount,
     };
@@ -2427,7 +2804,9 @@ export const getPublicIpoBySlug = async (slug: string): Promise<PublicIpoDetailR
     return null;
   }
 
-  return toPublicIpoDetailRecord(ipo);
+  const publicScoreMap = await getPublicIpoScoreMap([ipo.id]);
+
+  return toPublicIpoDetailRecord(ipo, publicScoreMap.get(ipo.id) ?? null);
 };
 
 export const getIpoAdminMetadataBySlug = async (slug: string): Promise<IpoAdminMetadata | null> => {
@@ -2545,13 +2924,25 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
     const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords, {
       immediateWithdrawSlugs: excludedNonIpoSlugs,
     });
+    const syncedLegacyIpoIds = ipos
+      .filter((ipo): ipo is IpoRecord => Boolean(ipo))
+      .map((ipo) => ipo.id);
+    const scoreRecalcResult = await runScoringAuditSafely(syncedLegacyIpoIds);
 
     await logOperation({
       level: "INFO",
       source: "job:daily-sync",
       action: "completed",
       message: `공모주 일정 ${synced}건을 동기화했습니다.`,
-      context: { synced, sourceRecords: sourceRecords.length, markedWithdrawn, forceRefresh },
+      context: {
+        synced,
+        sourceRecords: sourceRecords.length,
+        markedWithdrawn,
+        forceRefresh,
+        scoreRecalcProcessed: scoreRecalcResult?.processed ?? 0,
+        scoreSnapshotsCreated: scoreRecalcResult?.createdSnapshots ?? 0,
+        scoreRecalcFailed: scoreRecalcResult?.failed ?? 0,
+      },
     });
 
     return {

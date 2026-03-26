@@ -9,8 +9,28 @@ export type JobStatus = "READY" | "SENT" | "PARTIAL_FAILURE";
 export type OperationLogLevel = "INFO" | "WARN" | "ERROR";
 export type SchedulerHealthStatus = "PENDING" | "HEALTHY" | "LATE" | "MISSED" | "FAILED";
 
+export type SourceBrokerSubscriptionDetail = {
+  brokerName: string;
+  brokerCode?: string | null;
+  sourceKey: string;
+  sourceRef?: string | null;
+  generalCompetitionRate?: number | null;
+  allocatedShares?: number | null;
+  equalAllocatedShares?: number | null;
+  proportionalAllocatedShares?: number | null;
+  minimumSubscriptionShares?: number | null;
+  maximumSubscriptionShares?: number | null;
+  depositRate?: number | null;
+  subscriptionFee?: number | null;
+  hasOnlineOnlyCondition?: boolean;
+  notes?: string[];
+};
+
 export type SourceIpoRecord = {
   sourceKey: string;
+  corpCode?: string | null;
+  stockCode?: string | null;
+  latestDisclosureNo?: string | null;
   name: string;
   market: string;
   leadManager: string;
@@ -29,6 +49,10 @@ export type SourceIpoRecord = {
   irEnd?: string | null;
   demandForecastStart?: string | null;
   demandForecastEnd?: string | null;
+  totalOfferedShares?: number | null;
+  newShares?: number | null;
+  secondaryShares?: number | null;
+  listedShares?: number | null;
   tradableShares?: number | null;
   subscriptionStart: string;
   subscriptionEnd: string;
@@ -37,6 +61,8 @@ export type SourceIpoRecord = {
   status?: IpoStatus;
   demandCompetitionRate?: number | null;
   lockupRate?: number | null;
+  lockupDetailJson?: Record<string, unknown> | null;
+  brokerSubscriptionDetails?: SourceBrokerSubscriptionDetail[];
   floatRatio?: number | null;
   insiderSalesRatio?: number | null;
   marketMoodScore?: number | null;
@@ -82,6 +108,21 @@ export type IpoAnalysisRecord = {
   generatedAt: Date;
 };
 
+export type PublicIpoScoreRecord = {
+  scoreVersion: string | null;
+  status: "NOT_READY" | "PARTIAL" | "READY" | "STALE" | "UNAVAILABLE";
+  coverageStatus: "EMPTY" | "PARTIAL" | "SUFFICIENT" | "UNAVAILABLE";
+  totalScore: number | null;
+  supplyScore: number | null;
+  lockupScore: number | null;
+  competitionScore: number | null;
+  marketScore: number | null;
+  financialAdjustmentScore: number | null;
+  warnings: string[];
+  explanations: string[];
+  calculatedAt: Date | null;
+};
+
 export type IpoRecord = {
   id: string;
   slug: string;
@@ -112,6 +153,7 @@ export type IpoRecord = {
   status: IpoStatus;
   events: IpoEventRecord[];
   latestAnalysis: IpoAnalysisRecord;
+  publicScore: PublicIpoScoreRecord | null;
   latestSourceKey: string;
   sourceFetchedAt: Date;
 };
@@ -199,6 +241,27 @@ export type SchedulerStatusRecord = {
   detail: string;
 };
 
+export type AdminIpoScoreRecord = {
+  legacyIpoId: string;
+  slug: string;
+  name: string;
+  scoreVersion: string | null;
+  status: "NOT_READY" | "PARTIAL" | "READY" | "STALE" | "UNAVAILABLE";
+  coverageStatus: "EMPTY" | "PARTIAL" | "SUFFICIENT" | "UNAVAILABLE";
+  totalScore: number | null;
+  supplyScore: number | null;
+  lockupScore: number | null;
+  competitionScore: number | null;
+  marketScore: number | null;
+  financialAdjustmentScore: number | null;
+  warnings: string[];
+  explanations: string[];
+  calculatedAt: Date | null;
+  queueStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | null;
+  queueReason: "DAILY_AUDIT" | "SOURCE_REFRESH" | "MANUAL" | null;
+  queueAttempts: number;
+};
+
 export type DashboardSnapshot = {
   mode: "database" | "fallback";
   generatedAt: Date;
@@ -210,6 +273,7 @@ export type DashboardSnapshot = {
   overrides: AdminOverrideRecord[];
   operationLogs: OperationLogRecord[];
   schedulerStatuses: SchedulerStatusRecord[];
+  ipoScoreSummaries: AdminIpoScoreRecord[];
 };
 
 export type PublicHomeSnapshot = {

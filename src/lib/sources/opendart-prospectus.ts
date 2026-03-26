@@ -203,47 +203,17 @@ const extractMinimumSubscriptionShares = (text: string) => {
   return rangeMatches.length > 0 ? Math.min(...rangeMatches) : null;
 };
 
-const extractCurrentAmount = (text: string, labelPatterns: RegExp[]) => {
-  for (const labelPattern of labelPatterns) {
-    const rowPattern = new RegExp(`${labelPattern.source}\\s+(\\(?-?[\\d,]+\\)?|-)`, "i");
-    const match = text.match(rowPattern);
-    if (!match) {
-      continue;
-    }
-
-    const parsed = parseSignedAmount(match[1]);
-    if (parsed != null) {
-      return parsed;
-    }
-  }
-
-  return null;
-};
-
-const calculateMarginRate = (numerator: number | null, denominator: number | null) => {
-  if (numerator == null || denominator == null || denominator === 0) {
-    return null;
-  }
-
-  return Number(((numerator / denominator) * 100).toFixed(1));
-};
-
-const calculateDebtRatio = (liabilities: number | null, equity: number | null) => {
-  if (liabilities == null || equity == null || equity === 0) {
-    return null;
-  }
-
-  return Number(((liabilities / equity) * 100).toFixed(1));
-};
-
-const parseXmlTable = (tableXml: string): ParsedTable | null => {
-  const rows = [...tableXml.matchAll(/<TR\b[^>]*>([\s\S]*?)<\/TR>/gi)]
+const parseXmlRows = (tableXml: string) =>
+  [...tableXml.matchAll(/<TR\b[^>]*>([\s\S]*?)<\/TR>/gi)]
     .map((match) =>
       [...match[1].matchAll(/<T[DH]\b[^>]*>([\s\S]*?)<\/T[DH]>/gi)]
         .map((cell) => normalizeText(cell[1]))
         .filter(Boolean),
     )
     .filter((row) => row.length > 1);
+
+const parseXmlTable = (tableXml: string): ParsedTable | null => {
+  const rows = parseXmlRows(tableXml);
 
   if (rows.length < 2) {
     return null;
@@ -269,6 +239,89 @@ const extractTableAfterTitle = (xml: string, titlePatterns: RegExp[]) => {
         return parsedTable;
       }
     }
+  }
+
+  return null;
+};
+
+const LOCKUP_TOTAL_LABEL_PATTERN = /^(?:합\s*계|총\s*계)$/;
+const LOCKUP_UNCOMMITTED_LABEL_PATTERN = /^(?:미확약|확약\s*없음|미확정)$/;
+const LOCKUP_COMMITMENT_LABEL_PATTERN =
+  /(?:\d+\s*(?:개월|일)\s*확약|확약\s*\d+\s*(?:개월|일)|상장\s*후\s*\d+\s*(?:개월|일)|자발적\s*확약|의무보유\s*확약)/;
+
+const isLockupTotalLabel = (value: string) => LOCKUP_TOTAL_LABEL_PATTERN.test(value.replace(/\s+/g, ""));
+
+const isLockupUncommittedLabel = (value: string) =>
+  LOCKUP_UNCOMMITTED_LABEL_PATTERN.test(value.replace(/\s+/g, ""));
+
+const isLockupCommitmentLabel = (value: string) =>
+  !isLockupUncommittedLabel(value) && LOCKUP_COMMITMENT_LABEL_PATTERN.test(value);
+
+const buildCompositeHeaders = (headerRows: string[][], columnCount: number) =>
+  Array.from({ length: columnCount }, (_, index) => {
+    const parts = headerRows
+      .map((row) => row[index] ?? "")
+      .filter(Boolean)
+      .filter((cell, partIndex, cells) => cell !== cells[partIndex - 1]);
+
+    return parts.join(" ");
+  });
+
+const sumQuantityCells = (row: string[], quantityColumnIndexes: number[]) =>
+  quantityColumnIndexes.reduce((sum, columnIndex) => sum + (parseInteger(row[columnIndex]) ?? 0), 0);
+
+export const extractLockupRateFromXmlTables = (xml: string) => {
+  const tableMatches = xml.matchAll(/<TABLE\b[\s\S]*?<\/TABLE>/gi);
+
+  for (const tableMatch of tableMatches) {
+    const rows = parseXmlRows(tableMatch[0]);
+    if (rows.length < 4) {
+      continue;
+    }
+
+    const dataStartIndex = rows.findIndex((row) => {
+      const label = row[0] ?? "";
+      return isLockupCommitmentLabel(label) || isLockupUncommittedLabel(label) || isLockupTotalLabel(label);
+    });
+    if (dataStartIndex < 1) {
+      continue;
+    }
+
+    const headerRows = rows.slice(0, dataStartIndex);
+    const dataRows = rows.slice(dataStartIndex);
+    const columnCount = Math.max(...rows.map((row) => row.length));
+    if (columnCount < 2) {
+      continue;
+    }
+
+    const compositeHeaders = buildCompositeHeaders(headerRows, columnCount);
+    const quantityColumnIndexes = compositeHeaders
+      .map((header, index) => (index > 0 && /수량/.test(header) ? index : -1))
+      .filter((index) => index > 0);
+
+    if (quantityColumnIndexes.length === 0) {
+      continue;
+    }
+
+    const commitmentRows = dataRows.filter((row) => isLockupCommitmentLabel(row[0] ?? ""));
+    const uncommittedRows = dataRows.filter((row) => isLockupUncommittedLabel(row[0] ?? ""));
+    const totalRow = dataRows.find((row) => isLockupTotalLabel(row[0] ?? ""));
+
+    if (commitmentRows.length === 0 || !totalRow || (uncommittedRows.length === 0 && commitmentRows.length < 2)) {
+      continue;
+    }
+
+    const committedQuantity = commitmentRows.reduce(
+      (sum, row) => sum + sumQuantityCells(row, quantityColumnIndexes),
+      0,
+    );
+    const totalQuantity = sumQuantityCells(totalRow, quantityColumnIndexes);
+
+    if (committedQuantity <= 0 || totalQuantity <= 0 || committedQuantity > totalQuantity) {
+      continue;
+    }
+
+    return Number(((committedQuantity / totalQuantity) * 100).toFixed(1));
   }
 
   return null;
@@ -445,6 +498,7 @@ const fetchOpendartProspectusDetailsUncached = async (
   const stabilityTable = extractTableAfterTitle(xml, [/\[주요 재무안정성 지표\]/]);
   const scoringTexts = [normalizedXmlText];
   const { priceBandLow, priceBandHigh } = extractPriceBand(normalizedXmlText);
+  const lockupRateFromTables = extractLockupRateFromXmlTables(xml);
 
   return {
     receiptNo,
@@ -453,7 +507,7 @@ const fetchOpendartProspectusDetailsUncached = async (
     minimumSubscriptionShares: extractMinimumSubscriptionShares(normalizedXmlText),
     depositRate: extractDepositRate(normalizedXmlText),
     demandCompetitionRate: extractDemandCompetitionRate(scoringTexts),
-    lockupRate: extractLockupRate(scoringTexts),
+    lockupRate: lockupRateFromTables ?? extractLockupRate(scoringTexts),
     financialSnapshot: extractFinancialSnapshot(incomeSummaryTable, stabilityTable),
   };
 };

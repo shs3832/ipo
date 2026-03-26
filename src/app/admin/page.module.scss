@@ -177,6 +177,13 @@
   gap: 12px;
 }
 
+.badgeCluster {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .rowHead > div {
   min-width: 0;
 }
@@ -214,6 +221,24 @@
 .schedulerBadgeFailed {
   color: #9f2f2f;
   background: rgba(226, 90, 90, 0.16);
+}
+
+.scoreBadgeReady,
+.coverageBadgeSufficient {
+  color: #0f6b43;
+  background: rgba(51, 179, 120, 0.16);
+}
+
+.scoreBadgePartial,
+.coverageBadgePartial {
+  color: #9a4f16;
+  background: rgba(255, 159, 67, 0.18);
+}
+
+.scoreBadgeMissing,
+.coverageBadgeEmpty {
+  color: #6a5a21;
+  background: rgba(214, 181, 49, 0.18);
 }
 
 .bulletList {

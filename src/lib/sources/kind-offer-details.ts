@@ -18,6 +18,7 @@ type KindOfferDetails = {
   demandForecastStart: string | null;
   demandForecastEnd: string | null;
   tradableShares: number | null;
+  listedShares: number | null;
   floatRatio: number | null;
 };
 
@@ -218,6 +219,7 @@ const fetchKindOfferDetailsUncached = async (
     demandForecastStart: demandSchedule.start,
     demandForecastEnd: demandSchedule.end,
     tradableShares,
+    listedShares,
     floatRatio:
       tradableShares != null && listedShares != null && listedShares > 0
         ? Number(((tradableShares / listedShares) * 100).toFixed(1))
