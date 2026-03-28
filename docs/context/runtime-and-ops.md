@@ -40,6 +40,11 @@
 
 ## Alert Gate Rules
 
+- 자동 알림 대상 제외:
+  - 종목명 기준 스팩
+    - `기업인수목적`
+    - `스팩`
+    - `SPAC`
 - 자동 알림 차단 필수값:
   - `offerPrice`
   - `refundDate`

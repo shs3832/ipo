@@ -42,6 +42,7 @@ import { prisma } from "@/lib/db";
 import { env, isDatabaseEnabled, isEmailConfigured } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { buildFallbackDashboard, buildFallbackPublicHomeSnapshot } from "@/lib/fallback-data";
+import { partitionAlertEligibleIpos } from "@/lib/ipo-classification";
 import {
   getAdminIpoScoreSummaries,
 } from "@/lib/ipo-score-store";
@@ -965,6 +966,27 @@ const buildAlertCandidates = (ipos: IpoRecord[]) =>
     ipo,
     dataQuality: assessIpoDataQuality(ipo),
   }));
+
+const logExcludedSpacAlerts = async (
+  source: string,
+  alertLabel: string,
+  ipos: IpoRecord[],
+) => {
+  if (ipos.length === 0) {
+    return;
+  }
+
+  await logOperation({
+    level: "INFO",
+    source,
+    action: "skipped_spac_ipos",
+    message: `스팩 ${ipos.length}건은 ${alertLabel} 대상에서 제외했습니다.`,
+    context: {
+      count: ipos.length,
+      ipos: ipos.map((ipo) => ipo.name),
+    },
+  });
+};
 
 const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
   const storedJobs = await Promise.all(
@@ -2907,7 +2929,11 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
     const dashboard = await getDashboardSnapshot();
     const todayKey = getKstTodayKey();
     const today = parseKstDate(todayKey);
-    const candidates = buildAlertCandidates(getTodayClosingIpos(dashboard, today));
+    const { included: alertTargetIpos, excludedSpacs } = partitionAlertEligibleIpos(
+      getTodayClosingIpos(dashboard, today),
+    );
+    await logExcludedSpacAlerts("job:prepare-daily-alerts", "10시 분석 알림", excludedSpacs);
+    const candidates = buildAlertCandidates(alertTargetIpos);
     await logAlertQualitySignals("job:prepare-daily-alerts", "10시 분석 알림", candidates);
 
     const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
@@ -2987,7 +3013,10 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
     const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
     const today = parseKstDate(todayKey);
     const dashboard = await getDashboardSnapshot();
-    const candidates = now < closingCutoffAt ? buildAlertCandidates(getTodayClosingIpos(dashboard, today)) : [];
+    const todayClosingIpos = now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [];
+    const { included: alertTargetIpos, excludedSpacs } = partitionAlertEligibleIpos(todayClosingIpos);
+    await logExcludedSpacAlerts("job:prepare-closing-alerts", "마감 30분 전 알림", excludedSpacs);
+    const candidates = buildAlertCandidates(alertTargetIpos);
     await logAlertQualitySignals("job:prepare-closing-alerts", "마감 30분 전 알림", candidates);
     const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
 

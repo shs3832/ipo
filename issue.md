@@ -2,6 +2,49 @@
 
 ## 2026-03-28
 
+### Follow-up: Exclude SPAC From Alert Emails
+
+이번 스레드에서는 홈 화면에서만 기본 숨김 처리되던 스팩을 메일 알림 파이프라인에서도 제외했다. 기존에는 당일 마감 종목이면 스팩도 일반 공모주와 같은 기준으로 10시 분석 메일과 마감 30분 전 리마인더 준비 대상에 들어갔는데, 이제는 종목명 패턴 기준으로 스팩을 먼저 걸러 자동 알림 후보에서 제외한다. 이 기준이 홈 화면 토글과 어긋나지 않도록 스팩 판별 로직도 공용 helper로 합쳤다.
+
+### What Changed In This Follow-up
+
+1. 스팩 판별 정규식을 공용 helper로 분리해 홈 화면과 알림 준비 경로가 같은 기준을 쓰게 했다.
+2. `prepareDailyAlerts`, `prepareClosingSoonAlerts`에서 오늘 마감 종목 중 스팩은 후보 생성 전에 제외되도록 바꿨다.
+3. 스팩 제외 건수와 종목명은 운영 로그에 남겨, 왜 메일이 준비되지 않았는지 `/admin`과 로그에서 바로 확인할 수 있게 했다.
+4. 스팩 제외 helper 테스트를 추가하고, 기존 홈 helper 테스트도 공용 판별 기준 위에서 계속 동작하도록 유지했다.
+5. 운영/제품 문서와 루트 README에 `스팩은 자동 메일 대상에서 제외` 정책을 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- 스팩 판별 / 알림 제외 helper
+  - `src/lib/ipo-classification.ts`
+- 알림 준비 / 운영 로그
+  - `src/lib/jobs.ts`
+- 홈 화면 helper 연결
+  - `src/app/home-content-helpers.ts`
+- 테스트
+  - `tests/ipo-classification.test.ts`
+  - `tests/home-content-helpers.test.ts`
+- 문서
+  - `issue.md`
+  - `README.md`
+  - `docs/context/product-surface.md`
+  - `docs/context/runtime-and-ops.md`
+
+### Verification In This Follow-up
+
+- `npm test -- tests/ipo-classification.test.ts tests/home-content-helpers.test.ts`
+- `npx tsc --noEmit`
+- `npm test`
+- `npm run lint`
+- `npm run build`
+
+### Issues / Notes In This Follow-up
+
+- 새 이슈는 확인되지 않았다.
+- 자동 메일 제외 기준은 종목명 패턴 기반이므로, 스팩 명칭이 일반 종목처럼 들어오는 예외 데이터가 생기면 패턴을 보강해야 한다.
+- `/admin` 운영 로그에서는 `skipped_spac_ipos` 액션으로 스팩 제외 건수를 확인할 수 있다.
+
 ### Follow-up: Home Tracked IPO Search / Segmentation / Optional SPAC Toggle
 
 이번 스레드에서는 홈 `종목 개요`가 종목 수 증가에 따라 단순 세로 카드 리스트만으로는 훑기와 찾기가 모두 불편해지는 문제를 먼저 손봤다. 그래서 검색과 상태 칩, 정렬을 한 번에 추가하고, 리스트를 `이번 주 마감 / 그다음 일정 / 지난 종목`으로 다시 나눴다. 지난 종목은 기본 접힘으로 두고, 모바일에서는 일부만 먼저 노출한 뒤 `더 보기`로 확장되게 정리했다. 추가로 스팩은 기본적으로 숨기고, 필터 줄 맨 뒤 `스팩 포함` 체크 토글을 켰을 때만 함께 보이도록 바꿨다.

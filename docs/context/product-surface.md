@@ -65,6 +65,7 @@
 
 - closing-day analysis 메일
 - closing-soon reminder 메일
+- 종목명 기준 스팩(`기업인수목적`, `스팩`, `SPAC`)은 자동 메일 대상에서 제외
 - 현재는 점수 노출 대신 공시 기반 체크 포인트와 데이터 상태 중심 문구 사용
 - 링크는 `APP_BASE_URL` 기준
 

@@ -47,6 +47,7 @@ npm run mail:sample
 - 날짜/스케줄 판단은 항상 `Asia/Seoul`
 - 홈 `/`는 `5분` 캐시를 사용
 - 공개 read path는 DB write를 하지 않음
+- 자동 알림은 종목명 기준 스팩(`기업인수목적`, `스팩`, `SPAC`)을 제외함
 - 자동 알림은 `offerPrice`, `refundDate`, `leadManager`가 없으면 차단됨
 
 ## Document Map

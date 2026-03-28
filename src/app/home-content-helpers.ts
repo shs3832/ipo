@@ -1,4 +1,5 @@
 import { getKstDayOfWeek, getKstTodayKey, kstDateKey, parseKstDate, shiftKstDateKey } from "@/lib/date";
+export { isSpacIpo } from "@/lib/ipo-classification";
 
 export type HomeIpoSummary = {
   id: string;
@@ -55,7 +56,6 @@ const nameCollator = new Intl.Collator("ko-KR", {
   numeric: true,
   sensitivity: "base",
 });
-const spacPattern = /기업인수목적|스팩|spac/i;
 
 const normalizeSearchValue = (value: string) => value.trim().toLocaleLowerCase("ko-KR");
 const getSubscriptionStartKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionStart));
@@ -82,8 +82,6 @@ export const getMinimumDepositAmount = ({
 
   return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
 };
-
-export const isSpacIpo = (ipo: Pick<HomeIpoSummary, "name">) => spacPattern.test(ipo.name);
 
 export const matchesOverviewSearch = (ipo: HomeIpoSummary, query: string) => {
   const normalizedQuery = normalizeSearchValue(query);
