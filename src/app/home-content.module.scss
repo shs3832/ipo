@@ -629,8 +629,50 @@
   }
 }
 
-@media (max-width: 420px) {
+@include phone {
   .calendarGrid {
     grid-template-columns: 1fr;
+  }
+
+  .sidePanel {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .panelHeader {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .ipoCard {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .ipoCardHead {
+    gap: 8px;
+  }
+
+  .ipoCardHead h3 {
+    font-size: 0.98rem;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ipoCardHead p {
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ipoBrokerList {
+    margin-top: 6px;
+  }
+
+  .ipoStats {
+    gap: 6px;
+  }
+
+  .ipoStats div {
+    padding-top: 6px;
   }
 }

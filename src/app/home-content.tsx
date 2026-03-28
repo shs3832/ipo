@@ -325,7 +325,7 @@ export function HomeContent({
         </div>
       </article>
 
-      <article className={styles.sidePanel}>
+      <article className={styles.sidePanel} id="tracked-ipos">
         <div className={styles.panelHeader}>
           <div>
             <p className="page-eyebrow">Tracked IPOs</p>

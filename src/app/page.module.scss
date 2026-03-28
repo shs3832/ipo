@@ -66,6 +66,10 @@
   gap: 12px;
 }
 
+.heroMobileAction {
+  display: none;
+}
+
 .summaryGrid {
   @include autoGrid(230px);
 }
@@ -126,6 +130,14 @@
     gap: 10px;
   }
 
+  .heroDesktopAction {
+    display: none;
+  }
+
+  .heroMobileAction {
+    display: inline-flex;
+  }
+
   .summaryGrid {
     gap: 14px;
     grid-template-columns: 1fr;
@@ -134,5 +146,49 @@
   .cardValue,
   .summaryValue {
     font-size: 1.8rem;
+  }
+}
+
+@include phone {
+  .hero,
+  .summaryCard {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .hero {
+    gap: 18px;
+  }
+
+  .heroBody,
+  .heroAside {
+    gap: 14px;
+  }
+
+  .heroMetaRow {
+    gap: 8px;
+  }
+
+  .heroMetricCard {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .heroActionGroup {
+    gap: 8px;
+  }
+
+  .summaryGrid {
+    gap: 12px;
+  }
+
+  .cardValue,
+  .summaryValue {
+    font-size: 1.55rem;
+  }
+
+  .cardCopy {
+    font-size: 0.93rem;
+    line-height: 1.58;
   }
 }

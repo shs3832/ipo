@@ -344,3 +344,54 @@
     border-radius: 18px;
   }
 }
+
+@include phone {
+  .hero,
+  .card {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .hero {
+    gap: 16px;
+  }
+
+  .heroBody {
+    gap: 12px;
+  }
+
+  .metaRow {
+    gap: 8px;
+  }
+
+  .grid,
+  .analysisColumns {
+    gap: 12px;
+  }
+
+  .quickGrid {
+    gap: 8px;
+  }
+
+  .quickItem,
+  .analysisBlock {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .quickItem strong {
+    font-size: 1.02rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .primaryValue {
+    font-size: 1.14rem;
+  }
+
+  .bulletList {
+    gap: 6px;
+    padding-left: 16px;
+    margin-top: 10px;
+  }
+}

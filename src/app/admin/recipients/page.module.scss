@@ -224,6 +224,13 @@
   line-height: 1.65;
 }
 
+@include tablet {
+  .hero,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @include mobile {
   .hero,
   .grid {
@@ -248,5 +255,45 @@
 
   .rowHead {
     flex-direction: column;
+  }
+
+  .deleteForm,
+  .deleteButton {
+    width: 100%;
+  }
+
+  .channelBadge {
+    white-space: normal;
+    text-align: center;
+    align-self: flex-start;
+  }
+}
+
+@include phone {
+  .hero,
+  .metricCard,
+  .card,
+  .feedbackBanner {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .row,
+  .emptyState {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .grid,
+  .list {
+    gap: 12px;
+  }
+
+  .metricValue {
+    font-size: 1.6rem;
+  }
+
+  .channelBadge {
+    font-size: 0.8rem;
   }
 }

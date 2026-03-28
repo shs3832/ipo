@@ -1,5 +1,60 @@
 # Issue Log
 
+## 2026-03-28
+
+### Follow-up: Mobile Viewport Normalization / Responsive Polish
+
+이번 스레드에서는 실제 휴대폰에서 화면이 모바일처럼 재배치되지 않던 원인을 먼저 바로잡았다. 핵심 문제는 루트 viewport를 `width=1024`로 고정해 둔 탓에 `900px`, `420px` 이하 반응형 분기가 실제 모바일에서 제대로 동작하지 않던 점이었다. 그래서 viewport를 `device-width`로 되돌리고, 공용 스타일에 초소형 폰(`480px`) 대응 레이어를 추가한 뒤, 홈/상세/admin/login의 2열 압축 레이아웃과 버튼/칩/배지 밀도를 함께 조정했다.
+
+### What Changed In This Follow-up
+
+1. 루트 viewport를 `device-width`로 바꾸고, 공용 스타일 토큰에 `phone(<=480px)` breakpoint를 추가했다.
+2. 공용 버튼, pill, 타이포, page shell 여백을 모바일과 초소형 폰 기준으로 두 단계 조정했다.
+3. 홈 `/`에서는 모바일에서 캘린더를 계속 숨기되, 기존 `일정 바로 보기` CTA가 숨겨진 캘린더를 가리키지 않도록 `종목 개요 보기` anchor로 대체했다.
+4. 홈 종목 카드와 broker chip은 좁은 폭에서 긴 한글 텍스트가 잘리지 않도록 wrapping과 spacing을 보강했다.
+5. 상세 `/ipos/[slug]`의 quick facts, 체크 포인트, 일정/상세 데이터가 실제 폰 폭에서 세로 흐름으로 자연스럽게 읽히도록 density를 정리했다.
+6. `/admin`, `/admin/recipients`, `/login`도 같은 기준으로 hero/grid 붕괴 시점과 badge/action 정렬을 정리해 모바일 압축 레이아웃을 줄였다.
+7. 제품 문서에도 모바일 홈 정책과 viewport/device-width 기준을 짧게 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- viewport / 공용 반응형 토큰
+  - `src/app/layout.tsx`
+  - `src/styles/_tokens.scss`
+  - `src/styles/_mixins.scss`
+  - `src/styles/common.scss`
+- 공개 화면
+  - `src/app/page.tsx`
+  - `src/app/page.module.scss`
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+  - `src/app/ipos/[slug]/page.module.scss`
+  - `src/components/broker-chip.module.scss`
+- admin / login
+  - `src/app/admin/page.module.scss`
+  - `src/app/admin/recipients/page.module.scss`
+  - `src/app/login/page.module.scss`
+- 문서
+  - `issue.md`
+  - `docs/context/product-surface.md`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- Playwright iPhone 13 확인
+  - 홈 `/`
+  - 상세 `/ipos/아이엠바이오로직스`
+  - `/login`
+
+### Current Decisions To Remember In This Follow-up
+
+- 루트 viewport는 이제 `device-width`가 기준이다.
+- 모바일 홈에서는 캘린더를 계속 숨기고, 상단 secondary CTA는 `종목 개요 보기`로 연결한다.
+- 공용 breakpoint는 기존 `1024/900` 체계를 유지하되, 초소형 폰용 `480px` 레이어를 추가해 density만 더 줄인다.
+- 점수 UI는 계속 숨김 상태로 유지한다.
+
 ## 2026-03-26
 
 ### Follow-up: Public Score Pause / Hidden UI / Reopen Notes

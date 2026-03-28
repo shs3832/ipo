@@ -361,4 +361,46 @@
   .row strong {
     margin-bottom: 4px;
   }
+
+  .badgeCluster {
+    justify-content: flex-start;
+  }
+
+  .schedulerBadge {
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@include phone {
+  .hero,
+  .summaryCard,
+  .card {
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .heroStatusCard,
+  .row {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .summaryGrid,
+  .grid {
+    gap: 12px;
+  }
+
+  .cardValue,
+  .summaryValue {
+    font-size: 1.45rem;
+  }
+
+  .badgeCluster {
+    gap: 6px;
+  }
+
+  .schedulerBadge {
+    min-width: 0;
+  }
 }

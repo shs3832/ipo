@@ -64,8 +64,11 @@ export default async function Home() {
               <Link className="button-primary" href="/admin">
                 관리자 화면
               </Link>
-              <a className="button-secondary" href="#calendar-panel">
+              <a className={`button-secondary ${styles.heroDesktopAction}`} href="#calendar-panel">
                 일정 바로 보기
+              </a>
+              <a className={`button-secondary ${styles.heroMobileAction}`} href="#tracked-ipos">
+                종목 개요 보기
               </a>
             </div>
           </div>

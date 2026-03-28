@@ -4,6 +4,7 @@
 
 - 캘린더가 위, 종목 개요가 아래
 - 모바일에서는 캘린더를 숨기고 종목 개요를 먼저 노출
+- 모바일 상단 secondary CTA는 숨겨진 캘린더 대신 종목 개요 영역으로 연결
 - 홈 `/`는 static + `revalidate = 300`
 - 이벤트는 `청약마감`, `환불`, `상장`
 - 현재 평일만 표시, 주말 열은 렌더링 토글로 복구 가능
@@ -39,7 +40,8 @@
 ## UI Constraints
 
 - `유통가능물량(floatRatio)`은 이미 percent 값이므로 UI에서 다시 100배 하면 안 됨
-- 공통 모바일 breakpoint는 `1024px`
+- 루트 viewport 기준은 `device-width`
+- 공통 density breakpoint는 `1024px`, 2열 레이아웃 붕괴 기준은 `900px`, 초소형 폰 보정은 `480px`
 - 스타일 구조:
   - 공통: [src/styles](/Users/shs/Desktop/Study/ipo/src/styles)
   - 전역: [src/app/globals.scss](/Users/shs/Desktop/Study/ipo/src/app/globals.scss)
