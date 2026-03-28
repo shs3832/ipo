@@ -479,6 +479,415 @@
   font-weight: 700;
 }
 
+.overviewToolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.overviewControlRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  gap: 12px;
+  align-items: end;
+}
+
+.overviewSearchField,
+.overviewSortField {
+  min-width: 0;
+}
+
+.overviewControlLabel {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.overviewSearchInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid rgba(208, 215, 228, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    transform var(--transition-base);
+}
+
+.overviewSearchInputWrap:focus-within,
+.overviewSortSelect:focus {
+  border-color: rgba(42, 115, 245, 0.28);
+  box-shadow: 0 0 0 4px rgba(49, 130, 246, 0.1);
+}
+
+.overviewSearchIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b98aa;
+  flex-shrink: 0;
+}
+
+.overviewSearchIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.overviewSearchIcon path {
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.overviewSearchInput {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.overviewSearchInput:focus {
+  outline: 0;
+}
+
+.overviewSearchInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.overviewSearchInput::-webkit-search-decoration,
+.overviewSearchInput::-webkit-search-cancel-button,
+.overviewSearchInput::-webkit-search-results-button,
+.overviewSearchInput::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+}
+
+.overviewSearchClear,
+.overviewOptionToggle,
+.overviewSectionToggle,
+.overviewMoreButton,
+.overviewResetButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    transform var(--transition-base),
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base),
+    color var(--transition-base);
+}
+
+.overviewSearchClear {
+  min-height: 32px;
+  padding: 0 12px;
+  background: rgba(226, 232, 240, 0.9);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.overviewSearchClear:hover,
+.overviewOptionToggle:hover,
+.overviewSectionToggle:hover,
+.overviewMoreButton:hover,
+.overviewResetButton:hover {
+  transform: translateY(-1px);
+}
+
+.overviewSortSelect {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid rgba(208, 215, 228, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text-primary);
+  font: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+}
+
+.overviewSortSelect:focus {
+  outline: 0;
+}
+
+.overviewFilterRow {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.overviewFilterRow::-webkit-scrollbar {
+  display: none;
+}
+
+.overviewOptionToggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 14px;
+  border-color: rgba(208, 215, 228, 0.92);
+  background: #f7f9fc;
+  color: #4b5565;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.overviewOptionInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.overviewOptionIndicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid rgba(185, 193, 206, 0.96);
+  border-radius: 999px;
+  background: #fff;
+  flex-shrink: 0;
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base),
+    transform var(--transition-base);
+}
+
+.overviewOptionIndicatorIcon {
+  width: 14px;
+  height: 14px;
+  overflow: visible;
+}
+
+.overviewOptionIndicatorPath {
+  stroke: #fff;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  transform: scale(0.72);
+  transform-origin: center;
+  transition:
+    opacity 160ms ease,
+    transform 180ms ease;
+}
+
+.overviewOptionLabel {
+  color: inherit;
+}
+
+.overviewOptionCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(220, 226, 236, 0.92);
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.overviewOptionToggleActive {
+  border-color: rgba(42, 115, 245, 0.22);
+  background: #fff;
+  color: #191f28;
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.overviewOptionToggleActive .overviewOptionIndicator {
+  border-color: #3182f6;
+  background: #3182f6;
+  box-shadow: 0 6px 16px rgba(49, 130, 246, 0.22);
+  transform: translateY(-0.5px);
+}
+
+.overviewOptionToggleActive .overviewOptionIndicatorPath {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.overviewOptionToggleActive .overviewOptionCount {
+  background: rgba(49, 130, 246, 0.12);
+  color: #2257d5;
+}
+
+.overviewOptionToggle:focus-within {
+  border-color: rgba(42, 115, 245, 0.28);
+  box-shadow:
+    0 0 0 4px rgba(49, 130, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.overviewFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(208, 215, 228, 0.92);
+  border-radius: 999px;
+  background: #f7f9fc;
+  color: #4b5565;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform var(--transition-base),
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base),
+    color var(--transition-base);
+}
+
+.overviewFilterChip strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(220, 226, 236, 0.92);
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.overviewFilterChip:hover {
+  transform: translateY(-1px);
+  background: #fff;
+}
+
+.overviewFilterChipActive {
+  border-color: rgba(42, 115, 245, 0.22);
+  background: #fff;
+  color: #191f28;
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.overviewFilterChipActive strong {
+  background: rgba(49, 130, 246, 0.12);
+  color: #2257d5;
+}
+
+.overviewSections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overviewSection {
+  padding: 18px;
+  border: 1px solid rgba(208, 215, 228, 0.82);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 253, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.overviewSectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.overviewSectionTitle {
+  margin-bottom: 4px;
+  font-size: 1rem;
+}
+
+.overviewSectionCopy {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.overviewSectionMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.overviewSectionCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.78);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.overviewSectionToggle,
+.overviewResetButton {
+  min-height: 34px;
+  padding: 0 14px;
+  border-color: rgba(208, 215, 228, 0.92);
+  background: rgba(255, 255, 255, 0.94);
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.overviewMoreButton {
+  align-self: flex-start;
+  min-height: 46px;
+  padding: 0 18px;
+  border-color: rgba(42, 115, 245, 0.14);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--primary-strong);
+  font-size: 0.9rem;
+  font-weight: 800;
+  box-shadow: 0 12px 22px rgba(42, 115, 245, 0.1);
+}
+
+.overviewEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px;
+  border: 1px dashed rgba(191, 200, 214, 0.96);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 @include tablet {
   .calendarGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -503,6 +912,52 @@
   .panelHeader {
     flex-direction: column;
     margin-bottom: 16px;
+  }
+
+  .overviewToolbar {
+    margin-bottom: 16px;
+  }
+
+  .overviewControlRow {
+    grid-template-columns: 1fr;
+  }
+
+  .overviewSearchInputWrap,
+  .overviewSortSelect {
+    min-height: 48px;
+    border-radius: 16px;
+  }
+
+  .overviewFilterRow {
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+
+  .overviewFilterChip {
+    flex: 0 0 auto;
+  }
+
+  .overviewOptionToggle {
+    flex: 0 0 auto;
+  }
+
+  .overviewSection {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .overviewSectionHeader {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .overviewSectionMeta {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .overviewMoreButton {
+    width: 100%;
   }
 
   .filterRow {
@@ -642,6 +1097,81 @@
   .panelHeader {
     gap: 10px;
     margin-bottom: 12px;
+  }
+
+  .overviewToolbar {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .overviewControlLabel {
+    margin-bottom: 6px;
+    font-size: 0.78rem;
+  }
+
+  .overviewSearchInputWrap,
+  .overviewSortSelect {
+    min-height: 46px;
+    padding-inline: 12px;
+    border-radius: 14px;
+  }
+
+  .overviewSearchClear {
+    min-height: 30px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+  }
+
+  .overviewFilterChip {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 0.82rem;
+  }
+
+  .overviewOptionToggle {
+    min-height: 42px;
+    padding: 0 12px;
+    gap: 10px;
+    font-size: 0.8rem;
+  }
+
+  .overviewOptionCount {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    font-size: 0.72rem;
+  }
+
+  .overviewSection {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .overviewSectionTitle {
+    font-size: 0.94rem;
+  }
+
+  .overviewSectionCopy {
+    font-size: 0.82rem;
+  }
+
+  .overviewSectionCount,
+  .overviewSectionToggle {
+    min-height: 28px;
+    padding-inline: 10px;
+    font-size: 0.72rem;
+  }
+
+  .overviewMoreButton,
+  .overviewResetButton {
+    min-height: 42px;
+    width: 100%;
+    font-size: 0.84rem;
+  }
+
+  .overviewEmptyState {
+    padding: 18px;
+    border-radius: 18px;
   }
 
   .ipoCard {

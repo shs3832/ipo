@@ -2,6 +2,46 @@
 
 ## 2026-03-28
 
+### Follow-up: Home Tracked IPO Search / Segmentation / Optional SPAC Toggle
+
+이번 스레드에서는 홈 `종목 개요`가 종목 수 증가에 따라 단순 세로 카드 리스트만으로는 훑기와 찾기가 모두 불편해지는 문제를 먼저 손봤다. 그래서 검색과 상태 칩, 정렬을 한 번에 추가하고, 리스트를 `이번 주 마감 / 그다음 일정 / 지난 종목`으로 다시 나눴다. 지난 종목은 기본 접힘으로 두고, 모바일에서는 일부만 먼저 노출한 뒤 `더 보기`로 확장되게 정리했다. 추가로 스팩은 기본적으로 숨기고, 필터 줄 맨 뒤 `스팩 포함` 체크 토글을 켰을 때만 함께 보이도록 바꿨다.
+
+### What Changed In This Follow-up
+
+1. 홈 `종목 개요` 상단에 `종목명 / 주관사 / 시장` 검색 입력과 정렬 select를 추가했다.
+2. `전체 / 이번주 마감 / 이번달 / 청약중 / 지난 종목` 칩을 추가하고, 헤더 배지는 `필터 결과 / 전체` 개수로 바꿨다.
+3. 카드 리스트를 `이번 주 마감`, `그다음 일정`, `지난 종목` 섹션으로 구분했고, `지난 종목`은 기본 접힘으로 바꿨다.
+4. 모바일과 태블릿 폭에서는 섹션별 초기 카드 수를 제한하고 `더 보기`로 확장되게 정리했다.
+5. 스팩은 종목명 패턴(`스팩`, `기업인수목적`, `SPAC`) 기준으로 판별해 기본 숨김으로 두고, 필터 줄 맨 뒤 `스팩 포함` 체크 토글을 켰을 때만 노출되게 했다.
+6. 필터/정렬/섹션 분리와 스팩 판별 규칙은 별도 helper로 분리하고, 관련 테스트를 추가했다.
+
+### Main Code Changes In This Follow-up
+
+- 홈 종목 개요 탐색 UI
+  - `src/app/home-content.tsx`
+  - `src/app/home-content.module.scss`
+  - `src/app/page.tsx`
+- 탐색 helper / 테스트
+  - `src/app/home-content-helpers.ts`
+  - `tests/home-content-helpers.test.ts`
+- 문서
+  - `issue.md`
+  - `docs/context/product-surface.md`
+
+### Verification In This Follow-up
+
+- `npm test -- tests/home-content-helpers.test.ts`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 홈 `종목 개요`는 이제 단순 세로 리스트가 아니라 검색, 상태 칩, 정렬, 섹션 그룹 흐름으로 탐색한다.
+- `지난 종목`은 기본 접힘이며, 과거 종목만 남는 경우에는 자동으로 펼쳐 보인다.
+- 스팩은 기본적으로 숨김이고, 필터 줄 맨 뒤 `스팩 포함` 체크를 켰을 때만 함께 보인다.
+- 좁은 폭에서는 필터 줄 전체가 한 줄 가로 스크롤을 유지한다.
+
 ### Follow-up: Mobile Viewport Normalization / Responsive Polish
 
 이번 스레드에서는 실제 휴대폰에서 화면이 모바일처럼 재배치되지 않던 원인을 먼저 바로잡았다. 핵심 문제는 루트 viewport를 `width=1024`로 고정해 둔 탓에 `900px`, `420px` 이하 반응형 분기가 실제 모바일에서 제대로 동작하지 않던 점이었다. 그래서 viewport를 `device-width`로 되돌리고, 공용 스타일에 초소형 폰(`480px`) 대응 레이어를 추가한 뒤, 홈/상세/admin/login의 2열 압축 레이아웃과 버튼/칩/배지 밀도를 함께 조정했다.

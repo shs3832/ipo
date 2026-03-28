@@ -1,11 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 
+import {
+  buildOverviewSections,
+  buildOverviewTiming,
+  getMinimumDepositAmount,
+  type HomeIpoSummary,
+  getOverviewFilterCounts,
+  isSpacIpo,
+  matchesOverviewFilter,
+  matchesOverviewSearch,
+  overviewFilterItems,
+  overviewSortItems,
+  type OverviewFilterKey,
+  type OverviewSortKey,
+} from "@/app/home-content-helpers";
 import { BrokerChipList } from "@/components/broker-chip";
-import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, kstDateKey } from "@/lib/date";
 import styles from "@/app/home-content.module.scss";
+import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, getKstTodayKey, kstDateKey } from "@/lib/date";
 
 type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
 
@@ -15,23 +29,9 @@ type CalendarEntry = {
   type: EventType;
 };
 
-type HomeIpoSummary = {
-  id: string;
-  slug: string;
-  name: string;
-  market: string;
-  leadManager: string;
-  subscriptionEnd: string;
-  offerPrice: number | null;
-  minimumSubscriptionShares: number | null;
-  depositRate: number | null;
-  listingOpenPrice: number | null;
-  listingOpenReturnRate: number | null;
-  publicScore: {
-    totalScore: number | null;
-    status: "NOT_READY" | "PARTIAL" | "READY" | "STALE" | "UNAVAILABLE";
-    coverageStatus: "EMPTY" | "PARTIAL" | "SUFFICIENT" | "UNAVAILABLE";
-  } | null;
+type LegacyMediaQueryList = MediaQueryList & {
+  addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+  removeListener?: (listener: (event: MediaQueryListEvent) => void) => void;
 };
 
 type Props = {
@@ -77,6 +77,8 @@ const defaultFilters: Record<EventType, boolean> = {
   REFUND: true,
   LISTING: true,
 };
+const overviewCompactMediaQuery = "(max-width: 1024px)";
+const overviewMobileSectionLimit = 4;
 
 const isStoredFilters = (value: unknown): value is Record<EventType, boolean> =>
   typeof value === "object"
@@ -84,18 +86,6 @@ const isStoredFilters = (value: unknown): value is Record<EventType, boolean> =>
   && ["SUBSCRIPTION", "REFUND", "LISTING"].every(
     (type) => typeof (value as Record<string, unknown>)[type] === "boolean",
   );
-
-const getMinimumDepositAmount = ({
-  offerPrice,
-  minimumSubscriptionShares,
-  depositRate,
-}: Pick<HomeIpoSummary, "offerPrice" | "minimumSubscriptionShares" | "depositRate">) => {
-  if (offerPrice == null || minimumSubscriptionShares == null || depositRate == null) {
-    return null;
-  }
-
-  return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
-};
 
 const formatScoreValue = (value: number | null) => (value == null ? "산출 대기" : `${value.toFixed(1)}점`);
 
@@ -141,6 +131,14 @@ export function HomeContent({
   const [filters, setFilters] = useState<Record<EventType, boolean>>(defaultFilters);
   const [hasRestoredFilters, setHasRestoredFilters] = useState(false);
   const [todayKey, setTodayKey] = useState<string | null>(null);
+  const [overviewQuery, setOverviewQuery] = useState("");
+  const deferredOverviewQuery = useDeferredValue(overviewQuery);
+  const [selectedOverviewFilter, setSelectedOverviewFilter] = useState<OverviewFilterKey>("ALL");
+  const [selectedOverviewSort, setSelectedOverviewSort] = useState<OverviewSortKey>("DEADLINE");
+  const [includeSpac, setIncludeSpac] = useState(false);
+  const [isPastSectionExpanded, setIsPastSectionExpanded] = useState(false);
+  const [showAllMobileSections, setShowAllMobileSections] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
 
   useEffect(() => {
     try {
@@ -179,6 +177,27 @@ export function HomeContent({
     const intervalId = window.setInterval(syncTodayKey, 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(overviewCompactMediaQuery) as LegacyMediaQueryList;
+    const syncViewportState = () => {
+      setIsCompactViewport(mediaQuery.matches);
+    };
+
+    syncViewportState();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncViewportState);
+      return () => mediaQuery.removeEventListener("change", syncViewportState);
+    }
+
+    mediaQuery.addListener?.(syncViewportState);
+    return () => mediaQuery.removeListener?.(syncViewportState);
+  }, []);
+
+  useEffect(() => {
+    setShowAllMobileSections(false);
+  }, [overviewQuery, selectedOverviewFilter, selectedOverviewSort]);
 
   const eventCounts: Record<EventType, number> = {
     SUBSCRIPTION: 0,
@@ -219,6 +238,53 @@ export function HomeContent({
     const dayOfWeek = getKstDayOfWeek(new Date(dayValue));
     return dayOfWeek !== 0 && dayOfWeek !== 6;
   });
+
+  const overviewTiming = buildOverviewTiming(todayKey ?? getKstTodayKey());
+  const searchMatchedIpos = ipos.filter((ipo) => matchesOverviewSearch(ipo, deferredOverviewQuery));
+  const spacCount = searchMatchedIpos.filter((ipo) => isSpacIpo(ipo)).length;
+  const overviewBaseIpos = includeSpac ? searchMatchedIpos : searchMatchedIpos.filter((ipo) => !isSpacIpo(ipo));
+  const overviewFilterCounts = getOverviewFilterCounts(overviewBaseIpos, overviewTiming);
+  const filteredIpos = overviewBaseIpos.filter((ipo) => matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
+  const overviewSections = buildOverviewSections(filteredIpos, selectedOverviewSort, overviewTiming);
+  const hasNonPastOverviewSection = overviewSections.some((section) => section.id !== "PAST");
+  const hasPastOverviewSection = overviewSections.some((section) => section.id === "PAST");
+  const isPastSectionForcedOpen = selectedOverviewFilter === "PAST" || (hasPastOverviewSection && !hasNonPastOverviewSection);
+  const isPastSectionOpen = isPastSectionForcedOpen || isPastSectionExpanded;
+  const renderedOverviewSections = overviewSections.map((section) => {
+    const isPastSection = section.id === "PAST";
+    const isCollapsed = isPastSection && !isPastSectionOpen;
+    const visibleItems = isCollapsed
+      ? []
+      : (
+          isCompactViewport && !showAllMobileSections
+            ? section.items.slice(0, overviewMobileSectionLimit)
+            : section.items
+        );
+
+    return {
+      ...section,
+      isCollapsed,
+      visibleItems,
+      hiddenCount: Math.max(section.items.length - visibleItems.length, 0),
+    };
+  });
+  const hiddenOverviewCount = renderedOverviewSections.reduce((count, section) => {
+    if (section.isCollapsed) {
+      return count;
+    }
+
+    return count + section.hiddenCount;
+  }, 0);
+  const hasMoreOverviewItems = isCompactViewport && !showAllMobileSections && hiddenOverviewCount > 0;
+  const filteredOverviewLabel = `${filteredIpos.length} / ${ipos.length}개 종목`;
+  const resetOverviewControls = () => {
+    setOverviewQuery("");
+    setSelectedOverviewFilter("ALL");
+    setSelectedOverviewSort("DEADLINE");
+    setIncludeSpac(false);
+    setIsPastSectionExpanded(false);
+    setShowAllMobileSections(false);
+  };
 
   return (
     <section className={styles.layout}>
@@ -332,62 +398,193 @@ export function HomeContent({
             <h2 className="section-title">종목 개요</h2>
             <p className="section-copy">청약 마감일 기준으로 일정, 공모가, 주관사 같은 공시 기반 핵심 정보만 빠르게 훑는 영역입니다.</p>
           </div>
-          <span className="status-pill status-pill-soft">{ipos.length}개 종목</span>
+          <span className="status-pill status-pill-soft">{filteredOverviewLabel}</span>
         </div>
-        <div className={styles.ipoList}>
-          {ipos.map((ipo) => {
-            const minimumDepositAmount = getMinimumDepositAmount(ipo);
+        <div className={styles.overviewToolbar}>
+          <div className={styles.overviewControlRow}>
+            <label className={styles.overviewSearchField}>
+              <span className={styles.overviewControlLabel}>검색</span>
+              <div className={styles.overviewSearchInputWrap}>
+                <span aria-hidden="true" className={styles.overviewSearchIcon}>
+                  <svg fill="none" viewBox="0 0 20 20">
+                    <path d="M8.5 4.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 12l3.5 3.5" />
+                  </svg>
+                </span>
+                <input
+                  className={styles.overviewSearchInput}
+                  onChange={(event) => setOverviewQuery(event.target.value)}
+                  placeholder="종목명, 주관사, 시장 검색"
+                  type="search"
+                  value={overviewQuery}
+                />
+                {overviewQuery ? (
+                  <button
+                    className={styles.overviewSearchClear}
+                    onClick={() => setOverviewQuery("")}
+                    type="button"
+                  >
+                    지우기
+                  </button>
+                ) : null}
+              </div>
+            </label>
 
-            return (
-              <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
-                <div className={styles.ipoCardHead}>
-                  <div>
-                    <h3>{ipo.name}</h3>
-                    <p>{ipo.market}</p>
-                    <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
-                  </div>
-                  <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)} ${styles.scoreHidden}`}>
-                    {getScoreStatusLabel(ipo.publicScore)}
-                  </span>
-                </div>
-                <dl className={styles.ipoStats}>
-                  <div>
-                    <dt>청약</dt>
-                    <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>
-                  </div>
-                  <div>
-                    <dt>공모가</dt>
-                    <dd>{formatMoney(ipo.offerPrice)}</dd>
-                  </div>
-                  <div>
-                    <dt>최소청약주수</dt>
-                    <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : "-"}</dd>
-                  </div>
-                  <div>
-                    <dt>최소청약금액</dt>
-                    <dd>{formatMoney(minimumDepositAmount)}</dd>
-                  </div>
-                  <div className={styles.scoreHidden}>
-                    <dt>종합점수</dt>
-                    <dd>{formatScoreValue(ipo.publicScore?.totalScore ?? null)}</dd>
-                  </div>
-                  {ipo.listingOpenPrice != null ? (
-                    <>
-                      <div>
-                        <dt>시초가</dt>
-                        <dd>{formatMoney(ipo.listingOpenPrice)}</dd>
-                      </div>
-                      <div>
-                        <dt>공모가 대비</dt>
-                        <dd>{formatSignedPercentValue(ipo.listingOpenReturnRate)}</dd>
-                      </div>
-                    </>
-                  ) : null}
-                </dl>
-              </Link>
-            );
-          })}
+            <label className={styles.overviewSortField}>
+              <span className={styles.overviewControlLabel}>정렬</span>
+              <select
+                className={styles.overviewSortSelect}
+                onChange={(event) => setSelectedOverviewSort(event.target.value as OverviewSortKey)}
+                value={selectedOverviewSort}
+              >
+                {overviewSortItems.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className={styles.overviewFilterRow} aria-label="종목 개요 필터">
+            {overviewFilterItems.map((item) => (
+              <button
+                className={`${styles.overviewFilterChip} ${selectedOverviewFilter === item.key ? styles.overviewFilterChipActive : ""}`}
+                key={item.key}
+                onClick={() => setSelectedOverviewFilter(item.key)}
+                type="button"
+              >
+                <span>{item.label}</span>
+                <strong>{overviewFilterCounts[item.key]}</strong>
+              </button>
+            ))}
+            <label
+              className={`${styles.overviewOptionToggle} ${includeSpac ? styles.overviewOptionToggleActive : ""}`}
+            >
+              <input
+                checked={includeSpac}
+                className={styles.overviewOptionInput}
+                onChange={(event) => setIncludeSpac(event.target.checked)}
+                type="checkbox"
+              />
+              <span aria-hidden="true" className={styles.overviewOptionIndicator}>
+                <svg className={styles.overviewOptionIndicatorIcon} fill="none" viewBox="0 0 16 16">
+                  <path
+                    className={styles.overviewOptionIndicatorPath}
+                    d="M3.5 8.5 6.6 11.4 12.5 4.9"
+                  />
+                </svg>
+              </span>
+              <span className={styles.overviewOptionLabel}>스팩 포함</span>
+              <strong className={styles.overviewOptionCount}>{spacCount}</strong>
+            </label>
+          </div>
         </div>
+
+        {renderedOverviewSections.length ? (
+          <div className={styles.overviewSections}>
+            {renderedOverviewSections.map((section) => (
+              <section className={styles.overviewSection} key={section.id}>
+                <div className={styles.overviewSectionHeader}>
+                  <div>
+                    <h3 className={styles.overviewSectionTitle}>{section.title}</h3>
+                    <p className={styles.overviewSectionCopy}>{section.description}</p>
+                  </div>
+                  <div className={styles.overviewSectionMeta}>
+                    <span className={styles.overviewSectionCount}>{section.items.length}개</span>
+                    {section.id === "PAST" && !isPastSectionForcedOpen ? (
+                      <button
+                        aria-expanded={!section.isCollapsed}
+                        className={styles.overviewSectionToggle}
+                        onClick={() => setIsPastSectionExpanded((current) => !current)}
+                        type="button"
+                      >
+                        {section.isCollapsed ? "펴보기" : "접기"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {section.isCollapsed ? null : (
+                  <div className={styles.ipoList}>
+                    {section.visibleItems.map((ipo) => {
+                      const minimumDepositAmount = getMinimumDepositAmount(ipo);
+
+                      return (
+                        <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
+                          <div className={styles.ipoCardHead}>
+                            <div>
+                              <h3>{ipo.name}</h3>
+                              <p>{ipo.market}</p>
+                              <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
+                            </div>
+                            <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)} ${styles.scoreHidden}`}>
+                              {getScoreStatusLabel(ipo.publicScore)}
+                            </span>
+                          </div>
+                          <dl className={styles.ipoStats}>
+                            <div>
+                              <dt>청약</dt>
+                              <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>
+                            </div>
+                            <div>
+                              <dt>공모가</dt>
+                              <dd>{formatMoney(ipo.offerPrice)}</dd>
+                            </div>
+                            <div>
+                              <dt>최소청약주수</dt>
+                              <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : "-"}</dd>
+                            </div>
+                            <div>
+                              <dt>최소청약금액</dt>
+                              <dd>{formatMoney(minimumDepositAmount)}</dd>
+                            </div>
+                            <div className={styles.scoreHidden}>
+                              <dt>종합점수</dt>
+                              <dd>{formatScoreValue(ipo.publicScore?.totalScore ?? null)}</dd>
+                            </div>
+                            {ipo.listingOpenPrice != null ? (
+                              <>
+                                <div>
+                                  <dt>시초가</dt>
+                                  <dd>{formatMoney(ipo.listingOpenPrice)}</dd>
+                                </div>
+                                <div>
+                                  <dt>공모가 대비</dt>
+                                  <dd>{formatSignedPercentValue(ipo.listingOpenReturnRate)}</dd>
+                                </div>
+                              </>
+                            ) : null}
+                          </dl>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ))}
+
+            {hasMoreOverviewItems ? (
+              <button
+                className={styles.overviewMoreButton}
+                onClick={() => setShowAllMobileSections(true)}
+                type="button"
+              >
+                숨겨진 종목 {hiddenOverviewCount}개 더 보기
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className={styles.overviewEmptyState}>
+            <p>조건에 맞는 종목이 없습니다. 검색어 또는 필터를 바꿔 보세요.</p>
+            <button
+              className={styles.overviewResetButton}
+              onClick={resetOverviewControls}
+              type="button"
+            >
+              필터 초기화
+            </button>
+          </div>
+        )}
       </article>
     </section>
   );

@@ -102,6 +102,7 @@ export default async function Home() {
             name: ipo.name,
             market: ipo.market,
             leadManager: ipo.leadManager,
+            subscriptionStart: ipo.subscriptionStart.toISOString(),
             subscriptionEnd: ipo.subscriptionEnd.toISOString(),
             offerPrice: ipo.offerPrice,
             minimumSubscriptionShares: ipo.minimumSubscriptionShares,
