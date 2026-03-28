@@ -413,7 +413,7 @@ export function HomeContent({
                 <input
                   className={styles.overviewSearchInput}
                   onChange={(event) => setOverviewQuery(event.target.value)}
-                  placeholder="종목명, 주관사, 시장 검색"
+                  placeholder="이번 달·다음 달 종목 검색"
                   type="search"
                   value={overviewQuery}
                 />
