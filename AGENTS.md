@@ -41,7 +41,9 @@ This version has breaking changes. Read the relevant guide in `node_modules/next
 
 ## Code Starting Points
 
-- 잡/배치/공개 조회: [`src/lib/jobs.ts`](/Users/shs/Desktop/Study/ipo/src/lib/jobs.ts)
+- 잡 facade / 기존 import 진입점: [`src/lib/jobs.ts`](/Users/shs/Desktop/Study/ipo/src/lib/jobs.ts)
+- 서버 read / sync / alert service: [`src/lib/server/ipo-read-service.ts`](/Users/shs/Desktop/Study/ipo/src/lib/server/ipo-read-service.ts), [`src/lib/server/ipo-sync-service.ts`](/Users/shs/Desktop/Study/ipo/src/lib/server/ipo-sync-service.ts), [`src/lib/server/alert-service.ts`](/Users/shs/Desktop/Study/ipo/src/lib/server/alert-service.ts)
+- recipient / mapper / shared helper: [`src/lib/server/recipient-service.ts`](/Users/shs/Desktop/Study/ipo/src/lib/server/recipient-service.ts), [`src/lib/server/ipo-mappers.ts`](/Users/shs/Desktop/Study/ipo/src/lib/server/ipo-mappers.ts), [`src/lib/server/job-shared.ts`](/Users/shs/Desktop/Study/ipo/src/lib/server/job-shared.ts)
 - 점수 저장/재계산: [`src/lib/ipo-score-store.ts`](/Users/shs/Desktop/Study/ipo/src/lib/ipo-score-store.ts)
 - 점수 계산기: [`src/lib/scoring`](/Users/shs/Desktop/Study/ipo/src/lib/scoring)
 - 공개 홈 캐시: [`src/lib/page-data.ts`](/Users/shs/Desktop/Study/ipo/src/lib/page-data.ts)

@@ -15,14 +15,24 @@
 4. `prepare-closing-alerts`
 5. `dispatch-closing-alerts`
 
+## Current Server Layout
+
+- `src/lib/jobs.ts`는 기존 import 경로를 유지하기 위한 얇은 facade다.
+- `src/lib/server/ipo-sync-service.ts`는 source fetch, normalize, DB upsert, stale 처리와 점수 hook을 담당한다.
+- `src/lib/server/ipo-read-service.ts`는 dashboard/public/detail/admin read model을 담당한다.
+- `src/lib/server/alert-service.ts`는 alert prepare/dispatch와 메일 render를 담당한다.
+- `src/lib/server/recipient-service.ts`는 관리자 수신자 CRUD를 담당한다.
+- `src/lib/server/ipo-mappers.ts`는 snapshot payload parsing과 read mapper를 담당한다.
+- `src/lib/server/job-shared.ts`는 scheduler 상수와 공용 helper/select를 담는다.
+
 ## Current Operational Flow
 
-1. `fetchSourceRecords()`
-2. source merge and normalization
-3. DB upsert
-4. score artifact sync + recalculation
+1. `runDailySync()` facade 호출
+2. source fetch + merge + normalization
+3. DB upsert + stale 처리
+4. score artifact sync hook + recalculation hook
 5. alert payload preparation
-6. recipient delivery
+6. recipient resolve + delivery
 
 ## Important Scheduling Notes
 
@@ -94,5 +104,5 @@
 
 - 홈 `/`는 `revalidate = 300`
 - 공개 점수 rollout은 현재 pause 상태이며, public read path는 `ipo_score_snapshot`을 붙이지 않음
-- `src/lib/jobs.ts`의 점수 sync / 재계산 helper는 현재 no-op이다
+- `src/lib/jobs.ts`는 facade만 남았고, 점수 sync / 재계산 no-op helper는 현재 `src/lib/server/ipo-sync-service.ts`에 있다
 - admin score summary data는 남겨 두지만, 현재 UI는 숨겨져 있고 재오픈 전까지 최신성 보장을 전제로 두지 않는다

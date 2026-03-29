@@ -1,5 +1,53 @@
 # Issue Log
 
+## 2026-03-29
+
+### Follow-up: Backend Service Layer Refactor / Jobs Facade Split
+
+이번 스레드에서는 기능이 몰려 있던 `src/lib/jobs.ts`를 얇은 호환 facade로 줄이고, 실제 서버 로직을 `src/lib/server/` 아래 service 단위로 분리했다. 목표는 외부 동작을 바꾸지 않은 채 sync, read, alert, recipient, mapper 책임을 나눠 다음 기능 추가와 운영 디버깅을 쉽게 만드는 것이었다. 함께 pure helper 테스트도 보강했고, 이후 코드 리뷰에서 public detail 경로의 legacy snapshot 없는 행이 stricter guard로 `404`될 수 있는 follow-up risk 하나를 확인했다.
+
+### What Changed In This Follow-up
+
+1. `src/lib/jobs.ts`를 export facade로 바꾸고, 기존 import 경로는 유지했다.
+2. sync/read/alert/recipient/shared mapper 책임을 `src/lib/server/*`로 분리했다.
+3. snapshot payload parsing과 public/detail/dashboard mapper 중복을 `src/lib/server/ipo-mappers.ts`로 모았다.
+4. 알림 로직은 prepare/dispatch/render 단계를 같은 서비스 내부에서 나눠 읽기 쉽게 정리했다.
+5. pure logic 중심 테스트로 mapper/alert helper를 잠갔다.
+6. 코드 리뷰에서 `getPublicIpoBySlug()`가 source snapshot 없는 legacy row를 `null` 처리할 수 있는 회귀 위험을 확인했다.
+
+### Main Code Changes In This Follow-up
+
+- facade / server services
+  - `src/lib/jobs.ts`
+  - `src/lib/server/job-shared.ts`
+  - `src/lib/server/ipo-sync-service.ts`
+  - `src/lib/server/ipo-read-service.ts`
+  - `src/lib/server/alert-service.ts`
+  - `src/lib/server/recipient-service.ts`
+  - `src/lib/server/ipo-mappers.ts`
+- 테스트
+  - `tests/alert-service.test.ts`
+  - `tests/ipo-mappers.test.ts`
+- 문서
+  - `issue.md`
+  - `AGENTS.md`
+  - `docs/context/project-overview.md`
+  - `docs/context/runtime-and-ops.md`
+  - `docs/context/score-rollout-status.md`
+  - `docs/ipo-score-architecture.md`
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test`
+- `npm run lint`
+
+### Issues / Notes In This Follow-up
+
+- 코드 리뷰에서 `src/lib/server/ipo-read-service.ts`의 public detail guard가 `sourceSnapshots.length === 0`인 legacy row를 `404`로 만들 수 있다는 `P2` follow-up을 확인했다.
+- mapper 자체는 snapshot이 없어도 optional chaining으로 동작하므로, 후속 작업에서는 guard 제거 또는 snapshot backfill 중 하나를 정해야 한다.
+- 이번 리팩토링은 구조 분리가 목적이었고, 외부 route, action 이름, Prisma schema, cache 동작, score pause 정책은 바꾸지 않았다.
+
 ## 2026-03-28
 
 ### Follow-up: Exclude SPAC From Alert Emails

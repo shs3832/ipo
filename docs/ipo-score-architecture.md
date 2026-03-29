@@ -21,7 +21,7 @@
 
 - 홈 `/`, 상세 `/ipos/[slug]`, 메일/리마인더에서는 현재 정량 점수를 숨긴 상태다.
 - admin score summary data는 남기되, 현재 UI는 숨겨 둔 상태다.
-- 홈/상세 점수 DOM은 유지하되 `display: none`으로 가려 두었고, `jobs.ts`의 점수 sync / recalc helper는 no-op으로 멈춰 두었다.
+- 홈/상세 점수 DOM은 유지하되 `display: none`으로 가려 두었고, `src/lib/server/ipo-sync-service.ts`의 점수 sync / recalc helper는 no-op으로 멈춰 두었다.
 - 재오픈 절차는 [docs/context/score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 본다.
 
 현재 운영 규칙은 다음과 같다.
@@ -38,7 +38,7 @@
 
 현재 구조에서 점수 관련 핵심 병목은 다음 두 가지다.
 
-1. `src/lib/jobs.ts`의 `daily-sync`가 소스 병합, DB 저장, 분석 생성까지 한 번에 수행한다.
+1. `src/lib/server/ipo-sync-service.ts`의 `daily-sync`가 소스 병합, DB 저장, 분석 생성까지 한 번에 수행한다.
 2. `src/lib/analysis.ts`의 `buildAnalysis()`가
    - 점수 계산
    - 판단 문구 생성
@@ -680,8 +680,10 @@ type ScoreComponentResult = {
 
 기존 수정 대상:
 
-- `src/lib/jobs.ts`
+- `src/lib/server/ipo-sync-service.ts`
   - `runDailySync()`를 ingestion orchestrator 중심으로 정리
+- `src/lib/jobs.ts`
+  - facade/export compatibility 역할만 유지
 - `src/lib/analysis.ts`
   - 계산 로직 제거
   - formatter 성격으로 축소
