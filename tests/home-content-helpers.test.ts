@@ -4,11 +4,18 @@ import test from "node:test";
 import {
   buildOverviewSections,
   buildOverviewTiming,
+  defaultCalendarFilters,
+  filterCalendarEntries,
+  getCalendarEventCounts,
+  getCalendarSpacCount,
+  getVisibleCalendarEventCount,
   getMinimumDepositAmount,
   getOverviewFilterCounts,
   isSpacIpo,
+  isStoredCalendarFilters,
   matchesOverviewFilter,
   matchesOverviewSearch,
+  type CalendarEntry,
   type HomeIpoSummary,
 } from "@/app/home-content-helpers";
 
@@ -26,6 +33,12 @@ const createIpo = (overrides: Partial<HomeIpoSummary>): HomeIpoSummary => ({
   listingOpenPrice: "listingOpenPrice" in overrides ? overrides.listingOpenPrice ?? null : null,
   listingOpenReturnRate: "listingOpenReturnRate" in overrides ? overrides.listingOpenReturnRate ?? null : null,
   publicScore: "publicScore" in overrides ? overrides.publicScore ?? null : null,
+});
+
+const createCalendarEntry = (overrides: Partial<CalendarEntry> = {}): CalendarEntry => ({
+  title: overrides.title ?? "테스트 종목",
+  slug: overrides.slug ?? "ipo",
+  type: overrides.type ?? "SUBSCRIPTION",
 });
 
 test("overview search matches ipo name, broker, and market", () => {
@@ -46,6 +59,43 @@ test("spac detection covers common Korean and English naming patterns", () => {
   assert.equal(isSpacIpo(createIpo({ name: "신한제18호기업인수목적" })), true);
   assert.equal(isSpacIpo(createIpo({ name: "Future SPAC Holdings" })), true);
   assert.equal(isSpacIpo(createIpo({ name: "아이엠바이오로직스" })), false);
+});
+
+test("stored calendar filter validator accepts legacy and extended payloads", () => {
+  assert.equal(isStoredCalendarFilters(defaultCalendarFilters), true);
+  assert.equal(isStoredCalendarFilters({ ...defaultCalendarFilters, includeSpac: false }), true);
+  assert.equal(isStoredCalendarFilters({ ...defaultCalendarFilters, includeSpac: "no" }), false);
+  assert.equal(isStoredCalendarFilters({ SUBSCRIPTION: true, REFUND: true }), false);
+});
+
+test("calendar event helpers hide SPAC entries unless requested", () => {
+  const eventsByDate = {
+    "2026-03-25": [
+      createCalendarEntry({ title: "일반 공모주", slug: "common-ipo", type: "SUBSCRIPTION" }),
+      createCalendarEntry({ title: "엔에이치스팩33호", slug: "spac-ipo", type: "SUBSCRIPTION" }),
+      createCalendarEntry({ title: "미래반도체", slug: "future-chip", type: "LISTING" }),
+    ],
+    "2026-03-26": [
+      createCalendarEntry({ title: "Future SPAC Holdings", slug: "future-spac", type: "REFUND" }),
+    ],
+  } satisfies Record<string, CalendarEntry[]>;
+
+  assert.deepEqual(getCalendarEventCounts(eventsByDate), {
+    SUBSCRIPTION: 2,
+    REFUND: 1,
+    LISTING: 1,
+  });
+  assert.equal(getCalendarSpacCount(eventsByDate), 2);
+  assert.equal(getVisibleCalendarEventCount(eventsByDate, defaultCalendarFilters, false), 2);
+  assert.equal(getVisibleCalendarEventCount(eventsByDate, defaultCalendarFilters, true), 4);
+  assert.deepEqual(
+    filterCalendarEntries(eventsByDate["2026-03-25"], defaultCalendarFilters, false).map((entry) => entry.slug),
+    ["common-ipo", "future-chip"],
+  );
+  assert.deepEqual(
+    filterCalendarEntries(eventsByDate["2026-03-25"], defaultCalendarFilters, true).map((entry) => entry.slug),
+    ["common-ipo", "spac-ipo", "future-chip"],
+  );
 });
 
 test("overview filter counts reflect current-week, current-month, open-now, and past buckets", () => {

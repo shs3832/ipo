@@ -17,6 +17,7 @@
 
 - 오늘 날짜는 `오늘` badge와 stronger emphasis 사용
 - 필터 체크박스는 브라우저 `localStorage`에 저장
+- 캘린더의 스팩은 기본 숨김이며, 필터 줄의 `스팩 포함` 체크를 켰을 때만 함께 노출
 - 일정은 `closing date` 기준으로 표시
 
 ## Public Detail Page

@@ -6,8 +6,17 @@ import { useDeferredValue, useEffect, useState } from "react";
 import {
   buildOverviewSections,
   buildOverviewTiming,
+  defaultCalendarFilters,
+  filterCalendarEntries,
+  getCalendarEventCounts,
+  getCalendarSpacCount,
+  getVisibleCalendarEventCount,
   getMinimumDepositAmount,
+  isStoredCalendarFilters,
   type HomeIpoSummary,
+  type CalendarEntry,
+  type CalendarEventFilters,
+  type CalendarEventType,
   getOverviewFilterCounts,
   isSpacIpo,
   matchesOverviewFilter,
@@ -20,14 +29,6 @@ import {
 import { BrokerChipList } from "@/components/broker-chip";
 import styles from "@/app/home-content.module.scss";
 import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, getKstTodayKey, kstDateKey } from "@/lib/date";
-
-type EventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
-
-type CalendarEntry = {
-  title: string;
-  slug: string;
-  type: EventType;
-};
 
 type LegacyMediaQueryList = MediaQueryList & {
   addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
@@ -42,13 +43,13 @@ type Props = {
   ipos: HomeIpoSummary[];
 };
 
-const eventLabel: Record<EventType, string> = {
+const eventLabel: Record<CalendarEventType, string> = {
   SUBSCRIPTION: "청약",
   REFUND: "환불",
   LISTING: "상장",
 };
 
-const filterItems: Array<{ type: EventType; label: string }> = [
+const filterItems: Array<{ type: CalendarEventType; label: string }> = [
   { type: "SUBSCRIPTION", label: "청약" },
   { type: "REFUND", label: "환불" },
   { type: "LISTING", label: "상장" },
@@ -57,13 +58,13 @@ const filterItems: Array<{ type: EventType; label: string }> = [
 // Keep the source data intact so weekend columns can be restored later by toggling this flag.
 const SHOW_WEEKEND_COLUMNS = false;
 
-const badgeClassNames: Record<EventType, string> = {
+const badgeClassNames: Record<CalendarEventType, string> = {
   SUBSCRIPTION: styles.eventBadgeSubscription,
   REFUND: styles.eventBadgeRefund,
   LISTING: styles.eventBadgeListing,
 };
 
-const chipClassNames: Record<EventType, string> = {
+const chipClassNames: Record<CalendarEventType, string> = {
   SUBSCRIPTION: styles.eventChipSubscription,
   REFUND: styles.eventChipRefund,
   LISTING: styles.eventChipListing,
@@ -72,20 +73,8 @@ const chipClassNames: Record<EventType, string> = {
 const calendarNotice =
   "일정 데이터는 매일 오전 6시 기준으로 갱신되고, 상장일 시초가는 오전 10:10과 10:30에 추가 확인합니다. 환불·상장 일정은 최종 공고를 함께 확인해 주세요.";
 const calendarFilterStorageKey = "ipo-calendar-event-filters";
-const defaultFilters: Record<EventType, boolean> = {
-  SUBSCRIPTION: true,
-  REFUND: true,
-  LISTING: true,
-};
 const overviewCompactMediaQuery = "(max-width: 1024px)";
 const overviewMobileSectionLimit = 4;
-
-const isStoredFilters = (value: unknown): value is Record<EventType, boolean> =>
-  typeof value === "object"
-  && value !== null
-  && ["SUBSCRIPTION", "REFUND", "LISTING"].every(
-    (type) => typeof (value as Record<string, unknown>)[type] === "boolean",
-  );
 
 const formatScoreValue = (value: number | null) => (value == null ? "산출 대기" : `${value.toFixed(1)}점`);
 
@@ -128,7 +117,8 @@ export function HomeContent({
   eventsByDate,
   ipos,
 }: Props) {
-  const [filters, setFilters] = useState<Record<EventType, boolean>>(defaultFilters);
+  const [calendarFilters, setCalendarFilters] = useState<CalendarEventFilters>(defaultCalendarFilters);
+  const [includeCalendarSpac, setIncludeCalendarSpac] = useState(false);
   const [hasRestoredFilters, setHasRestoredFilters] = useState(false);
   const [todayKey, setTodayKey] = useState<string | null>(null);
   const [overviewQuery, setOverviewQuery] = useState("");
@@ -149,8 +139,13 @@ export function HomeContent({
       }
 
       const parsed = JSON.parse(storedValue) as unknown;
-      if (isStoredFilters(parsed)) {
-        setFilters(parsed);
+      if (isStoredCalendarFilters(parsed)) {
+        setCalendarFilters({
+          SUBSCRIPTION: parsed.SUBSCRIPTION,
+          REFUND: parsed.REFUND,
+          LISTING: parsed.LISTING,
+        });
+        setIncludeCalendarSpac(parsed.includeSpac ?? false);
       }
     } catch {
       window.localStorage.removeItem(calendarFilterStorageKey);
@@ -164,8 +159,11 @@ export function HomeContent({
       return;
     }
 
-    window.localStorage.setItem(calendarFilterStorageKey, JSON.stringify(filters));
-  }, [filters, hasRestoredFilters]);
+    window.localStorage.setItem(calendarFilterStorageKey, JSON.stringify({
+      ...calendarFilters,
+      includeSpac: includeCalendarSpac,
+    }));
+  }, [calendarFilters, hasRestoredFilters, includeCalendarSpac]);
 
   useEffect(() => {
     const syncTodayKey = () => {
@@ -199,28 +197,12 @@ export function HomeContent({
     setShowAllMobileSections(false);
   }, [overviewQuery, selectedOverviewFilter, selectedOverviewSort]);
 
-  const eventCounts: Record<EventType, number> = {
-    SUBSCRIPTION: 0,
-    REFUND: 0,
-    LISTING: 0,
-  };
+  const eventCounts = getCalendarEventCounts(eventsByDate);
+  const calendarSpacCount = getCalendarSpacCount(eventsByDate);
+  const visibleEventCount = getVisibleCalendarEventCount(eventsByDate, calendarFilters, includeCalendarSpac);
 
-  Object.values(eventsByDate).forEach((entries) => {
-    entries.forEach((entry) => {
-      eventCounts[entry.type] += 1;
-    });
-  });
-
-  const visibleEventCount = Object.entries(eventCounts).reduce((count, [type, value]) => {
-    if (!filters[type as EventType]) {
-      return count;
-    }
-
-    return count + value;
-  }, 0);
-
-  const toggleFilter = (type: EventType) => {
-    setFilters((current) => ({
+  const toggleFilter = (type: CalendarEventType) => {
+    setCalendarFilters((current) => ({
       ...current,
       [type]: !current[type],
     }));
@@ -303,13 +285,13 @@ export function HomeContent({
         <div className={styles.filterRow} aria-label="캘린더 일정 필터">
           {filterItems.map((item) => (
             <label
-              className={`${styles.filterChip} ${filters[item.type] ? styles.filterChipActive : ""}`}
+              className={`${styles.filterChip} ${calendarFilters[item.type] ? styles.filterChipActive : ""}`}
               data-type={item.type}
               key={item.type}
             >
               <input
                 className={styles.filterInput}
-                checked={filters[item.type]}
+                checked={calendarFilters[item.type]}
                 onChange={() => toggleFilter(item.type)}
                 type="checkbox"
               />
@@ -329,6 +311,30 @@ export function HomeContent({
               <strong className={styles.filterChipCount}>{eventCounts[item.type]}</strong>
             </label>
           ))}
+          <label
+            className={`${styles.filterChip} ${includeCalendarSpac ? styles.filterChipActive : ""}`}
+          >
+            <input
+              checked={includeCalendarSpac}
+              className={styles.filterInput}
+              onChange={(event) => setIncludeCalendarSpac(event.target.checked)}
+              type="checkbox"
+            />
+            <span aria-hidden="true" className={styles.filterCheck}>
+              <svg
+                className={styles.filterCheckIcon}
+                fill="none"
+                viewBox="0 0 16 16"
+              >
+                <path
+                  className={styles.filterCheckIconPath}
+                  d="M3.5 8.5 6.6 11.4 12.5 4.9"
+                />
+              </svg>
+            </span>
+            <span className={styles.filterChipLabel}>스팩 포함</span>
+            <strong className={styles.filterChipCount}>{calendarSpacCount}</strong>
+          </label>
         </div>
 
         <div className={`${styles.weekdayRow} ${SHOW_WEEKEND_COLUMNS ? "" : styles.weekdaysOnly}`}>
@@ -346,7 +352,7 @@ export function HomeContent({
           {visibleMonthDays.map((dayValue) => {
             const day = new Date(dayValue);
             const dayKey = kstDateKey(day);
-            const entries = (eventsByDate[dayKey] ?? []).filter((entry) => filters[entry.type]);
+            const entries = filterCalendarEntries(eventsByDate[dayKey] ?? [], calendarFilters, includeCalendarSpac);
             const dayOfWeek = getKstDayOfWeek(day);
             const isSunday = dayOfWeek === 0;
             const isSaturday = dayOfWeek === 6;

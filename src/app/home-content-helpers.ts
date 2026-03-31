@@ -1,5 +1,21 @@
 import { getKstDayOfWeek, getKstTodayKey, kstDateKey, parseKstDate, shiftKstDateKey } from "@/lib/date";
-export { isSpacIpo } from "@/lib/ipo-classification";
+import { isSpacIpo } from "@/lib/ipo-classification";
+
+export { isSpacIpo };
+
+export type CalendarEventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
+
+export type CalendarEntry = {
+  title: string;
+  slug: string;
+  type: CalendarEventType;
+};
+
+export type CalendarEventFilters = Record<CalendarEventType, boolean>;
+
+export type StoredCalendarFilters = CalendarEventFilters & {
+  includeSpac?: boolean;
+};
 
 export type HomeIpoSummary = {
   id: string;
@@ -52,6 +68,14 @@ export const overviewSortItems: Array<{ key: OverviewSortKey; label: string }> =
   { key: "DEPOSIT_LOW", label: "최소청약금액 낮은순" },
 ];
 
+const calendarEventTypes: CalendarEventType[] = ["SUBSCRIPTION", "REFUND", "LISTING"];
+
+export const defaultCalendarFilters: CalendarEventFilters = {
+  SUBSCRIPTION: true,
+  REFUND: true,
+  LISTING: true,
+};
+
 const nameCollator = new Intl.Collator("ko-KR", {
   numeric: true,
   sensitivity: "base",
@@ -60,6 +84,51 @@ const nameCollator = new Intl.Collator("ko-KR", {
 const normalizeSearchValue = (value: string) => value.trim().toLocaleLowerCase("ko-KR");
 const getSubscriptionStartKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionStart));
 const getSubscriptionEndKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionEnd));
+const isCalendarEntrySpac = (entry: CalendarEntry) => isSpacIpo({ name: entry.title });
+
+export const isStoredCalendarFilters = (value: unknown): value is StoredCalendarFilters =>
+  typeof value === "object"
+  && value !== null
+  && calendarEventTypes.every((type) => typeof (value as Record<string, unknown>)[type] === "boolean")
+  && (!("includeSpac" in (value as Record<string, unknown>))
+    || typeof (value as Record<string, unknown>).includeSpac === "boolean");
+
+export const getCalendarEventCounts = (eventsByDate: Record<string, CalendarEntry[]>) => {
+  const counts: Record<CalendarEventType, number> = {
+    SUBSCRIPTION: 0,
+    REFUND: 0,
+    LISTING: 0,
+  };
+
+  Object.values(eventsByDate).forEach((entries) => {
+    entries.forEach((entry) => {
+      counts[entry.type] += 1;
+    });
+  });
+
+  return counts;
+};
+
+export const getCalendarSpacCount = (eventsByDate: Record<string, CalendarEntry[]>) =>
+  Object.values(eventsByDate).reduce(
+    (count, entries) => count + entries.filter((entry) => isCalendarEntrySpac(entry)).length,
+    0,
+  );
+
+export const filterCalendarEntries = (
+  entries: CalendarEntry[],
+  filters: CalendarEventFilters,
+  includeSpac: boolean,
+) => entries.filter((entry) => filters[entry.type] && (includeSpac || !isCalendarEntrySpac(entry)));
+
+export const getVisibleCalendarEventCount = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  filters: CalendarEventFilters,
+  includeSpac: boolean,
+) => Object.values(eventsByDate).reduce(
+  (count, entries) => count + filterCalendarEntries(entries, filters, includeSpac).length,
+  0,
+);
 
 export const buildOverviewTiming = (todayKey = getKstTodayKey()): OverviewTiming => {
   const currentDayOfWeek = getKstDayOfWeek(parseKstDate(todayKey));

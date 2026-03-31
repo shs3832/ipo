@@ -1,5 +1,38 @@
 # Issue Log
 
+## 2026-03-31
+
+### Follow-up: Calendar SPAC Toggle
+
+이번 스레드에서는 홈 `캘린더`에도 스팩 표시 토글을 추가했다. 기존에는 `종목 개요`에서만 `스팩 포함` 체크로 스팩을 다시 보이게 할 수 있었고, 캘린더 쪽은 이벤트 타입(`청약/환불/상장`)만 켜고 끄는 구조였다. 이제 캘린더도 같은 기준으로 스팩 이벤트를 기본 숨김으로 두고, 필요할 때만 체크박스로 다시 보이게 맞췄다. 기존 캘린더 필터 `localStorage` 값은 그대로 읽히도록 호환성을 유지했다.
+
+### What Changed In This Follow-up
+
+1. 캘린더 필터 저장 포맷을 확장해 event type 체크 상태와 `스팩 포함` 상태를 함께 저장하도록 바꿨다.
+2. 기존 사용자 브라우저에 남아 있는 legacy 캘린더 필터 값도 계속 복원되도록 backward-compatible validator를 추가했다.
+3. 캘린더 이벤트 렌더 전에 스팩 판별 helper를 적용해, 토글이 꺼져 있으면 스팩 이벤트를 숨기도록 정리했다.
+4. 캘린더 이벤트 count와 스팩 count 계산을 helper로 분리하고, 관련 테스트를 추가했다.
+5. 제품 문서에도 캘린더 스팩 토글 동작을 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- 캘린더 helper / 필터 복원
+  - `src/app/home-content-helpers.ts`
+- 홈 캘린더 UI
+  - `src/app/home-content.tsx`
+- 테스트
+  - `tests/home-content-helpers.test.ts`
+- 문서
+  - `docs/context/product-surface.md`
+  - `issue.md`
+
+### Verification In This Follow-up
+
+- `npm test -- tests/home-content-helpers.test.ts`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+
 ## 2026-03-29
 
 ### Follow-up: Backend Service Layer Refactor / Jobs Facade Split
