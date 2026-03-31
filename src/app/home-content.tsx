@@ -8,9 +8,9 @@ import {
   buildOverviewTiming,
   defaultCalendarFilters,
   filterCalendarEntries,
-  getCalendarEventCounts,
-  getCalendarSpacCount,
+  getVisibleCalendarEventIpoCounts,
   getVisibleCalendarEventCount,
+  getVisibleCalendarSpacIpoCount,
   getMinimumDepositAmount,
   isStoredCalendarFilters,
   type HomeIpoSummary,
@@ -197,10 +197,6 @@ export function HomeContent({
     setShowAllMobileSections(false);
   }, [overviewQuery, selectedOverviewFilter, selectedOverviewSort]);
 
-  const eventCounts = getCalendarEventCounts(eventsByDate);
-  const calendarSpacCount = getCalendarSpacCount(eventsByDate);
-  const visibleEventCount = getVisibleCalendarEventCount(eventsByDate, calendarFilters, includeCalendarSpac);
-
   const toggleFilter = (type: CalendarEventType) => {
     setCalendarFilters((current) => ({
       ...current,
@@ -220,12 +216,24 @@ export function HomeContent({
     const dayOfWeek = getKstDayOfWeek(new Date(dayValue));
     return dayOfWeek !== 0 && dayOfWeek !== 6;
   });
+  const visibleMonthDayKeys = visibleMonthDays.map((dayValue) => kstDateKey(new Date(dayValue)));
+  const eventIpoCounts = getVisibleCalendarEventIpoCounts(
+    eventsByDate,
+    visibleMonthDayKeys,
+    calendarFilters,
+    includeCalendarSpac,
+  );
+  const calendarSpacCount = getVisibleCalendarSpacIpoCount(
+    eventsByDate,
+    visibleMonthDayKeys,
+    calendarFilters,
+    includeCalendarSpac,
+  );
+  const visibleEventCount = getVisibleCalendarEventCount(eventsByDate, visibleMonthDayKeys, calendarFilters, includeCalendarSpac);
 
   const overviewTiming = buildOverviewTiming(todayKey ?? getKstTodayKey());
   const searchMatchedIpos = ipos.filter((ipo) => matchesOverviewSearch(ipo, deferredOverviewQuery));
-  const spacCount = searchMatchedIpos.filter((ipo) => isSpacIpo(ipo)).length;
   const overviewBaseIpos = includeSpac ? searchMatchedIpos : searchMatchedIpos.filter((ipo) => !isSpacIpo(ipo));
-  const overviewFilterCounts = getOverviewFilterCounts(overviewBaseIpos, overviewTiming);
   const filteredIpos = overviewBaseIpos.filter((ipo) => matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
   const overviewSections = buildOverviewSections(filteredIpos, selectedOverviewSort, overviewTiming);
   const hasNonPastOverviewSection = overviewSections.some((section) => section.id !== "PAST");
@@ -257,6 +265,9 @@ export function HomeContent({
 
     return count + section.hiddenCount;
   }, 0);
+  const visibleOverviewIpos = renderedOverviewSections.flatMap((section) => section.visibleItems);
+  const visibleOverviewFilterCounts = getOverviewFilterCounts(visibleOverviewIpos, overviewTiming);
+  const visibleOverviewSpacCount = visibleOverviewIpos.filter((ipo) => isSpacIpo(ipo)).length;
   const hasMoreOverviewItems = isCompactViewport && !showAllMobileSections && hiddenOverviewCount > 0;
   const filteredOverviewLabel = `${filteredIpos.length} / ${ipos.length}개 종목`;
   const resetOverviewControls = () => {
@@ -308,7 +319,7 @@ export function HomeContent({
                 </svg>
               </span>
               <span className={styles.filterChipLabel}>{item.label}</span>
-              <strong className={styles.filterChipCount}>{eventCounts[item.type]}</strong>
+              <strong className={styles.filterChipCount}>{eventIpoCounts[item.type]}</strong>
             </label>
           ))}
           <label
@@ -460,7 +471,7 @@ export function HomeContent({
                 type="button"
               >
                 <span>{item.label}</span>
-                <strong>{overviewFilterCounts[item.key]}</strong>
+                <strong>{visibleOverviewFilterCounts[item.key]}</strong>
               </button>
             ))}
             <label
@@ -481,7 +492,7 @@ export function HomeContent({
                 </svg>
               </span>
               <span className={styles.overviewOptionLabel}>스팩 포함</span>
-              <strong className={styles.overviewOptionCount}>{spacCount}</strong>
+              <strong className={styles.overviewOptionCount}>{visibleOverviewSpacCount}</strong>
             </label>
           </div>
         </div>

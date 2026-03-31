@@ -7,8 +7,9 @@ import {
   defaultCalendarFilters,
   filterCalendarEntries,
   getCalendarEventCounts,
-  getCalendarSpacCount,
+  getVisibleCalendarEventIpoCounts,
   getVisibleCalendarEventCount,
+  getVisibleCalendarSpacIpoCount,
   getMinimumDepositAmount,
   getOverviewFilterCounts,
   isSpacIpo,
@@ -68,7 +69,7 @@ test("stored calendar filter validator accepts legacy and extended payloads", ()
   assert.equal(isStoredCalendarFilters({ SUBSCRIPTION: true, REFUND: true }), false);
 });
 
-test("calendar event helpers hide SPAC entries unless requested", () => {
+test("calendar event helpers count visible IPOs and hide SPAC entries unless requested", () => {
   const eventsByDate = {
     "2026-03-25": [
       createCalendarEntry({ title: "일반 공모주", slug: "common-ipo", type: "SUBSCRIPTION" }),
@@ -79,15 +80,49 @@ test("calendar event helpers hide SPAC entries unless requested", () => {
       createCalendarEntry({ title: "Future SPAC Holdings", slug: "future-spac", type: "REFUND" }),
     ],
   } satisfies Record<string, CalendarEntry[]>;
+  const visibleDayKeys = ["2026-03-25"];
 
   assert.deepEqual(getCalendarEventCounts(eventsByDate), {
     SUBSCRIPTION: 2,
     REFUND: 1,
     LISTING: 1,
   });
-  assert.equal(getCalendarSpacCount(eventsByDate), 2);
-  assert.equal(getVisibleCalendarEventCount(eventsByDate, defaultCalendarFilters, false), 2);
-  assert.equal(getVisibleCalendarEventCount(eventsByDate, defaultCalendarFilters, true), 4);
+  assert.deepEqual(getVisibleCalendarEventIpoCounts(eventsByDate, visibleDayKeys, defaultCalendarFilters, false), {
+    SUBSCRIPTION: 1,
+    REFUND: 0,
+    LISTING: 1,
+  });
+  assert.deepEqual(getVisibleCalendarEventIpoCounts(eventsByDate, visibleDayKeys, defaultCalendarFilters, true), {
+    SUBSCRIPTION: 2,
+    REFUND: 0,
+    LISTING: 1,
+  });
+  assert.equal(getVisibleCalendarSpacIpoCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, false), 0);
+  assert.equal(getVisibleCalendarSpacIpoCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, true), 1);
+  assert.equal(getVisibleCalendarEventCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, false), 2);
+  assert.equal(getVisibleCalendarEventCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, true), 3);
+  assert.deepEqual(
+    getVisibleCalendarEventIpoCounts(
+      eventsByDate,
+      visibleDayKeys,
+      { ...defaultCalendarFilters, SUBSCRIPTION: false },
+      true,
+    ),
+    {
+      SUBSCRIPTION: 0,
+      REFUND: 0,
+      LISTING: 1,
+    },
+  );
+  assert.equal(
+    getVisibleCalendarSpacIpoCount(
+      eventsByDate,
+      visibleDayKeys,
+      { ...defaultCalendarFilters, SUBSCRIPTION: false },
+      true,
+    ),
+    0,
+  );
   assert.deepEqual(
     filterCalendarEntries(eventsByDate["2026-03-25"], defaultCalendarFilters, false).map((entry) => entry.slug),
     ["common-ipo", "future-chip"],

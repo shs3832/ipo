@@ -109,11 +109,45 @@ export const getCalendarEventCounts = (eventsByDate: Record<string, CalendarEntr
   return counts;
 };
 
-export const getCalendarSpacCount = (eventsByDate: Record<string, CalendarEntry[]>) =>
-  Object.values(eventsByDate).reduce(
-    (count, entries) => count + entries.filter((entry) => isCalendarEntrySpac(entry)).length,
-    0,
+const getCalendarEntriesForVisibleDays = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
+) => visibleDayKeys.flatMap((dayKey) => eventsByDate[dayKey] ?? []);
+
+const getDistinctEntrySlugCount = (entries: CalendarEntry[]) => new Set(entries.map((entry) => entry.slug)).size;
+const getVisibleCalendarEntries = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
+  filters: CalendarEventFilters,
+  includeSpac: boolean,
+) => getCalendarEntriesForVisibleDays(eventsByDate, visibleDayKeys).filter((entry) =>
+  filters[entry.type] && (includeSpac || !isCalendarEntrySpac(entry)));
+
+export const getVisibleCalendarEventIpoCounts = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
+  filters: CalendarEventFilters,
+  includeSpac: boolean,
+) => calendarEventTypes.reduce<Record<CalendarEventType, number>>((counts, type) => {
+  counts[type] = getDistinctEntrySlugCount(
+    getVisibleCalendarEntries(eventsByDate, visibleDayKeys, filters, includeSpac).filter((entry) =>
+      entry.type === type),
   );
+  return counts;
+}, {
+  SUBSCRIPTION: 0,
+  REFUND: 0,
+  LISTING: 0,
+});
+
+export const getVisibleCalendarSpacIpoCount = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
+  filters: CalendarEventFilters,
+  includeSpac: boolean,
+) => getDistinctEntrySlugCount(getVisibleCalendarEntries(eventsByDate, visibleDayKeys, filters, includeSpac).filter(
+  (entry) => isCalendarEntrySpac(entry),
+));
 
 export const filterCalendarEntries = (
   entries: CalendarEntry[],
@@ -123,12 +157,10 @@ export const filterCalendarEntries = (
 
 export const getVisibleCalendarEventCount = (
   eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
   filters: CalendarEventFilters,
   includeSpac: boolean,
-) => Object.values(eventsByDate).reduce(
-  (count, entries) => count + filterCalendarEntries(entries, filters, includeSpac).length,
-  0,
-);
+) => getVisibleCalendarEntries(eventsByDate, visibleDayKeys, filters, includeSpac).length;
 
 export const buildOverviewTiming = (todayKey = getKstTodayKey()): OverviewTiming => {
   const currentDayOfWeek = getKstDayOfWeek(parseKstDate(todayKey));

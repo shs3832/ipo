@@ -2,6 +2,37 @@
 
 ## 2026-03-31
 
+### Follow-up: Visible Count Alignment After QA Review
+
+이번 스레드에서는 캘린더 스팩 토글을 붙인 뒤 QA와 코드리뷰를 진행하면서, 홈 화면의 여러 숫자 버튼이 사용자가 실제로 보고 있는 종목 수와 어긋날 수 있다는 점을 추가로 정리했다. 특히 캘린더 `청약/환불/상장/스팩 포함` 숫자는 전체 이벤트나 화면 밖 일정까지 섞일 수 있었고, 종목 개요 필터 숫자도 모바일 축약이나 접힌 `지난 종목`을 포함한 잠재 개수에 가까웠다. 그래서 홈 화면의 클릭 가능한 카운트는 모두 `현재 화면에 실제로 보이는 종목 수` 기준으로 맞췄다.
+
+### What Changed In This Follow-up
+
+1. 캘린더 필터 칩 숫자를 전체 이벤트 수 대신 현재 렌더 중인 달력 그리드 안의 고유 종목 수 기준으로 바꿨다.
+2. 캘린더 `스팩 포함` 숫자도 화면 밖 다음 일정이 아니라, 현재 필터 상태와 표시 범위 안에서 실제로 보이는 스팩 종목 수만 세도록 정리했다.
+3. 캘린더 상단 `개 이벤트` 배지도 현재 표시 범위와 필터 상태를 반영한 visible event count 기준으로 유지되게 맞췄다.
+4. 종목 개요의 상태 칩과 `스팩 포함` 숫자 역시 검색/필터/모바일 축약/접힘 상태 이후 실제로 보이는 카드 수 기준으로 바꿨다.
+5. helper 테스트에 visible day range, filter-off, include-spac 조합을 추가해 숫자 기준 회귀를 잠갔다.
+
+### Main Code Changes In This Follow-up
+
+- visible count helper / 캘린더 카운트 기준 정리
+  - `src/app/home-content-helpers.ts`
+- 홈 캘린더 / 종목 개요 숫자 UI 정리
+  - `src/app/home-content.tsx`
+- 테스트
+  - `tests/home-content-helpers.test.ts`
+- 문서
+  - `docs/context/product-surface.md`
+  - `issue.md`
+
+### Verification In This Follow-up
+
+- `npm test -- tests/home-content-helpers.test.ts`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+
 ### Follow-up: Calendar SPAC Toggle
 
 이번 스레드에서는 홈 `캘린더`에도 스팩 표시 토글을 추가했다. 기존에는 `종목 개요`에서만 `스팩 포함` 체크로 스팩을 다시 보이게 할 수 있었고, 캘린더 쪽은 이벤트 타입(`청약/환불/상장`)만 켜고 끄는 구조였다. 이제 캘린더도 같은 기준으로 스팩 이벤트를 기본 숨김으로 두고, 필요할 때만 체크박스로 다시 보이게 맞췄다. 기존 캘린더 필터 `localStorage` 값은 그대로 읽히도록 호환성을 유지했다.
