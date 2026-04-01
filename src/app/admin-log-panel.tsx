@@ -46,6 +46,9 @@ export function AdminLogPanel({ logs }: { logs: OperationLogRecord[] }) {
     [filter, logs],
   );
 
+  const formatContext = (context: OperationLogRecord["context"]) =>
+    context ? JSON.stringify(context, null, 2) : "추가 컨텍스트 없음";
+
   return (
     <article className={styles.card}>
       <div className={styles.header}>
@@ -81,9 +84,7 @@ export function AdminLogPanel({ logs }: { logs: OperationLogRecord[] }) {
                   </p>
                 </div>
               </div>
-              <p className={`mono-text ${styles.context}`}>
-                {log.context ? JSON.stringify(log.context) : "추가 컨텍스트 없음"}
-              </p>
+              <p className={`mono-text ${styles.context}`}>{formatContext(log.context)}</p>
             </div>
           ))
         ) : (

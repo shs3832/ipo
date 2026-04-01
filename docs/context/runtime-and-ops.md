@@ -100,6 +100,18 @@
 3. `notification_job` / `notification_delivery`
 4. `OperationLog`
 
+알림 로그 해석 포인트:
+
+- `job:prepare-daily-alerts`, `job:prepare-closing-alerts`
+  - `alert_candidate_summary`: 당일 마감 종목 수, 스팩 제외 수, 발송 보류 수, 준비 완료 수를 함께 기록
+  - `no_alert_candidates`: 당일 기준 발송 대상 종목 자체가 없어서 준비된 메일이 없음을 의미
+- `job:dispatch-alerts`, `job:dispatch-closing-alerts`
+  - `dispatch_selection_summary`: 실제 발송 직전의 due job 수, dispatchable job 수, stale job 수, 수신자/이메일 채널 수를 기록
+  - `no_dispatchable_jobs`: 스케줄은 정상 실행됐지만 실제 전송 가능한 READY 메일이 없어 메일을 보내지 않았음을 의미
+- `completed` 메시지는 이제 `0건`일 때도 실제 메일이 없었다는 뜻이 드러나도록 남긴다.
+- `/admin` 운영 로그 패널에서는 `context` JSON을 pretty-print로 보여 주므로, 후보 종목명과 제외/보류 사유를 화면에서 바로 확인할 수 있다.
+- `/admin` 스케줄 상태 카드는 같은 날 재실행이 여러 번 있어도, 예정 시각 임계값 이후 가장 먼저 성공/실패한 실행을 대표 런으로 본다. 더 늦은 재실행은 `최근 성공`에는 반영되지만 지연 판정 기준 자체를 덮어쓰지 않는다.
+
 ## Current Operational Caveats
 
 - 홈 `/`는 `revalidate = 300`

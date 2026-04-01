@@ -1,5 +1,87 @@
 # Issue Log
 
+## 2026-04-01
+
+### Follow-up: Scheduler Status QA / Nearest Run Selection
+
+이번 스레드에서는 최근 로그 상세화 작업 뒤 QA를 진행하면서, `/admin` 스케줄 상태 카드가 같은 잡의 같은 날 재실행이 여러 번 있을 때 가장 최근 성공 로그를 대표 실행으로 잡을 수 있다는 점을 정리했다. 이 경우 실제 예정 시각 직후에 정상 실행된 잡이 있어도, 더 늦은 수동 재실행 때문에 지연 시간이 과장돼 보일 수 있다. 그래서 스케줄 상태는 이제 `예정 시각 임계값 이후 가장 먼저 성공/실패한 실행`을 기준으로 판정하고, 최근 성공 시각은 별도로 유지하도록 보정했다.
+
+### What Changed In This Follow-up
+
+1. 스케줄 상태 판정에서 `completed` / `failed` 로그는 같은 날 여러 건이 있어도 예정 시각 임계값 이후 가장 이른 실행을 대표로 선택하도록 바꿨다.
+2. 덕분에 수동 재실행이나 중복 크론 실행이 뒤에 붙어도, 카드의 `정상/지연/실패` 판단과 지연 분 계산은 원래 예정 런에 더 가깝게 유지된다.
+3. helper 테스트를 추가해 `10:22 성공 후 10:58 재실행` 같은 케이스에서 카드가 10:22를 대표 성공으로 읽는지 잠갔다.
+4. 운영 문서에도 스케줄 상태 카드가 여러 실행 중 예정 시각에 가장 가까운 실행을 기준으로 본다는 점을 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- 스케줄 상태 판정 보정
+  - `src/lib/server/ipo-read-service.ts`
+- 테스트
+  - `tests/ipo-read-service.test.ts`
+- 문서
+  - `issue.md`
+  - `docs/context/runtime-and-ops.md`
+
+### Follow-up: Alert Log Specificity / Zero-Send Reason Visibility
+
+이번 스레드에서는 `10시 분석 메일 발송` 스케줄이 관리자 화면에서 `정상`으로 보이는데 실제 수신함에는 메일이 없는 상황을 운영 로그와 DB 기준으로 확인했다. 원인은 2026-04-01 KST 기준 발송 대상 공모주가 없어 `prepare-daily-alerts`와 `dispatch-alerts`가 모두 `0건`으로 정상 종료된 것이었는데, 기존 로그는 `성공` 여부만 보여 주고 왜 `0건`이었는지 설명이 부족했다. 그래서 알림 준비 단계와 발송 단계 모두에서 후보 수, 스팩 제외 수, 발송 보류 수, 실제 dispatch 대상 수를 더 구체적으로 기록하고, 관리자 화면에서도 그 컨텍스트를 읽기 쉽게 보이도록 정리한다.
+
+### What Changed In This Follow-up
+
+1. `prepare-daily-alerts` / `prepare-closing-alerts`에서 당일 마감 종목 수, 스팩 제외 수, 발송 보류 수, 준비 완료 수를 요약하는 상세 로그를 남기도록 정리했다.
+2. 당일 마감 종목이 아예 없을 때는 기존의 단순 `0건 준비` 대신 `대상 종목 없음` 맥락이 드러나는 로그를 남기도록 바꿨다.
+3. `dispatch-alerts` / `dispatch-closing-alerts`에서도 실제 전송 직전의 due job 수, dispatchable job 수, stale job 수, 수신자/이메일 채널 수를 별도 요약 로그로 남기도록 했다.
+4. 발송 완료 로그는 `0건 발송`일 때 실제 메일이 없었다는 뜻이 바로 읽히는 문구로 바꿨다.
+5. 관리자 스케줄 상태 카드가 최근 완료/실패 로그 메시지를 함께 보여 주도록 바꿔 `정상 실행`과 `실제 발송 여부`를 같이 읽을 수 있게 했다.
+6. 관리자 운영 로그 패널의 JSON context는 줄바꿈된 pretty-print 형태로 보여 주도록 정리했다.
+7. 운영 문서에도 새 로그 액션과 해석 기준을 반영했다.
+
+### Main Code Changes In This Follow-up
+
+- 알림 준비/발송 상세 로그 helper
+  - `src/lib/server/alert-service.ts`
+  - `src/lib/server/job-shared.ts`
+- 관리자 스케줄 상태 / 운영 로그 표시
+  - `src/lib/server/ipo-read-service.ts`
+  - `src/app/admin-log-panel.tsx`
+- 테스트
+  - `tests/alert-service.test.ts`
+- 문서
+  - `issue.md`
+  - `docs/context/runtime-and-ops.md`
+
+### Follow-up: Potential Visible Count Rule
+
+이번 스레드에서는 홈 화면 숫자 버튼의 기준을 한 번 더 조정했다. 직전 QA 후속에서는 캘린더와 종목 개요의 숫자를 `현재 화면에 실제로 보이는 수` 기준으로 맞췄지만, 사용자가 원한 기준은 `현재 화면 문맥에서 보일 수 있는 수`에 더 가까웠다. 그래서 이제는 검색어, 선택한 필터, 캘린더 표시 범위 같은 현재 문맥은 반영하되, `지난 종목` 접힘이나 모바일 `더 보기`처럼 UI가 잠깐 접어둔 항목은 다시 숫자에 포함하도록 정리했다.
+
+### What Changed In This Follow-up
+
+1. 캘린더 `청약/환불/상장` 숫자는 현재 달력 그리드 범위 안에서 잡히는 고유 종목 수를 기준으로 유지하되, 해당 칩 자신의 on/off 상태와는 독립적인 잠재 표시 수로 다시 맞췄다.
+2. 캘린더 `스팩 포함` 숫자는 현재 이벤트 필터와 달력 범위는 반영하지만, `스팩 포함` 토글 자체로 숨겨진 스팩도 다시 포함한 잠재 표시 수 기준으로 조정했다.
+3. 캘린더 상단 `개 이벤트` 배지는 현재 필터와 표시 범위 기준의 실제 visible event count를 계속 유지했다.
+4. 종목 개요의 상태 칩과 `스팩 포함` 숫자는 검색어, 스팩 포함 여부, 현재 선택된 상태 필터는 반영하되, 모바일 `더 보기` 제한이나 `지난 종목` 접힘으로 가려진 카드도 포함한 잠재 표시 수 기준으로 바꿨다.
+5. helper 테스트를 visible count와 potential visible count 두 기준으로 나눠 보강해, 이후 숫자 해석이 다시 섞이지 않도록 잠갔다.
+
+### Main Code Changes In This Follow-up
+
+- potential visible count helper / 카운트 기준 재정리
+  - `src/app/home-content-helpers.ts`
+- 홈 캘린더 / 종목 개요 숫자 UI 기준 변경
+  - `src/app/home-content.tsx`
+- 테스트
+  - `tests/home-content-helpers.test.ts`
+- 문서
+  - `docs/context/product-surface.md`
+  - `issue.md`
+
+### Verification In This Follow-up
+
+- `npm test -- tests/home-content-helpers.test.ts`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+
 ## 2026-03-31
 
 ### Follow-up: Visible Count Alignment After QA Review

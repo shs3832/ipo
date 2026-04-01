@@ -123,6 +123,32 @@ const getVisibleCalendarEntries = (
 ) => getCalendarEntriesForVisibleDays(eventsByDate, visibleDayKeys).filter((entry) =>
   filters[entry.type] && (includeSpac || !isCalendarEntrySpac(entry)));
 
+export const getCalendarEventIpoCounts = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
+  includeSpac: boolean,
+) => calendarEventTypes.reduce<Record<CalendarEventType, number>>((counts, type) => {
+  counts[type] = getDistinctEntrySlugCount(
+    getCalendarEntriesForVisibleDays(eventsByDate, visibleDayKeys).filter((entry) =>
+      (includeSpac || !isCalendarEntrySpac(entry))
+      && entry.type === type),
+  );
+  return counts;
+}, {
+  SUBSCRIPTION: 0,
+  REFUND: 0,
+  LISTING: 0,
+});
+
+export const getCalendarSpacIpoCount = (
+  eventsByDate: Record<string, CalendarEntry[]>,
+  visibleDayKeys: string[],
+  filters: CalendarEventFilters,
+) => getDistinctEntrySlugCount(
+  getCalendarEntriesForVisibleDays(eventsByDate, visibleDayKeys).filter((entry) =>
+    filters[entry.type] && isCalendarEntrySpac(entry)),
+);
+
 export const getVisibleCalendarEventIpoCounts = (
   eventsByDate: Record<string, CalendarEntry[]>,
   visibleDayKeys: string[],

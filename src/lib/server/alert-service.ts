@@ -37,6 +37,7 @@ import type {
   NotificationDeliveryRecord,
   NotificationJobRecord,
   PreparedAlertsResult,
+  RecipientRecord,
 } from "@/lib/types";
 
 const getMinimumDepositAmount = (ipo: IpoRecord) => {
@@ -233,11 +234,122 @@ const getTodayClosingIpos = (dashboard: Awaited<ReturnType<typeof getDashboardSn
     (ipo) => isSameKstDate(ipo.subscriptionEnd, today) && ipo.status !== "WITHDRAWN",
   );
 
-const buildAlertCandidates = (ipos: IpoRecord[]) =>
+type AlertCandidateAssessment = {
+  ipo: IpoRecord;
+  dataQuality: IpoDataQualitySummary;
+};
+
+const buildAlertCandidates = (ipos: IpoRecord[]): AlertCandidateAssessment[] =>
   ipos.map((ipo) => ({
     ipo,
     dataQuality: assessIpoDataQuality(ipo),
   }));
+
+const toIpoNames = (ipos: Array<Pick<IpoRecord, "name">>) => ipos.map((ipo) => ipo.name);
+
+export const buildAlertPreparationSummary = (
+  todayClosingIpos: IpoRecord[],
+  excludedSpacs: IpoRecord[],
+  candidates: AlertCandidateAssessment[],
+) => {
+  const blocked = candidates.filter((candidate) => !candidate.dataQuality.shouldSendAlert);
+  const partial = candidates.filter((candidate) => candidate.dataQuality.status === "PARTIAL");
+  const ready = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
+
+  return {
+    totalClosingCount: todayClosingIpos.length,
+    totalClosingIpoNames: toIpoNames(todayClosingIpos),
+    eligibleCount: candidates.length,
+    eligibleIpoNames: candidates.map((candidate) => candidate.ipo.name),
+    excludedSpacCount: excludedSpacs.length,
+    excludedSpacNames: toIpoNames(excludedSpacs),
+    blockedCount: blocked.length,
+    blockedIpos: blocked.map(({ ipo, dataQuality }) => ({
+      name: ipo.name,
+      criticalMissing: dataQuality.criticalMissing,
+    })),
+    partialCount: partial.length,
+    partialIpos: partial.map(({ ipo, dataQuality }) => ({
+      name: ipo.name,
+      optionalMissing: dataQuality.optionalMissing,
+    })),
+    readyCount: ready.length,
+    readyIpoNames: ready.map(({ ipo }) => ipo.name),
+  };
+};
+
+export const buildAlertPreparationLogEntry = (
+  alertLabel: string,
+  summary: ReturnType<typeof buildAlertPreparationSummary>,
+) => ({
+  action: summary.totalClosingCount === 0 ? "no_alert_candidates" : "alert_candidate_summary",
+  message:
+    summary.totalClosingCount === 0
+      ? `${alertLabel} 대상 청약 마감 종목이 없어 준비된 메일이 없습니다.`
+      : `${alertLabel} 후보 ${summary.totalClosingCount}건 중 준비 ${summary.readyCount}건, 스팩 제외 ${summary.excludedSpacCount}건, 발송 보류 ${summary.blockedCount}건입니다.`,
+  context: summary,
+});
+
+const toJobLogPreview = (job: NotificationJobRecord) => ({
+  id: job.id,
+  ipoSlug: job.ipoSlug,
+  subject: job.payload.subject,
+  scheduledFor: job.scheduledFor.toISOString(),
+  status: job.status,
+});
+
+export const buildDispatchSelectionSummary = ({
+  preparedJobs,
+  persistedReadyJobs,
+  mergedJobs,
+  dueJobs,
+  dispatchableJobs,
+  staleJobs,
+  recipients,
+}: {
+  preparedJobs: NotificationJobRecord[];
+  persistedReadyJobs: NotificationJobRecord[];
+  mergedJobs: NotificationJobRecord[];
+  dueJobs: NotificationJobRecord[];
+  dispatchableJobs: NotificationJobRecord[];
+  staleJobs: NotificationJobRecord[];
+  recipients: RecipientRecord[];
+}) => {
+  const recipientEmailAddresses = recipients.flatMap((recipient) =>
+    recipient.channels
+      .filter((channel) => channel.type === "EMAIL")
+      .map((channel) => channel.address),
+  );
+
+  return {
+    preparedJobCount: preparedJobs.length,
+    persistedReadyJobCount: persistedReadyJobs.length,
+    mergedJobCount: mergedJobs.length,
+    dueJobCount: dueJobs.length,
+    dispatchableJobCount: dispatchableJobs.length,
+    staleJobCount: staleJobs.length,
+    recipientCount: recipients.length,
+    recipientEmailCount: recipientEmailAddresses.length,
+    recipientEmailAddresses,
+    dueJobs: dueJobs.map(toJobLogPreview),
+    dispatchableJobs: dispatchableJobs.map(toJobLogPreview),
+    staleJobs: staleJobs.map(toJobLogPreview),
+  };
+};
+
+export const buildDispatchSelectionLogEntry = (
+  alertLabel: string,
+  summary: ReturnType<typeof buildDispatchSelectionSummary>,
+) => ({
+  action: summary.dispatchableJobCount === 0 ? "no_dispatchable_jobs" : "dispatch_selection_summary",
+  message:
+    summary.dispatchableJobCount === 0
+      ? summary.dueJobCount === 0
+        ? `${alertLabel} 발송 시점에 준비된 메일이 없어 실제 전송을 하지 않았습니다.`
+        : `${alertLabel} 준비 메일 ${summary.dueJobCount}건 중 실제 전송 가능한 메일이 없어 발송을 건너뛰었습니다.`
+      : `${alertLabel} 발송 대상 ${summary.dispatchableJobCount}건, 수신자 ${summary.recipientCount}명, 이메일 채널 ${summary.recipientEmailCount}개를 확인했습니다.`,
+  context: summary,
+});
 
 const logExcludedSpacAlerts = async (
   source: string,
@@ -557,14 +669,21 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
     const dashboard = await getDashboardSnapshot();
     const todayKey = getKstTodayKey();
     const today = parseKstDate(todayKey);
+    const todayClosingIpos = getTodayClosingIpos(dashboard, today);
     const { included: alertTargetIpos, excludedSpacs } = partitionAlertEligibleIpos(
-      getTodayClosingIpos(dashboard, today),
+      todayClosingIpos,
     );
     await logExcludedSpacAlerts("job:prepare-daily-alerts", "10시 분석 알림", excludedSpacs);
     const candidates = buildAlertCandidates(alertTargetIpos);
     await logAlertQualitySignals("job:prepare-daily-alerts", "10시 분석 알림", candidates);
-
     const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
+    const preparationSummary = buildAlertPreparationSummary(todayClosingIpos, excludedSpacs, candidates);
+
+    await logOperation({
+      level: "INFO",
+      source: "job:prepare-daily-alerts",
+      ...buildAlertPreparationLogEntry("10시 분석 알림", preparationSummary),
+    });
 
     const jobs: PreparedJobSeed[] = closingIpos.map(({ ipo, dataQuality }) => ({
       id: `prepared-${ipo.id}-closing-day-analysis`,
@@ -583,8 +702,16 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
       level: "INFO",
       source: "job:prepare-daily-alerts",
       action: "completed",
-      message: `10시 분석 알림 ${storedJobs.length}건을 준비했습니다.`,
-      context: { jobs: storedJobs.length },
+      message: storedJobs.length
+        ? `10시 분석 알림 ${storedJobs.length}건을 준비했습니다.`
+        : "10시 분석 알림 대상이 없어 준비된 메일이 없습니다.",
+      context: {
+        jobs: storedJobs.length,
+        totalClosingCount: preparationSummary.totalClosingCount,
+        excludedSpacCount: preparationSummary.excludedSpacCount,
+        blockedCount: preparationSummary.blockedCount,
+        partialCount: preparationSummary.partialCount,
+      },
     });
 
     return {
@@ -647,6 +774,13 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
     const candidates = buildAlertCandidates(alertTargetIpos);
     await logAlertQualitySignals("job:prepare-closing-alerts", "마감 30분 전 알림", candidates);
     const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
+    const preparationSummary = buildAlertPreparationSummary(todayClosingIpos, excludedSpacs, candidates);
+
+    await logOperation({
+      level: "INFO",
+      source: "job:prepare-closing-alerts",
+      ...buildAlertPreparationLogEntry("마감 30분 전 알림", preparationSummary),
+    });
 
     const jobs: PreparedJobSeed[] = closingIpos.map(({ ipo, dataQuality }) => ({
       id: `prepared-${ipo.id}-closing-soon-reminder`,
@@ -665,8 +799,17 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
       level: "INFO",
       source: "job:prepare-closing-alerts",
       action: "completed",
-      message: `마감 30분 전 알림 ${storedJobs.length}건을 준비했습니다.`,
-      context: { jobs: storedJobs.length, afterClose: now >= closingCutoffAt },
+      message: storedJobs.length
+        ? `마감 30분 전 알림 ${storedJobs.length}건을 준비했습니다.`
+        : "마감 30분 전 알림 대상이 없어 준비된 메일이 없습니다.",
+      context: {
+        jobs: storedJobs.length,
+        afterClose: now >= closingCutoffAt,
+        totalClosingCount: preparationSummary.totalClosingCount,
+        excludedSpacCount: preparationSummary.excludedSpacCount,
+        blockedCount: preparationSummary.blockedCount,
+        partialCount: preparationSummary.partialCount,
+      },
     });
 
     return {
@@ -688,6 +831,7 @@ export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> 
 
 const dispatchPreparedAlerts = async ({
   source,
+  selectionLabel,
   startedMessage,
   completionMessage,
   failureMessage,
@@ -721,11 +865,29 @@ const dispatchPreparedAlerts = async ({
       jobsById.set(job.id, job);
     }
 
-    const dueJobs = Array.from(jobsById.values()).filter((job) => job.scheduledFor <= now);
+    const mergedJobs = Array.from(jobsById.values());
+    const dueJobs = mergedJobs.filter((job) => job.scheduledFor <= now);
     const readyJobs = dueJobs.filter((job) => isDispatchable(job, now));
     const staleJobs = dueJobs.filter((job) => !isDispatchable(job, now));
     const staleSkippedCount = staleJobs.length;
     const deliveries: NotificationDeliveryRecord[] = [];
+
+    await logOperation({
+      level: "INFO",
+      source,
+      ...buildDispatchSelectionLogEntry(
+        selectionLabel,
+        buildDispatchSelectionSummary({
+          preparedJobs: prepared.jobs,
+          persistedReadyJobs,
+          mergedJobs,
+          dueJobs,
+          dispatchableJobs: readyJobs,
+          staleJobs,
+          recipients,
+        }),
+      ),
+    });
 
     if (readyJobs.length > 0 && recipients.length === 0) {
       throw new Error("No active verified email recipients are configured for alert delivery.");
@@ -956,9 +1118,12 @@ const dispatchPreparedAlerts = async ({
 export const dispatchAlerts = async (): Promise<DispatchResult> =>
   dispatchPreparedAlerts({
     source: "job:dispatch-alerts",
+    selectionLabel: "10시 분석 메일",
     startedMessage: "10시 분석 메일 발송을 시작했습니다.",
-    completionMessage: ({ sentCount, failedCount, skippedCount }) =>
-      `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
+    completionMessage: ({ attempted, sentCount, failedCount, skippedCount }) =>
+      attempted === 0
+        ? "10시 분석 메일 발송 대상이 없어 실제 메일은 보내지 않았습니다."
+        : `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
     failureMessage: "10시 분석 메일 발송 작업이 실패했습니다.",
     prepare: prepareDailyAlerts,
   });
@@ -966,9 +1131,12 @@ export const dispatchAlerts = async (): Promise<DispatchResult> =>
 export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
   dispatchPreparedAlerts({
     source: "job:dispatch-closing-alerts",
+    selectionLabel: "마감 30분 전 알림 메일",
     startedMessage: "마감 30분 전 알림 메일 발송을 시작했습니다.",
-    completionMessage: ({ sentCount, failedCount, skippedCount, staleSkippedCount }) =>
-      `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
+    completionMessage: ({ attempted, sentCount, failedCount, skippedCount, staleSkippedCount }) =>
+      attempted === 0
+        ? "마감 30분 전 알림 메일 대상이 없어 실제 메일은 보내지 않았습니다."
+        : `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
     failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
     prepare: prepareClosingSoonAlerts,
     loadPersistedReadyJobs: async (now) => {

@@ -4,11 +4,13 @@ import test from "node:test";
 import {
   buildOverviewSections,
   buildOverviewTiming,
+  getCalendarEventIpoCounts,
+  getCalendarSpacIpoCount,
   defaultCalendarFilters,
   filterCalendarEntries,
   getCalendarEventCounts,
-  getVisibleCalendarEventIpoCounts,
   getVisibleCalendarEventCount,
+  getVisibleCalendarEventIpoCounts,
   getVisibleCalendarSpacIpoCount,
   getMinimumDepositAmount,
   getOverviewFilterCounts,
@@ -87,27 +89,21 @@ test("calendar event helpers count visible IPOs and hide SPAC entries unless req
     REFUND: 1,
     LISTING: 1,
   });
-  assert.deepEqual(getVisibleCalendarEventIpoCounts(eventsByDate, visibleDayKeys, defaultCalendarFilters, false), {
+  assert.deepEqual(getCalendarEventIpoCounts(eventsByDate, visibleDayKeys, false), {
     SUBSCRIPTION: 1,
     REFUND: 0,
     LISTING: 1,
   });
-  assert.deepEqual(getVisibleCalendarEventIpoCounts(eventsByDate, visibleDayKeys, defaultCalendarFilters, true), {
+  assert.deepEqual(getCalendarEventIpoCounts(eventsByDate, visibleDayKeys, true), {
     SUBSCRIPTION: 2,
     REFUND: 0,
     LISTING: 1,
   });
-  assert.equal(getVisibleCalendarSpacIpoCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, false), 0);
-  assert.equal(getVisibleCalendarSpacIpoCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, true), 1);
+  assert.equal(getCalendarSpacIpoCount(eventsByDate, visibleDayKeys, defaultCalendarFilters), 1);
   assert.equal(getVisibleCalendarEventCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, false), 2);
   assert.equal(getVisibleCalendarEventCount(eventsByDate, visibleDayKeys, defaultCalendarFilters, true), 3);
   assert.deepEqual(
-    getVisibleCalendarEventIpoCounts(
-      eventsByDate,
-      visibleDayKeys,
-      { ...defaultCalendarFilters, SUBSCRIPTION: false },
-      true,
-    ),
+    getVisibleCalendarEventIpoCounts(eventsByDate, visibleDayKeys, { ...defaultCalendarFilters, SUBSCRIPTION: false }, true),
     {
       SUBSCRIPTION: 0,
       REFUND: 0,
@@ -115,12 +111,7 @@ test("calendar event helpers count visible IPOs and hide SPAC entries unless req
     },
   );
   assert.equal(
-    getVisibleCalendarSpacIpoCount(
-      eventsByDate,
-      visibleDayKeys,
-      { ...defaultCalendarFilters, SUBSCRIPTION: false },
-      true,
-    ),
+    getVisibleCalendarSpacIpoCount(eventsByDate, visibleDayKeys, { ...defaultCalendarFilters, SUBSCRIPTION: false }, true),
     0,
   );
   assert.deepEqual(

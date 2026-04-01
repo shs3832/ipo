@@ -45,6 +45,7 @@ export type PreparedJobSeed = {
 
 export type DispatchPreparedAlertsOptions = {
   source: string;
+  selectionLabel: string;
   startedMessage: string;
   completionMessage: (counts: {
     attempted: number;

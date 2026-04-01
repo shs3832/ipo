@@ -8,9 +8,9 @@ import {
   buildOverviewTiming,
   defaultCalendarFilters,
   filterCalendarEntries,
-  getVisibleCalendarEventIpoCounts,
+  getCalendarEventIpoCounts,
+  getCalendarSpacIpoCount,
   getVisibleCalendarEventCount,
-  getVisibleCalendarSpacIpoCount,
   getMinimumDepositAmount,
   isStoredCalendarFilters,
   type HomeIpoSummary,
@@ -217,23 +217,16 @@ export function HomeContent({
     return dayOfWeek !== 0 && dayOfWeek !== 6;
   });
   const visibleMonthDayKeys = visibleMonthDays.map((dayValue) => kstDateKey(new Date(dayValue)));
-  const eventIpoCounts = getVisibleCalendarEventIpoCounts(
-    eventsByDate,
-    visibleMonthDayKeys,
-    calendarFilters,
-    includeCalendarSpac,
-  );
-  const calendarSpacCount = getVisibleCalendarSpacIpoCount(
-    eventsByDate,
-    visibleMonthDayKeys,
-    calendarFilters,
-    includeCalendarSpac,
-  );
+  const eventIpoCounts = getCalendarEventIpoCounts(eventsByDate, visibleMonthDayKeys, includeCalendarSpac);
+  const calendarSpacCount = getCalendarSpacIpoCount(eventsByDate, visibleMonthDayKeys, calendarFilters);
   const visibleEventCount = getVisibleCalendarEventCount(eventsByDate, visibleMonthDayKeys, calendarFilters, includeCalendarSpac);
 
   const overviewTiming = buildOverviewTiming(todayKey ?? getKstTodayKey());
   const searchMatchedIpos = ipos.filter((ipo) => matchesOverviewSearch(ipo, deferredOverviewQuery));
+  const overviewSpacScopeIpos = searchMatchedIpos.filter((ipo) => matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
+  const spacCount = overviewSpacScopeIpos.filter((ipo) => isSpacIpo(ipo)).length;
   const overviewBaseIpos = includeSpac ? searchMatchedIpos : searchMatchedIpos.filter((ipo) => !isSpacIpo(ipo));
+  const overviewFilterCounts = getOverviewFilterCounts(overviewBaseIpos, overviewTiming);
   const filteredIpos = overviewBaseIpos.filter((ipo) => matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
   const overviewSections = buildOverviewSections(filteredIpos, selectedOverviewSort, overviewTiming);
   const hasNonPastOverviewSection = overviewSections.some((section) => section.id !== "PAST");
@@ -265,9 +258,6 @@ export function HomeContent({
 
     return count + section.hiddenCount;
   }, 0);
-  const visibleOverviewIpos = renderedOverviewSections.flatMap((section) => section.visibleItems);
-  const visibleOverviewFilterCounts = getOverviewFilterCounts(visibleOverviewIpos, overviewTiming);
-  const visibleOverviewSpacCount = visibleOverviewIpos.filter((ipo) => isSpacIpo(ipo)).length;
   const hasMoreOverviewItems = isCompactViewport && !showAllMobileSections && hiddenOverviewCount > 0;
   const filteredOverviewLabel = `${filteredIpos.length} / ${ipos.length}개 종목`;
   const resetOverviewControls = () => {
@@ -471,7 +461,7 @@ export function HomeContent({
                 type="button"
               >
                 <span>{item.label}</span>
-                <strong>{visibleOverviewFilterCounts[item.key]}</strong>
+                <strong>{overviewFilterCounts[item.key]}</strong>
               </button>
             ))}
             <label
@@ -492,7 +482,7 @@ export function HomeContent({
                 </svg>
               </span>
               <span className={styles.overviewOptionLabel}>스팩 포함</span>
-              <strong className={styles.overviewOptionCount}>{visibleOverviewSpacCount}</strong>
+              <strong className={styles.overviewOptionCount}>{spacCount}</strong>
             </label>
           </div>
         </div>

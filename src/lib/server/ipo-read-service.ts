@@ -67,23 +67,29 @@ const getSchedulerValidationLogs = async (date = new Date()): Promise<OperationL
   }));
 };
 
-const buildSchedulerStatuses = (
+const getFirstLogAfterThreshold = (
+  logs: OperationLogRecord[],
+  action: "completed" | "failed",
+  thresholdMs: number,
+) => logs
+  .filter((log) => log.action === action && log.createdAt.getTime() >= thresholdMs)
+  .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())[0];
+
+export const buildSchedulerStatuses = (
   logs: OperationLogRecord[],
   now = new Date(),
 ): SchedulerStatusRecord[] => {
   const todayKey = getKstTodayKey(now);
+  const appendLogMessage = (detail: string, log: OperationLogRecord | undefined) =>
+    log?.message ? `${detail} ${log.message}` : detail;
 
   return schedulerDefinitions.map((definition) => {
     const expectedAt = atKstTime(todayKey, definition.expectedHour, definition.expectedMinute ?? 0);
     const sourceLogs = logs.filter((log) => log.source === definition.source);
     const todayLogs = sourceLogs.filter((log) => kstDateKey(log.createdAt) === todayKey);
     const completionThreshold = expectedAt.getTime() - SCHEDULER_EARLY_GRACE_MS;
-    const completedAfterThreshold = todayLogs.find(
-      (log) => log.action === "completed" && log.createdAt.getTime() >= completionThreshold,
-    );
-    const failedAfterThreshold = todayLogs.find(
-      (log) => log.action === "failed" && log.createdAt.getTime() >= completionThreshold,
-    );
+    const completedAfterThreshold = getFirstLogAfterThreshold(todayLogs, "completed", completionThreshold);
+    const failedAfterThreshold = getFirstLogAfterThreshold(todayLogs, "failed", completionThreshold);
     const earlyCompletion = todayLogs.find(
       (log) => log.action === "completed" && log.createdAt.getTime() < completionThreshold,
     );
@@ -121,9 +127,12 @@ const buildSchedulerStatuses = (
         expectedAtLabel,
         lastCompletedAt,
         lastCompletedAtLabel,
-        detail: isLate
-          ? `${expectedAtLabel} 기준으로 ${delayMinutes}분 늦게 실행됐습니다. 최근 성공 ${formatDateTime(completedAfterThreshold.createdAt)}.`
-          : `예정 시각 ${expectedAtLabel} 기준으로 정상 실행됐습니다. 최근 성공 ${formatDateTime(completedAfterThreshold.createdAt)}.`,
+        detail: appendLogMessage(
+          isLate
+            ? `${expectedAtLabel} 기준으로 ${delayMinutes}분 늦게 실행됐습니다. 최근 성공 ${formatDateTime(completedAfterThreshold.createdAt)}.`
+            : `예정 시각 ${expectedAtLabel} 기준으로 정상 실행됐습니다. 최근 성공 ${formatDateTime(completedAfterThreshold.createdAt)}.`,
+          completedAfterThreshold,
+        ),
       };
     }
 
@@ -137,7 +146,10 @@ const buildSchedulerStatuses = (
         expectedAtLabel,
         lastCompletedAt,
         lastCompletedAtLabel,
-        detail: `예정 시각 이후 실패 로그가 있고 성공 로그가 없습니다. 최근 실패 ${formatDateTime(failedAfterThreshold.createdAt)}.`,
+        detail: appendLogMessage(
+          `예정 시각 이후 실패 로그가 있고 성공 로그가 없습니다. 최근 실패 ${formatDateTime(failedAfterThreshold.createdAt)}.`,
+          failedAfterThreshold,
+        ),
       };
     }
 
@@ -151,7 +163,10 @@ const buildSchedulerStatuses = (
         expectedAtLabel,
         lastCompletedAt,
         lastCompletedAtLabel,
-        detail: `예정 전 실행 ${formatDateTime(earlyCompletion.createdAt)}만 확인됐고, ${expectedAtLabel} 이후 성공 로그는 없습니다.`,
+        detail: appendLogMessage(
+          `예정 전 실행 ${formatDateTime(earlyCompletion.createdAt)}만 확인됐고, ${expectedAtLabel} 이후 성공 로그는 없습니다.`,
+          earlyCompletion,
+        ),
       };
     }
 
