@@ -6,6 +6,46 @@
 
 이번 스레드에서는 최근에 커진 server/page 계층의 중복과 파생 상태 계산을 단계적으로 정리했다. 목표는 실서비스 동작을 바꾸지 않은 채 read eligibility, alert prepare, sync persistence, home/detail view-model, admin auth/navigation, public cache revival 규칙을 각자 한 곳으로 모아 이후 유지보수와 QA 비용을 낮추는 것이었다.
 
+### Follow-up: Public Snapshot Regression Guard / QA
+
+이번 후속에서는 앞서 제거한 공개 홈 운영 메타데이터 노출이 다시 돌아오지 않도록 public snapshot 조립 경로를 한 번 더 잠갔다. 핵심은 공개 홈 payload를 만드는 순간 `mode`, `generatedAt`, `calendarMonth`, `ipos`만 남기는 projection을 공통 helper로 강제하고, fallback 경로까지 같은 규칙을 타게 하는 것이었다. 기능을 바꾸는 작업이라기보다 회귀 방지 hardening 성격이 강하며, 변경 후 targeted QA로 타입/테스트/빌드를 다시 확인했다.
+
+### What Changed In This Follow-up
+
+1. 공개 홈 snapshot 전용 helper `toPublicHomeSnapshot()`를 추가해 admin용 넓은 객체가 섞여 들어와도 공개 필드만 남기도록 정리했다.
+2. `getPublicHomeSnapshot()`은 이제 DB read 결과를 그대로 반환하지 않고, public projection helper를 거쳐 응답하도록 고정했다.
+3. fallback public snapshot도 같은 helper를 사용하게 해, fallback 모드에서도 운영용 필드가 실수로 다시 붙지 않도록 맞췄다.
+4. 회귀 테스트를 추가해 `recipients`, `jobs`, `operationLogs`, `schedulerStatuses`, `ipoScoreSummaries` 같은 admin telemetry가 공개 snapshot에 포함되지 않는지 잠갔다.
+
+### Main Code Changes In This Follow-up
+
+- 공개 홈 projection hardening
+  - `src/lib/public-home-snapshot.ts`
+  - `src/lib/server/ipo-read-service.ts`
+  - `src/lib/fallback-data.ts`
+- 테스트
+  - `tests/public-home-snapshot.test.ts`
+
+### Live Service Impact Assessment In This Follow-up
+
+- 영향도: 매우 낮음
+- 이유:
+  - 공개 홈의 실제 UI/카피/캐시 TTL은 그대로고, 반환 payload를 public-only projection으로 한 번 더 정리하는 수준이다.
+  - DB schema, route, cron, admin flow 변화가 없고 공개 홈 summary card의 현재 노출 정보도 바뀌지 않는다.
+  - 이번 변경은 기존 보안 수정의 회귀 방지 성격이어서 서비스 동작보다 데이터 노출 경계를 더 보수적으로 만든다.
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test -- tests/public-home-snapshot.test.ts tests/ipo-read-service.test.ts tests/page-data-revival.test.ts`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 공개 홈 snapshot은 항상 public projection을 거쳐 조립한다.
+- 공개 홈에서는 admin telemetry를 직접 계산하거나 pass-through 하지 않는다.
+- fallback public snapshot도 database public snapshot과 같은 노출 경계를 유지한다.
+
 ### Follow-up: Security Hardening QA / Auth Surface Tightening
 
 이번 후속에서는 보안 리뷰에서 확인된 4가지 이슈를 실제 코드와 QA로 정리했다. 핵심은 관리자 로그인 경로의 open redirect와 brute-force 완화, 잡 API의 query-string secret 제거, 공개 홈의 운영 메타데이터 노출 축소였다. 기능을 넓히기보다 인증/노출 경계를 더 보수적으로 만드는 작업이었고, 변경 후 전체 테스트와 빌드를 다시 돌려 서비스 영향도까지 점검했다.

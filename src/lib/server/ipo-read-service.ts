@@ -21,6 +21,7 @@ import {
   isMissingSchemaError,
   schedulerDefinitions,
 } from "@/lib/server/job-shared";
+import { toPublicHomeSnapshot } from "@/lib/public-home-snapshot";
 import {
   mapDbIpoToIpoRecord,
   mapDbIpoToPublicIpoDetailRecord,
@@ -290,12 +291,12 @@ export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
       include: IPO_READ_INCLUDE,
     });
 
-    return {
+    return toPublicHomeSnapshot({
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
       ipos: filterReadableIpos(ipos).map((ipo) => mapDbIpoToIpoRecord(ipo)),
-    };
+    });
   } catch (error) {
     if (isMissingSchemaError(error)) {
       console.warn("Database schema is behind the Prisma model, falling back to public home fallback state.");
