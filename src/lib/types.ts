@@ -281,8 +281,6 @@ export type PublicHomeSnapshot = {
   generatedAt: Date;
   calendarMonth: Date;
   ipos: IpoRecord[];
-  recipientCount: number;
-  jobCount: number;
 };
 
 export type AdminStatusSummary = {

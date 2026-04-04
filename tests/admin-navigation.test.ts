@@ -9,10 +9,13 @@ import {
 
 test("normalizeAdminNextPath keeps internal admin paths and falls back for invalid input", () => {
   assert.equal(normalizeAdminNextPath("/admin/recipients"), "/admin/recipients");
+  assert.equal(normalizeAdminNextPath("/admin/recipients?status=success"), "/admin/recipients?status=success");
   assert.equal(normalizeAdminNextPath(undefined), ADMIN_HOME_PATH);
   assert.equal(normalizeAdminNextPath(null), ADMIN_HOME_PATH);
   assert.equal(normalizeAdminNextPath("https://example.com/admin"), ADMIN_HOME_PATH);
   assert.equal(normalizeAdminNextPath("admin"), ADMIN_HOME_PATH);
+  assert.equal(normalizeAdminNextPath("//evil.example"), ADMIN_HOME_PATH);
+  assert.equal(normalizeAdminNextPath("/login"), ADMIN_HOME_PATH);
 });
 
 test("buildAdminLoginPath always encodes a normalized next path and optional error", () => {
@@ -20,5 +23,9 @@ test("buildAdminLoginPath always encodes a normalized next path and optional err
   assert.equal(
     buildAdminLoginPath("https://example.com/admin", "invalid"),
     "/login?next=%2Fadmin&error=invalid",
+  );
+  assert.equal(
+    buildAdminLoginPath("//evil.example", "rate-limited", 90),
+    "/login?next=%2Fadmin&error=rate-limited&retryAfter=90",
   );
 });

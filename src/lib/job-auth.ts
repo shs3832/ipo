@@ -1,9 +1,22 @@
+import { timingSafeEqual } from "node:crypto";
+
 import type { NextRequest } from "next/server";
 
 import { env } from "@/lib/env";
 
 export const hasJobSecret = () => Boolean(env.jobSecret);
 export const hasCronSecret = () => Boolean(env.cronSecret);
+
+type JobAuthorizationRequest = {
+  headers: Headers;
+  nextUrl: {
+    searchParams: URLSearchParams;
+  };
+};
+type JobAuthorizationSecrets = {
+  cronSecret?: string;
+  jobSecret?: string;
+};
 
 type JobAuthorizationContext = {
   cronSecretConfigured: boolean;
@@ -18,7 +31,7 @@ type JobAuthorizationResult =
   | {
       authorized: true;
       reason: "authorized";
-      method: "vercel-cron-secret" | "job-secret-header" | "job-secret-query";
+      method: "vercel-cron-secret" | "job-secret-header";
       context: JobAuthorizationContext;
     }
   | {
@@ -27,12 +40,43 @@ type JobAuthorizationResult =
       context: JobAuthorizationContext;
     };
 
-export const getJobAuthorization = (request: NextRequest): JobAuthorizationResult => {
+const matchesSecret = (provided: string | null, expected: string | undefined) => {
+  if (!expected || typeof provided !== "string") {
+    return false;
+  }
+
+  const left = Buffer.from(provided);
+  const right = Buffer.from(expected);
+
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return timingSafeEqual(left, right);
+};
+
+const getBearerToken = (authorizationHeader: string | null) => {
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  const [scheme, token, ...rest] = authorizationHeader.trim().split(/\s+/);
+  if (scheme !== "Bearer" || !token || rest.length > 0) {
+    return null;
+  }
+
+  return token;
+};
+
+export const getJobAuthorizationWithSecrets = (
+  request: JobAuthorizationRequest,
+  { cronSecret, jobSecret }: JobAuthorizationSecrets,
+): JobAuthorizationResult => {
   const authorizationHeader = request.headers.get("authorization");
   const headerSecret = request.headers.get("x-job-secret");
   const querySecret = request.nextUrl.searchParams.get("secret");
-  const cronSecretConfigured = Boolean(env.cronSecret);
-  const jobSecretConfigured = Boolean(env.jobSecret);
+  const cronSecretConfigured = Boolean(cronSecret);
+  const jobSecretConfigured = Boolean(jobSecret);
   const context = {
     cronSecretConfigured,
     jobSecretConfigured,
@@ -42,7 +86,7 @@ export const getJobAuthorization = (request: NextRequest): JobAuthorizationResul
     hasVercelCronHeader: Boolean(request.headers.get("x-vercel-cron")),
   };
 
-  if (cronSecretConfigured && authorizationHeader === `Bearer ${env.cronSecret}`) {
+  if (cronSecretConfigured && matchesSecret(getBearerToken(authorizationHeader), cronSecret)) {
     return {
       authorized: true,
       reason: "authorized",
@@ -51,20 +95,11 @@ export const getJobAuthorization = (request: NextRequest): JobAuthorizationResul
     };
   }
 
-  if (jobSecretConfigured && headerSecret === env.jobSecret) {
+  if (jobSecretConfigured && matchesSecret(headerSecret, jobSecret)) {
     return {
       authorized: true,
       reason: "authorized",
       method: "job-secret-header",
-      context,
-    };
-  }
-
-  if (jobSecretConfigured && querySecret === env.jobSecret) {
-    return {
-      authorized: true,
-      reason: "authorized",
-      method: "job-secret-query",
       context,
     };
   }
@@ -83,3 +118,9 @@ export const getJobAuthorization = (request: NextRequest): JobAuthorizationResul
     context,
   };
 };
+
+export const getJobAuthorization = (request: NextRequest) =>
+  getJobAuthorizationWithSecrets(request, {
+    cronSecret: env.cronSecret,
+    jobSecret: env.jobSecret,
+  });

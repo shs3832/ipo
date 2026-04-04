@@ -90,8 +90,6 @@ test("revivePublicHomeSnapshot restores top-level cache dates and nested ipo rec
     generatedAt: "2026-03-15T04:00:00.000Z",
     calendarMonth: "2026-03-01T00:00:00.000Z",
     ipos: [createSerializedIpo()],
-    recipientCount: 3,
-    jobCount: 4,
   } as unknown as PublicHomeSnapshot);
 
   assert.ok(snapshot.generatedAt instanceof Date);

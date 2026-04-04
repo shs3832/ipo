@@ -34,6 +34,4 @@ export const buildFallbackPublicHomeSnapshot = (): PublicHomeSnapshot => ({
   generatedAt: new Date(),
   calendarMonth: getKstMonthStart(),
   ipos: [],
-  recipientCount: 0,
-  jobCount: 0,
 });

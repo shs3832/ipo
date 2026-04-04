@@ -284,32 +284,17 @@ export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
   try {
     const displayRange = getDisplayRange();
 
-    const [ipos, recipientCount, jobCount] = await Promise.all([
-      prisma.ipo.findMany({
-        where: getDisplayRangeWhere(),
-        orderBy: { subscriptionEnd: "asc" },
-        include: IPO_READ_INCLUDE,
-      }),
-      prisma.recipient.count({
-        where: {
-          status: "ACTIVE",
-          unsubscribedAt: null,
-        },
-      }),
-      prisma.notificationJob.count({
-        where: {
-          status: "READY",
-        },
-      }),
-    ]);
+    const ipos = await prisma.ipo.findMany({
+      where: getDisplayRangeWhere(),
+      orderBy: { subscriptionEnd: "asc" },
+      include: IPO_READ_INCLUDE,
+    });
 
     return {
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
       ipos: filterReadableIpos(ipos).map((ipo) => mapDbIpoToIpoRecord(ipo)),
-      recipientCount,
-      jobCount,
     };
   } catch (error) {
     if (isMissingSchemaError(error)) {

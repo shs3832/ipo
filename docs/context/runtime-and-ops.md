@@ -49,6 +49,7 @@
 - 홈 `/`는 `revalidate = 300`
 - 공개 read path에서는 recipient bootstrap 등 DB write를 하지 않음
 - 관리자 read와 public read는 분리된 경로를 사용
+- 공개 홈은 운영용 메타데이터(활성 수신자 수, READY 잡 수, DB/Fallback 상태)를 노출하지 않음
 - public cache wrapper는 `src/lib/page-data.ts`, revive 규칙은 `src/lib/page-data-revival.ts`에 분리돼 있다
 
 ## Alert Gate Rules
@@ -69,10 +70,19 @@
 
 - admin auth:
   - [src/lib/admin-auth.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-auth.ts)
+  - [src/lib/admin-login-throttle.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-login-throttle.ts)
   - [src/lib/admin-navigation.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-navigation.ts)
   - [src/lib/server/admin-surface.ts](/Users/shs/Desktop/Study/ipo/src/lib/server/admin-surface.ts)
   - [src/app/login/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/login/page.tsx)
   - [src/app/login/actions.ts](/Users/shs/Desktop/Study/ipo/src/app/login/actions.ts)
+- 관리자 로그인:
+  - `next` redirect는 `/admin` 및 하위 경로만 허용
+  - `10분 내 5회` 실패 시 `15분` 잠금
+  - 현재 limiter는 프로세스 메모리 기반이므로 다중 인스턴스 전역 공유는 아님
+- 잡 API 인증:
+  - Vercel Cron: `Authorization: Bearer <CRON_SECRET>`
+  - 수동 호출: `x-job-secret: <JOB_SECRET>`
+  - `?secret=` query-string 인증은 더 이상 지원하지 않음
 - 필수 env:
   - `ADMIN_ACCESS_PASSWORD`
   - `ADMIN_SESSION_SECRET`
@@ -104,6 +114,14 @@
 2. Vercel function logs
 3. `notification_job` / `notification_delivery`
 4. `OperationLog`
+
+관리자 로그인 로그 해석 포인트:
+
+- `admin:login`
+  - `invalid_password`: 잘못된 비밀번호 제출
+  - `rate_limited`: 로그인 시도 과다로 일시 차단
+  - `authenticated`: 로그인 성공
+- 로그인 관련 `context.clientAuditKey`는 원문 IP 대신 짧은 감사용 해시 키다.
 
 알림 로그 해석 포인트:
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatDate, getMonthDays, kstDateKey } from "@/lib/date";
+import { formatDate, formatDateTime, getMonthDays, kstDateKey } from "@/lib/date";
 import { HomeContent } from "@/app/home-content";
 import { getCachedHomeSnapshot } from "@/lib/page-data";
 import styles from "@/app/page.module.scss";
@@ -13,6 +13,7 @@ export default async function Home() {
   const snapshot = await getCachedHomeSnapshot();
   const monthDays = getMonthDays(snapshot.calendarMonth);
   const currentMonthKey = formatDate(snapshot.calendarMonth, "yyyy-MM");
+  const eventCount = snapshot.ipos.reduce((count, ipo) => count + ipo.events.length, 0);
   const eventsByDate = new Map<string, { title: string; slug: string; type: EventType }[]>();
 
   snapshot.ipos.forEach((ipo) => {
@@ -47,11 +48,9 @@ export default async function Home() {
 
           <div className={styles.heroAside}>
             <article className={styles.heroMetricCard}>
-              <span className={styles.cardLabel}>운영 모드</span>
-              <strong className={styles.cardValue}>
-                {snapshot.mode === "database" ? "Database" : "Fallback"}
-              </strong>
-              <p className={styles.cardCopy}>실데이터가 없을 때는 가짜 종목 없이 빈 fallback 상태로 안전하게 전환됩니다.</p>
+              <span className={styles.cardLabel}>최근 갱신 기준</span>
+              <strong className={styles.cardValue}>{formatDateTime(snapshot.generatedAt, "MM.dd HH:mm")}</strong>
+              <p className={styles.cardCopy}>홈 화면은 5분 캐시 기준으로 최신 공개 일정 데이터를 다시 읽어옵니다.</p>
             </article>
 
             <article className={styles.heroMetricCard}>
@@ -81,14 +80,14 @@ export default async function Home() {
             <p className={styles.cardCopy}>이번 달과 다음 달 일정 범위에 포함된 종목 수입니다.</p>
           </article>
           <article className={styles.summaryCard}>
-            <span className={styles.cardLabel}>활성 수신자</span>
-            <strong className={styles.summaryValue}>{snapshot.recipientCount}</strong>
-            <p className={styles.cardCopy}>현재 구조는 단일 관리자 기준이지만 다중 수신자로 확장 가능합니다.</p>
+            <span className={styles.cardLabel}>캘린더 이벤트</span>
+            <strong className={styles.summaryValue}>{eventCount}</strong>
+            <p className={styles.cardCopy}>청약 마감, 환불, 상장 일정 가운데 현재 표시 범위에 들어오는 이벤트 수입니다.</p>
           </article>
           <article className={styles.summaryCard}>
-            <span className={styles.cardLabel}>준비된 알림 잡</span>
-            <strong className={styles.summaryValue}>{snapshot.jobCount}</strong>
-            <p className={styles.cardCopy}>당일 오전 10시 발송을 위해 준비된 분석 메일 작업입니다.</p>
+            <span className={styles.cardLabel}>기준 시간대</span>
+            <strong className={styles.summaryValue}>Asia/Seoul</strong>
+            <p className={styles.cardCopy}>공개 화면의 일정 표시는 모두 KST 기준으로 정리합니다.</p>
           </article>
         </section>
 

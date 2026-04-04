@@ -6,6 +6,67 @@
 
 이번 스레드에서는 최근에 커진 server/page 계층의 중복과 파생 상태 계산을 단계적으로 정리했다. 목표는 실서비스 동작을 바꾸지 않은 채 read eligibility, alert prepare, sync persistence, home/detail view-model, admin auth/navigation, public cache revival 규칙을 각자 한 곳으로 모아 이후 유지보수와 QA 비용을 낮추는 것이었다.
 
+### Follow-up: Security Hardening QA / Auth Surface Tightening
+
+이번 후속에서는 보안 리뷰에서 확인된 4가지 이슈를 실제 코드와 QA로 정리했다. 핵심은 관리자 로그인 경로의 open redirect와 brute-force 완화, 잡 API의 query-string secret 제거, 공개 홈의 운영 메타데이터 노출 축소였다. 기능을 넓히기보다 인증/노출 경계를 더 보수적으로 만드는 작업이었고, 변경 후 전체 테스트와 빌드를 다시 돌려 서비스 영향도까지 점검했다.
+
+### What Changed In This Follow-up
+
+1. `normalizeAdminNextPath()`는 이제 `/admin` 또는 `/admin/...` 내부 경로만 허용하고, `//evil.example` 같은 protocol-relative 값은 모두 `/admin` fallback으로 강제한다.
+2. `/login` server action에는 클라이언트별 실패 누적 제한을 추가해 `10분 내 5회 실패` 시 `15분` 동안 잠그고, `retryAfter`와 함께 다시 로그인 화면으로 돌려보내도록 바꿨다.
+3. 로그인 실패, rate limit 발동, 로그인 성공은 모두 `admin:login` 운영 로그로 남겨 이후 감사와 운영 확인이 가능하게 했다.
+4. 잡 API 인증은 `Authorization: Bearer <CRON_SECRET>` 또는 `x-job-secret` header만 허용하고, `?secret=` query 방식은 더 이상 인증으로 인정하지 않도록 정리했다.
+5. 공개 홈 `/`는 더 이상 활성 수신자 수, READY 잡 수, Database/Fallback 같은 운영용 수치를 노출하지 않고, 공개 정보인 마지막 갱신 시각 / 이벤트 수 / 시간대 위주로만 보여 주도록 바꿨다.
+6. 새 동작을 잠그기 위해 login throttle, admin next path, job auth, public snapshot revive 관련 테스트를 추가하거나 보강했다.
+
+### Main Code Changes In This Follow-up
+
+- 로그인 보안
+  - `src/app/login/actions.ts`
+  - `src/app/login/page.tsx`
+  - `src/lib/admin-navigation.ts`
+  - `src/lib/admin-login-throttle.ts`
+- 잡 인증
+  - `src/lib/job-auth.ts`
+- 공개 홈 운영 메타데이터 비노출
+  - `src/lib/server/ipo-read-service.ts`
+  - `src/app/page.tsx`
+  - `src/lib/types.ts`
+  - `src/lib/fallback-data.ts`
+- 테스트
+  - `tests/admin-navigation.test.ts`
+  - `tests/admin-login-throttle.test.ts`
+  - `tests/job-auth.test.ts`
+  - `tests/page-data-revival.test.ts`
+
+### Live Service Impact Assessment In This Follow-up
+
+- 영향도: 낮음
+- 이유:
+  - DB schema 변경이나 migration이 없고, 공개/관리자 주요 route 구조도 유지된다.
+  - Vercel Cron의 공식 호출 방식인 `Authorization: Bearer <CRON_SECRET>`는 그대로 지원하므로 자동 스케줄 실행에는 영향이 없다.
+  - 공개 홈 변경은 운영용 숫자를 공개용 숫자로 바꾼 수준이라 사용자 여정이나 캐시 TTL(`revalidate = 300`)은 바뀌지 않는다.
+  - 관리자 정상 로그인 흐름은 그대로지만, 잘못된 비밀번호를 짧은 시간에 반복 입력하면 잠시 재시도가 제한된다.
+  - 유일한 운영 주의점은 `?secret=`로 수동 호출하던 외부 스크립트가 있다면 이제 `x-job-secret` header로 바꿔야 한다는 점이다.
+- 확인 결과:
+  - 전체 테스트 `78개`가 모두 통과했다.
+  - `npx tsc --noEmit`, `npm run build` 모두 통과했다.
+  - `npm run lint`는 기존 [src/app/ipos/[slug]/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/ipos/[slug]/page.tsx)의 unused import warning 1건만 남았고, 이번 보안 변경으로 새 lint error는 없었다.
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test`
+- `npm run build`
+- `npm run lint`
+
+### Current Decisions To Remember In This Follow-up
+
+- 관리자 로그인 `next` 경로는 admin 내부 경로만 허용한다.
+- 잡 API 수동 호출은 앞으로 query-string secret이 아니라 `x-job-secret` header를 기준으로 한다.
+- 현재 로그인 throttle은 프로세스 메모리 기반이라 다중 인스턴스 전역 공유는 아니다. 전역 rate limit이 필요해지면 KV/DB-backed limiter로 확장한다.
+- 공개 홈은 운영 메타데이터를 보여주지 않고 공개 일정 정보만 노출한다.
+
 ### What Changed In This Follow-up
 
 1. `ipo-read-service`에서 `analysis >= 1` 그리고 `sourceSnapshot >= 1`일 때만 read model로 노출하는 eligibility 판단을 공통 helper로 통합했다.

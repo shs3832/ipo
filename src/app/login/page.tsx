@@ -5,7 +5,7 @@ import {
   getAdminAuthMissingEnvKeys,
   isAdminAuthenticated,
 } from "@/lib/admin-auth";
-import { ADMIN_HOME_PATH, normalizeAdminNextPath } from "@/lib/admin-navigation";
+import { ADMIN_HOME_PATH, type AdminLoginError, normalizeAdminNextPath } from "@/lib/admin-navigation";
 import { loginAction } from "@/app/login/actions";
 import styles from "@/app/login/page.module.scss";
 
@@ -16,10 +16,32 @@ const errorMessage = {
   "not-configured": "관리자 로그인 설정이 완전하지 않습니다. ADMIN_ACCESS_PASSWORD와 ADMIN_SESSION_SECRET을 모두 설정해 주세요.",
 } as const;
 
+const formatRetryAfterLabel = (retryAfter: string | undefined) => {
+  const seconds = Number.parseInt(retryAfter ?? "", 10);
+
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "잠시";
+  }
+
+  if (seconds < 60) {
+    return `${seconds}초`;
+  }
+
+  return `${Math.ceil(seconds / 60)}분`;
+};
+
+const getLoginErrorMessage = (error: AdminLoginError | undefined, retryAfter: string | undefined) => {
+  if (error === "rate-limited") {
+    return `로그인 시도가 너무 많습니다. ${formatRetryAfterLabel(retryAfter)} 후 다시 시도해 주세요.`;
+  }
+
+  return error ? errorMessage[error] : null;
+};
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: keyof typeof errorMessage }>;
+  searchParams: Promise<{ next?: string; error?: AdminLoginError; retryAfter?: string }>;
 }) {
   if (await isAdminAuthenticated()) {
     redirect(ADMIN_HOME_PATH);
@@ -27,7 +49,7 @@ export default async function LoginPage({
 
   const params = await searchParams;
   const next = normalizeAdminNextPath(params.next);
-  const error = params.error ? errorMessage[params.error] : null;
+  const error = getLoginErrorMessage(params.error, params.retryAfter);
   const missingEnvKeys = getAdminAuthMissingEnvKeys();
   const hasMissingAdminEnv = missingEnvKeys.length > 0;
 
