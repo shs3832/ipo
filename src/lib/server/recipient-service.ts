@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logOperation } from "@/lib/ops-log";
@@ -8,8 +10,21 @@ import {
 } from "@/lib/server/job-shared";
 import type { RecipientChannelRecord, RecipientRecord } from "@/lib/types";
 
-const listRecipientEmailChannels = async (recipientId: string) =>
-  prisma.recipientChannel.findMany({
+type RecipientDbClient = Prisma.TransactionClient | typeof prisma;
+type RecipientEmailChannel = {
+  id: string;
+  type: RecipientChannelRecord["type"];
+  address: string;
+  isPrimary: boolean;
+  isVerified: boolean;
+};
+
+const ADMIN_RECIPIENT_EMAIL_LOG_SOURCE = "admin:recipient-email";
+
+const listRecipientEmailChannelsWithClient = async (
+  client: RecipientDbClient,
+  recipientId: string,
+) => client.recipientChannel.findMany({
     where: {
       recipientId,
       type: "EMAIL",
@@ -17,13 +32,20 @@ const listRecipientEmailChannels = async (recipientId: string) =>
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
   });
 
-const toRecipientChannelRecord = (channel: {
-  id: string;
-  type: RecipientChannelRecord["type"];
-  address: string;
-  isPrimary: boolean;
-  isVerified: boolean;
-}): RecipientChannelRecord => ({
+const listRecipientEmailChannels = async (recipientId: string) =>
+  listRecipientEmailChannelsWithClient(prisma, recipientId);
+
+export const getPrimaryRecipientChannelRepairId = (
+  channels: Array<Pick<RecipientEmailChannel, "id" | "isPrimary">>,
+) => {
+  if (channels.length === 0 || channels.some((channel) => channel.isPrimary)) {
+    return null;
+  }
+
+  return channels[0]?.id ?? null;
+};
+
+const toRecipientChannelRecord = (channel: RecipientEmailChannel): RecipientChannelRecord => ({
   id: channel.id,
   type: channel.type,
   address: channel.address,
@@ -31,93 +53,154 @@ const toRecipientChannelRecord = (channel: {
   isVerified: channel.isVerified,
 });
 
+export const toResolvedAlertRecipientRecord = (recipient: {
+  id: string;
+  name: string;
+  status: RecipientRecord["status"];
+  inviteState: RecipientRecord["inviteState"];
+  consentedAt: Date | null;
+  unsubscribedAt: Date | null;
+  channels: Array<{
+    id: string;
+    type: RecipientChannelRecord["type"];
+    address: string;
+    isPrimary: boolean;
+    isVerified: boolean;
+  }>;
+}): RecipientRecord => ({
+  id: recipient.id,
+  name: recipient.name,
+  status: recipient.status,
+  inviteState: recipient.inviteState,
+  consentedAt: recipient.consentedAt,
+  unsubscribedAt: recipient.unsubscribedAt,
+  channels: recipient.channels
+    .filter((channel) => channel.type === "EMAIL" && channel.isVerified)
+    .map((channel) => ({
+      id: channel.id,
+      type: channel.type,
+      address: channel.address,
+      isPrimary: channel.isPrimary,
+      isVerified: channel.isVerified,
+    })),
+});
+
+const ensurePrimaryRecipientEmailChannel = async (
+  client: RecipientDbClient,
+  channels: RecipientEmailChannel[],
+) => {
+  const repairId = getPrimaryRecipientChannelRepairId(channels);
+  if (!repairId) {
+    return channels;
+  }
+
+  await client.recipientChannel.update({
+    where: { id: repairId },
+    data: { isPrimary: true },
+  });
+
+  return channels.map((channel) => ({
+    ...channel,
+    isPrimary: channel.id === repairId,
+  }));
+};
+
+const ensureAdminRecipientTelegramPlaceholder = async (
+  client: RecipientDbClient,
+  recipientId: string,
+) => client.recipientChannel.upsert({
+  where: {
+    recipientId_type_address: {
+      recipientId,
+      type: "TELEGRAM",
+      address: "@placeholder",
+    },
+  },
+  update: {},
+  create: {
+    recipientId,
+    type: "TELEGRAM",
+    address: "@placeholder",
+    isPrimary: false,
+    isVerified: false,
+    metadata: { enabled: false },
+  },
+});
+
+const ensureAdminRecipientSubscription = async (
+  client: RecipientDbClient,
+  recipientId: string,
+) => {
+  const existingSubscription = await client.subscription.findFirst({
+    where: {
+      recipientId,
+      alertType: "CLOSING_DAY_ANALYSIS",
+    },
+  });
+
+  if (existingSubscription) {
+    return;
+  }
+
+  await client.subscription.create({
+    data: {
+      recipientId,
+      alertType: "CLOSING_DAY_ANALYSIS",
+      scope: { mode: "ALL_IPOS" },
+      isActive: true,
+    },
+  });
+};
+
 export const ensureAdminRecipient = async (): Promise<{ id: string } | null> => {
   if (!(await canUseDatabase())) {
     return null;
   }
 
-  const recipient = await prisma.recipient.upsert({
-    where: { id: ADMIN_RECIPIENT_ID },
-    update: {
-      name: "관리자",
-      status: "ACTIVE",
-      inviteState: "INTERNAL",
-      consentedAt: new Date(),
-      unsubscribedAt: null,
-    },
-    create: {
-      id: ADMIN_RECIPIENT_ID,
-      name: "관리자",
-      status: "ACTIVE",
-      inviteState: "INTERNAL",
-      consentedAt: new Date(),
-    },
-  });
-
-  const seedEmail = normalizeEmailAddress(env.adminEmail);
-  let emailChannels = await listRecipientEmailChannels(recipient.id);
-
-  if (emailChannels.length === 0 && seedEmail) {
-    await prisma.recipientChannel.create({
-      data: {
-        recipientId: recipient.id,
-        type: "EMAIL",
-        address: seedEmail,
-        isPrimary: true,
-        isVerified: true,
+  return prisma.$transaction(async (tx) => {
+    const recipient = await tx.recipient.upsert({
+      where: { id: ADMIN_RECIPIENT_ID },
+      update: {
+        name: "관리자",
+        status: "ACTIVE",
+        inviteState: "INTERNAL",
+        consentedAt: new Date(),
+        unsubscribedAt: null,
+      },
+      create: {
+        id: ADMIN_RECIPIENT_ID,
+        name: "관리자",
+        status: "ACTIVE",
+        inviteState: "INTERNAL",
+        consentedAt: new Date(),
       },
     });
 
-    emailChannels = await listRecipientEmailChannels(recipient.id);
-  }
+    const seedEmail = normalizeEmailAddress(env.adminEmail);
+    let emailChannels = await listRecipientEmailChannelsWithClient(tx, recipient.id);
 
-  if (emailChannels.length > 0 && !emailChannels.some((channel) => channel.isPrimary)) {
-    await prisma.recipientChannel.update({
-      where: { id: emailChannels[0].id },
-      data: { isPrimary: true },
-    });
-  }
+    if (emailChannels.length === 0 && seedEmail) {
+      await tx.recipientChannel.create({
+        data: {
+          recipientId: recipient.id,
+          type: "EMAIL",
+          address: seedEmail,
+          isPrimary: true,
+          isVerified: true,
+        },
+      });
 
-  await prisma.recipientChannel.upsert({
-    where: {
-      recipientId_type_address: {
-        recipientId: recipient.id,
-        type: "TELEGRAM",
-        address: "@placeholder",
-      },
-    },
-    update: {},
-    create: {
-      recipientId: recipient.id,
-      type: "TELEGRAM",
-      address: "@placeholder",
-      isPrimary: false,
-      isVerified: false,
-      metadata: { enabled: false },
-    },
+      emailChannels = await listRecipientEmailChannelsWithClient(tx, recipient.id);
+    }
+
+    await ensurePrimaryRecipientEmailChannel(tx, emailChannels);
+    await ensureAdminRecipientTelegramPlaceholder(tx, recipient.id);
+    await ensureAdminRecipientSubscription(tx, recipient.id);
+
+    return {
+      id: recipient.id,
+    };
   });
-
-  const existingSubscription = await prisma.subscription.findFirst({
-    where: {
-      recipientId: recipient.id,
-      alertType: "CLOSING_DAY_ANALYSIS",
-    },
-  });
-
-  if (!existingSubscription) {
-    await prisma.subscription.create({
-      data: {
-        recipientId: recipient.id,
-        alertType: "CLOSING_DAY_ANALYSIS",
-        scope: { mode: "ALL_IPOS" },
-        isActive: true,
-      },
-    });
-  }
-
-  return {
-    id: recipient.id,
-  };
 };
 
 export const getAdminRecipientEmailChannels = async (): Promise<RecipientChannelRecord[]> => {
@@ -180,7 +263,7 @@ export const addAdminRecipientEmail = async (address: string): Promise<Recipient
 
   await logOperation({
     level: "INFO",
-    source: "admin:recipient-email",
+    source: ADMIN_RECIPIENT_EMAIL_LOG_SOURCE,
     action: "added",
     message: `발송 이메일 ${normalizedAddress}를 등록했습니다.`,
     context: {
@@ -241,7 +324,7 @@ export const updateAdminRecipientEmail = async (
 
   await logOperation({
     level: "INFO",
-    source: "admin:recipient-email",
+    source: ADMIN_RECIPIENT_EMAIL_LOG_SOURCE,
     action: "updated",
     message: `발송 이메일을 ${normalizedAddress}로 수정했습니다.`,
     context: {
@@ -284,13 +367,7 @@ export const deleteAdminRecipientEmail = async (channelId: string): Promise<{ ad
     });
 
     const remainingChannels = emailChannels.filter((emailChannel) => emailChannel.id !== channelId);
-
-    if (!remainingChannels.some((emailChannel) => emailChannel.isPrimary)) {
-      await tx.recipientChannel.update({
-        where: { id: remainingChannels[0].id },
-        data: { isPrimary: true },
-      });
-    }
+    await ensurePrimaryRecipientEmailChannel(tx, remainingChannels);
 
     return {
       address: targetChannel.address,
@@ -299,7 +376,7 @@ export const deleteAdminRecipientEmail = async (channelId: string): Promise<{ ad
 
   await logOperation({
     level: "INFO",
-    source: "admin:recipient-email",
+    source: ADMIN_RECIPIENT_EMAIL_LOG_SOURCE,
     action: "deleted",
     message: `발송 이메일 ${deleted.address}를 삭제했습니다.`,
     context: {
@@ -336,26 +413,6 @@ export const resolveAlertRecipients = async (): Promise<RecipientRecord[]> => {
   });
 
   return recipients
-    .map((recipient) => {
-      const verifiedEmailChannels = recipient.channels.filter(
-        (channel) => channel.type === "EMAIL" && channel.isVerified,
-      );
-
-      return {
-        id: recipient.id,
-        name: recipient.name,
-        status: recipient.status,
-        inviteState: recipient.inviteState,
-        consentedAt: recipient.consentedAt,
-        unsubscribedAt: recipient.unsubscribedAt,
-        channels: verifiedEmailChannels.map((channel) => ({
-          id: channel.id,
-          type: channel.type,
-          address: channel.address,
-          isPrimary: channel.isPrimary,
-          isVerified: channel.isVerified,
-        })),
-      } satisfies RecipientRecord;
-    })
+    .map(toResolvedAlertRecipientRecord)
     .filter((recipient) => recipient.channels.length > 0);
 };

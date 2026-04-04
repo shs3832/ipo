@@ -4,23 +4,15 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useState } from "react";
 
 import {
-  buildOverviewSections,
-  buildOverviewTiming,
+  buildHomeContentViewModel,
   defaultCalendarFilters,
   filterCalendarEntries,
-  getCalendarEventIpoCounts,
-  getCalendarSpacIpoCount,
-  getVisibleCalendarEventCount,
   getMinimumDepositAmount,
   isStoredCalendarFilters,
   type HomeIpoSummary,
   type CalendarEntry,
   type CalendarEventFilters,
   type CalendarEventType,
-  getOverviewFilterCounts,
-  isSpacIpo,
-  matchesOverviewFilter,
-  matchesOverviewSearch,
   overviewFilterItems,
   overviewSortItems,
   type OverviewFilterKey,
@@ -28,7 +20,7 @@ import {
 } from "@/app/home-content-helpers";
 import { BrokerChipList } from "@/components/broker-chip";
 import styles from "@/app/home-content.module.scss";
-import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, getKstTodayKey, kstDateKey } from "@/lib/date";
+import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, kstDateKey } from "@/lib/date";
 
 type LegacyMediaQueryList = MediaQueryList & {
   addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
@@ -203,63 +195,36 @@ export function HomeContent({
       [type]: !current[type],
     }));
   };
-
-  const visibleWeekdayLabels = ["일", "월", "화", "수", "목", "금", "토"].filter((_, index) =>
-    SHOW_WEEKEND_COLUMNS ? true : index !== 0 && index !== 6,
-  );
-
-  const visibleMonthDays = monthDays.filter((dayValue) => {
-    if (SHOW_WEEKEND_COLUMNS) {
-      return true;
-    }
-
-    const dayOfWeek = getKstDayOfWeek(new Date(dayValue));
-    return dayOfWeek !== 0 && dayOfWeek !== 6;
+  const {
+    visibleWeekdayLabels,
+    visibleMonthDays,
+    eventIpoCounts,
+    calendarSpacCount,
+    visibleEventCount,
+    overviewFilterCounts,
+    spacCount,
+    filteredOverviewLabel,
+    renderedOverviewSections,
+    hasMoreOverviewItems,
+    hiddenOverviewCount,
+    isPastSectionForcedOpen,
+  } = buildHomeContentViewModel({
+    monthDays,
+    eventsByDate,
+    ipos,
+    calendarFilters,
+    includeCalendarSpac,
+    overviewQuery: deferredOverviewQuery,
+    selectedOverviewFilter,
+    selectedOverviewSort,
+    includeSpac,
+    isPastSectionExpanded,
+    showAllMobileSections,
+    isCompactViewport,
+    todayKey: todayKey ?? undefined,
+    showWeekendColumns: SHOW_WEEKEND_COLUMNS,
+    overviewMobileSectionLimit,
   });
-  const visibleMonthDayKeys = visibleMonthDays.map((dayValue) => kstDateKey(new Date(dayValue)));
-  const eventIpoCounts = getCalendarEventIpoCounts(eventsByDate, visibleMonthDayKeys, includeCalendarSpac);
-  const calendarSpacCount = getCalendarSpacIpoCount(eventsByDate, visibleMonthDayKeys, calendarFilters);
-  const visibleEventCount = getVisibleCalendarEventCount(eventsByDate, visibleMonthDayKeys, calendarFilters, includeCalendarSpac);
-
-  const overviewTiming = buildOverviewTiming(todayKey ?? getKstTodayKey());
-  const searchMatchedIpos = ipos.filter((ipo) => matchesOverviewSearch(ipo, deferredOverviewQuery));
-  const overviewSpacScopeIpos = searchMatchedIpos.filter((ipo) => matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
-  const spacCount = overviewSpacScopeIpos.filter((ipo) => isSpacIpo(ipo)).length;
-  const overviewBaseIpos = includeSpac ? searchMatchedIpos : searchMatchedIpos.filter((ipo) => !isSpacIpo(ipo));
-  const overviewFilterCounts = getOverviewFilterCounts(overviewBaseIpos, overviewTiming);
-  const filteredIpos = overviewBaseIpos.filter((ipo) => matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
-  const overviewSections = buildOverviewSections(filteredIpos, selectedOverviewSort, overviewTiming);
-  const hasNonPastOverviewSection = overviewSections.some((section) => section.id !== "PAST");
-  const hasPastOverviewSection = overviewSections.some((section) => section.id === "PAST");
-  const isPastSectionForcedOpen = selectedOverviewFilter === "PAST" || (hasPastOverviewSection && !hasNonPastOverviewSection);
-  const isPastSectionOpen = isPastSectionForcedOpen || isPastSectionExpanded;
-  const renderedOverviewSections = overviewSections.map((section) => {
-    const isPastSection = section.id === "PAST";
-    const isCollapsed = isPastSection && !isPastSectionOpen;
-    const visibleItems = isCollapsed
-      ? []
-      : (
-          isCompactViewport && !showAllMobileSections
-            ? section.items.slice(0, overviewMobileSectionLimit)
-            : section.items
-        );
-
-    return {
-      ...section,
-      isCollapsed,
-      visibleItems,
-      hiddenCount: Math.max(section.items.length - visibleItems.length, 0),
-    };
-  });
-  const hiddenOverviewCount = renderedOverviewSections.reduce((count, section) => {
-    if (section.isCollapsed) {
-      return count;
-    }
-
-    return count + section.hiddenCount;
-  }, 0);
-  const hasMoreOverviewItems = isCompactViewport && !showAllMobileSections && hiddenOverviewCount > 0;
-  const filteredOverviewLabel = `${filteredIpos.length} / ${ipos.length}개 종목`;
   const resetOverviewControls = () => {
     setOverviewQuery("");
     setSelectedOverviewFilter("ALL");

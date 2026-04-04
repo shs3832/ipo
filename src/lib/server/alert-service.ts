@@ -239,6 +239,38 @@ type AlertCandidateAssessment = {
   dataQuality: IpoDataQualitySummary;
 };
 
+type PreparedAlertJobVariant = {
+  jobIdSuffix: string;
+  scheduledHour: number;
+  scheduledMinute?: number;
+  idempotencySuffix: string;
+  buildPayload: (
+    ipo: IpoRecord,
+    dataQuality: IpoDataQualitySummary,
+  ) => NotificationJobRecord["payload"];
+};
+
+type AlertPreparationWindow = {
+  todayKey: string;
+  todayClosingIpos: IpoRecord[];
+  completionContext?: Record<string, unknown>;
+};
+
+type PrepareAlertsOptions = {
+  source: string;
+  alertLabel: string;
+  startedMessage: string;
+  fallbackBlockedMessage: string;
+  completionMessage: (storedJobCount: number) => string;
+  failureMessage: string;
+  jobVariant: PreparedAlertJobVariant;
+  resolveWindow: (
+    dashboard: Awaited<ReturnType<typeof getDashboardSnapshot>>,
+    now: Date,
+  ) => AlertPreparationWindow;
+  captureNowBeforeDashboard?: boolean;
+};
+
 const buildAlertCandidates = (ipos: IpoRecord[]): AlertCandidateAssessment[] =>
   ipos.map((ipo) => ({
     ipo,
@@ -634,12 +666,40 @@ const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) 
   return { providerMessageId: info.messageId };
 };
 
-export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
+const MISSING_VERIFIED_RECIPIENT_ERROR =
+  "발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.";
+
+export const buildPreparedJobsForCandidates = (
+  candidates: AlertCandidateAssessment[],
+  todayKey: string,
+  variant: PreparedAlertJobVariant,
+): PreparedJobSeed[] => candidates.map(({ ipo, dataQuality }) => ({
+  id: `prepared-${ipo.id}-${variant.jobIdSuffix}`,
+  ipoId: ipo.id,
+  ipoSlug: ipo.slug,
+  alertType: "CLOSING_DAY_ANALYSIS" as const,
+  scheduledFor: atKstTime(todayKey, variant.scheduledHour, variant.scheduledMinute ?? 0),
+  payload: variant.buildPayload(ipo, dataQuality),
+  status: "READY" as const,
+  idempotencyKey: `${ipo.id}:${todayKey}:${variant.idempotencySuffix}`,
+}));
+
+const prepareAlerts = async ({
+  source,
+  alertLabel,
+  startedMessage,
+  fallbackBlockedMessage,
+  completionMessage,
+  failureMessage,
+  jobVariant,
+  resolveWindow,
+  captureNowBeforeDashboard = false,
+}: PrepareAlertsOptions): Promise<PreparedAlertsResult> => {
   await logOperation({
     level: "INFO",
-    source: "job:prepare-daily-alerts",
+    source,
     action: "started",
-    message: "10시 분석 알림 준비를 시작했습니다.",
+    message: startedMessage,
   });
 
   try {
@@ -647,9 +707,9 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
     if (!useDatabase) {
       await logOperation({
         level: "WARN",
-        source: "job:prepare-daily-alerts",
+        source,
         action: "fallback_mode_blocked",
-        message: "DB 연결이 없어 10시 분석 알림 준비를 보류했습니다.",
+        message: fallbackBlockedMessage,
       });
 
       return {
@@ -659,54 +719,46 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
       };
     }
 
-    await ensureFreshAlertSourceData("job:prepare-daily-alerts");
+    await ensureFreshAlertSourceData(source);
     await ensureAdminRecipient();
 
     if ((await resolveAlertRecipients()).length === 0) {
-      throw new Error("발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.");
+      throw new Error(MISSING_VERIFIED_RECIPIENT_ERROR);
     }
 
+    const capturedNow = captureNowBeforeDashboard ? new Date() : null;
     const dashboard = await getDashboardSnapshot();
-    const todayKey = getKstTodayKey();
-    const today = parseKstDate(todayKey);
-    const todayClosingIpos = getTodayClosingIpos(dashboard, today);
+    const { todayKey, todayClosingIpos, completionContext } = resolveWindow(
+      dashboard,
+      capturedNow ?? new Date(),
+    );
     const { included: alertTargetIpos, excludedSpacs } = partitionAlertEligibleIpos(
       todayClosingIpos,
     );
-    await logExcludedSpacAlerts("job:prepare-daily-alerts", "10시 분석 알림", excludedSpacs);
+    await logExcludedSpacAlerts(source, alertLabel, excludedSpacs);
     const candidates = buildAlertCandidates(alertTargetIpos);
-    await logAlertQualitySignals("job:prepare-daily-alerts", "10시 분석 알림", candidates);
-    const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
+    await logAlertQualitySignals(source, alertLabel, candidates);
+    const readyCandidates = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
     const preparationSummary = buildAlertPreparationSummary(todayClosingIpos, excludedSpacs, candidates);
 
     await logOperation({
       level: "INFO",
-      source: "job:prepare-daily-alerts",
-      ...buildAlertPreparationLogEntry("10시 분석 알림", preparationSummary),
+      source,
+      ...buildAlertPreparationLogEntry(alertLabel, preparationSummary),
     });
 
-    const jobs: PreparedJobSeed[] = closingIpos.map(({ ipo, dataQuality }) => ({
-      id: `prepared-${ipo.id}-closing-day-analysis`,
-      ipoId: ipo.id,
-      ipoSlug: ipo.slug,
-      alertType: "CLOSING_DAY_ANALYSIS" as const,
-      scheduledFor: atKstTime(todayKey, 10),
-      payload: buildClosingDayAnalysisMessage(ipo, dataQuality),
-      status: "READY" as const,
-      idempotencyKey: `${ipo.id}:${todayKey}:closing-day-analysis`,
-    }));
-
-    const storedJobs = await persistPreparedJobs(jobs);
+    const storedJobs = await persistPreparedJobs(
+      buildPreparedJobsForCandidates(readyCandidates, todayKey, jobVariant),
+    );
 
     await logOperation({
       level: "INFO",
-      source: "job:prepare-daily-alerts",
+      source,
       action: "completed",
-      message: storedJobs.length
-        ? `10시 분석 알림 ${storedJobs.length}건을 준비했습니다.`
-        : "10시 분석 알림 대상이 없어 준비된 메일이 없습니다.",
+      message: completionMessage(storedJobs.length),
       context: {
         jobs: storedJobs.length,
+        ...(completionContext ?? {}),
         totalClosingCount: preparationSummary.totalClosingCount,
         excludedSpacCount: preparationSummary.excludedSpacCount,
         blockedCount: preparationSummary.blockedCount,
@@ -722,112 +774,78 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> => {
   } catch (error) {
     await logOperation({
       level: "ERROR",
-      source: "job:prepare-daily-alerts",
+      source,
       action: "failed",
-      message: "10시 분석 알림 준비에 실패했습니다.",
+      message: failureMessage,
       context: toErrorContext(error),
     });
     throw error;
   }
 };
 
-export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> => {
-  await logOperation({
-    level: "INFO",
-    source: "job:prepare-closing-alerts",
-    action: "started",
-    message: "마감 30분 전 알림 준비를 시작했습니다.",
-  });
-
-  try {
-    const useDatabase = await canUseDatabase();
-    if (!useDatabase) {
-      await logOperation({
-        level: "WARN",
-        source: "job:prepare-closing-alerts",
-        action: "fallback_mode_blocked",
-        message: "DB 연결이 없어 마감 30분 전 알림 준비를 보류했습니다.",
-      });
+export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> =>
+  prepareAlerts({
+    source: "job:prepare-daily-alerts",
+    alertLabel: "10시 분석 알림",
+    startedMessage: "10시 분석 알림 준비를 시작했습니다.",
+    fallbackBlockedMessage: "DB 연결이 없어 10시 분석 알림 준비를 보류했습니다.",
+    completionMessage: (storedJobCount) => (
+      storedJobCount
+        ? `10시 분석 알림 ${storedJobCount}건을 준비했습니다.`
+        : "10시 분석 알림 대상이 없어 준비된 메일이 없습니다."
+    ),
+    failureMessage: "10시 분석 알림 준비에 실패했습니다.",
+    jobVariant: {
+      jobIdSuffix: "closing-day-analysis",
+      scheduledHour: 10,
+      idempotencySuffix: "closing-day-analysis",
+      buildPayload: buildClosingDayAnalysisMessage,
+    },
+    resolveWindow: (dashboard, now) => {
+      const todayKey = getKstTodayKey(now);
+      const today = parseKstDate(todayKey);
 
       return {
-        mode: "fallback",
-        timestamp: new Date(),
-        jobs: [],
+        todayKey,
+        todayClosingIpos: getTodayClosingIpos(dashboard, today),
       };
-    }
+    },
+  });
 
-    await ensureFreshAlertSourceData("job:prepare-closing-alerts");
-    await ensureAdminRecipient();
+export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> =>
+  prepareAlerts({
+    source: "job:prepare-closing-alerts",
+    alertLabel: "마감 30분 전 알림",
+    startedMessage: "마감 30분 전 알림 준비를 시작했습니다.",
+    fallbackBlockedMessage: "DB 연결이 없어 마감 30분 전 알림 준비를 보류했습니다.",
+    completionMessage: (storedJobCount) => (
+      storedJobCount
+        ? `마감 30분 전 알림 ${storedJobCount}건을 준비했습니다.`
+        : "마감 30분 전 알림 대상이 없어 준비된 메일이 없습니다."
+    ),
+    failureMessage: "마감 30분 전 알림 준비에 실패했습니다.",
+    jobVariant: {
+      jobIdSuffix: "closing-soon-reminder",
+      scheduledHour: CLOSING_SOON_ALERT_HOUR,
+      scheduledMinute: CLOSING_SOON_ALERT_MINUTE,
+      idempotencySuffix: "closing-soon-reminder",
+      buildPayload: buildClosingSoonReminderMessage,
+    },
+    captureNowBeforeDashboard: true,
+    resolveWindow: (dashboard, now) => {
+      const todayKey = getKstTodayKey(now);
+      const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
+      const today = parseKstDate(todayKey);
 
-    if ((await resolveAlertRecipients()).length === 0) {
-      throw new Error("발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.");
-    }
-
-    const now = new Date();
-    const todayKey = getKstTodayKey(now);
-    const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
-    const today = parseKstDate(todayKey);
-    const dashboard = await getDashboardSnapshot();
-    const todayClosingIpos = now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [];
-    const { included: alertTargetIpos, excludedSpacs } = partitionAlertEligibleIpos(todayClosingIpos);
-    await logExcludedSpacAlerts("job:prepare-closing-alerts", "마감 30분 전 알림", excludedSpacs);
-    const candidates = buildAlertCandidates(alertTargetIpos);
-    await logAlertQualitySignals("job:prepare-closing-alerts", "마감 30분 전 알림", candidates);
-    const closingIpos = candidates.filter((candidate) => candidate.dataQuality.shouldSendAlert);
-    const preparationSummary = buildAlertPreparationSummary(todayClosingIpos, excludedSpacs, candidates);
-
-    await logOperation({
-      level: "INFO",
-      source: "job:prepare-closing-alerts",
-      ...buildAlertPreparationLogEntry("마감 30분 전 알림", preparationSummary),
-    });
-
-    const jobs: PreparedJobSeed[] = closingIpos.map(({ ipo, dataQuality }) => ({
-      id: `prepared-${ipo.id}-closing-soon-reminder`,
-      ipoId: ipo.id,
-      ipoSlug: ipo.slug,
-      alertType: "CLOSING_DAY_ANALYSIS" as const,
-      scheduledFor: atKstTime(todayKey, CLOSING_SOON_ALERT_HOUR, CLOSING_SOON_ALERT_MINUTE),
-      payload: buildClosingSoonReminderMessage(ipo, dataQuality),
-      status: "READY" as const,
-      idempotencyKey: `${ipo.id}:${todayKey}:closing-soon-reminder`,
-    }));
-
-    const storedJobs = await persistPreparedJobs(jobs);
-
-    await logOperation({
-      level: "INFO",
-      source: "job:prepare-closing-alerts",
-      action: "completed",
-      message: storedJobs.length
-        ? `마감 30분 전 알림 ${storedJobs.length}건을 준비했습니다.`
-        : "마감 30분 전 알림 대상이 없어 준비된 메일이 없습니다.",
-      context: {
-        jobs: storedJobs.length,
-        afterClose: now >= closingCutoffAt,
-        totalClosingCount: preparationSummary.totalClosingCount,
-        excludedSpacCount: preparationSummary.excludedSpacCount,
-        blockedCount: preparationSummary.blockedCount,
-        partialCount: preparationSummary.partialCount,
-      },
-    });
-
-    return {
-      mode: "database",
-      timestamp: new Date(),
-      jobs: storedJobs,
-    };
-  } catch (error) {
-    await logOperation({
-      level: "ERROR",
-      source: "job:prepare-closing-alerts",
-      action: "failed",
-      message: "마감 30분 전 알림 준비에 실패했습니다.",
-      context: toErrorContext(error),
-    });
-    throw error;
-  }
-};
+      return {
+        todayKey,
+        todayClosingIpos: now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [],
+        completionContext: {
+          afterClose: now >= closingCutoffAt,
+        },
+      };
+    },
+  });
 
 const dispatchPreparedAlerts = async ({
   source,

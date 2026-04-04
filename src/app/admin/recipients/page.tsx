@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import {
   addAdminRecipientEmailAction,
   deleteAdminRecipientEmailAction,
   updateAdminRecipientEmailAction,
 } from "@/app/admin/recipients/actions";
-import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { getAdminRecipientEmailChannels } from "@/lib/jobs";
+import { ADMIN_HOME_PATH, ADMIN_RECIPIENTS_PATH } from "@/lib/admin-navigation";
+import { ensureAdminAuthenticated } from "@/lib/server/admin-surface";
 import styles from "@/app/admin/recipients/page.module.scss";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +19,7 @@ export default async function AdminRecipientsPage({
 }: {
   searchParams: Promise<{ status?: string; message?: string }>;
 }) {
-  if (!(await isAdminAuthenticated())) {
-    redirect("/login?next=/admin/recipients");
-  }
+  await ensureAdminAuthenticated(ADMIN_RECIPIENTS_PATH);
 
   const [params, channels] = await Promise.all([searchParams, getAdminRecipientEmailChannels()]);
   const status = params.status && feedbackStatus.has(params.status) ? params.status : null;
@@ -55,7 +53,7 @@ export default async function AdminRecipientsPage({
             </article>
 
             <div className={styles.actionGroup}>
-              <Link className="button-secondary" href="/admin">
+              <Link className="button-secondary" href={ADMIN_HOME_PATH}>
                 관리자 대시보드
               </Link>
             </div>

@@ -1,19 +1,18 @@
 "use server";
 
-import { revalidatePath, updateTag } from "next/cache";
+import { updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { runDailySync } from "@/lib/jobs";
+import { ADMIN_HOME_PATH } from "@/lib/admin-navigation";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 import { PUBLIC_HOME_SNAPSHOT_TAG, PUBLIC_IPO_DETAIL_TAG } from "@/lib/page-data";
+import { ensureAdminAuthenticated, revalidateAdminPaths } from "@/lib/server/admin-surface";
 
 export async function triggerManualSyncAction() {
-  if (!(await isAdminAuthenticated())) {
-    redirect("/login?next=/admin");
-  }
+  await ensureAdminAuthenticated(ADMIN_HOME_PATH);
 
-  let redirectTarget = "/admin?sync=error";
+  let redirectTarget = `${ADMIN_HOME_PATH}?sync=error`;
 
   try {
     await logOperation({
@@ -40,8 +39,8 @@ export async function triggerManualSyncAction() {
 
     updateTag(PUBLIC_HOME_SNAPSHOT_TAG);
     updateTag(PUBLIC_IPO_DETAIL_TAG);
-    revalidatePath("/admin");
-    redirectTarget = `/admin?sync=success&synced=${result.synced}`;
+    revalidateAdminPaths(ADMIN_HOME_PATH);
+    redirectTarget = `${ADMIN_HOME_PATH}?sync=success&synced=${result.synced}`;
   } catch (error) {
     await logOperation({
       level: "ERROR",

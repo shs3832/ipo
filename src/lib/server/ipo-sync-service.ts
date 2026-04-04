@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
+
 import { buildAnalysis } from "@/lib/analysis";
 import {
   getKstMinutesOfDay,
@@ -47,6 +49,28 @@ import type {
   SyncResult,
 } from "@/lib/types";
 
+type LatestIpoSnapshotState = {
+  id: string;
+  kindIssueCode: string | null;
+  offerPrice: number | null;
+  listingOpenPrice: number | null;
+  listingOpenReturnRate: number | null;
+  status: IpoRecord["status"];
+  analyses: Array<{
+    score: number;
+    ratingLabel: string;
+    summary: string;
+    keyPoints: unknown;
+    warnings: unknown;
+    generatedAt: Date;
+  }>;
+  sourceSnapshots: Array<{
+    id: string;
+    sourceKey: string;
+    checksum: string;
+  }>;
+} | null;
+
 const isSameAnalysis = (
   left: {
     score: number;
@@ -68,6 +92,185 @@ const isSameAnalysis = (
   && left.summary === right.summary
   && JSON.stringify(left.keyPoints) === JSON.stringify(right.keyPoints)
   && JSON.stringify(left.warnings) === JSON.stringify(right.warnings);
+
+export const buildPersistedSourceIpoRecord = (
+  record: SourceIpoRecord,
+  latestSnapshot: LatestIpoSnapshotState,
+): SourceIpoRecord => {
+  const effectiveOfferPrice = record.offerPrice ?? latestSnapshot?.offerPrice ?? null;
+  const listingOpenPrice = record.listingOpenPrice ?? latestSnapshot?.listingOpenPrice ?? null;
+
+  return {
+    ...record,
+    kindIssueCode: record.kindIssueCode ?? latestSnapshot?.kindIssueCode ?? null,
+    offerPrice: effectiveOfferPrice,
+    listingOpenPrice,
+    listingOpenReturnRate:
+      record.listingOpenReturnRate
+      ?? toListingOpenReturnRate(effectiveOfferPrice, listingOpenPrice)
+      ?? latestSnapshot?.listingOpenReturnRate
+      ?? null,
+  } satisfies SourceIpoRecord;
+};
+
+export const buildIpoWriteData = (record: SourceIpoRecord) => ({
+  name: record.name,
+  market: record.market,
+  leadManager: record.leadManager,
+  coManagers: record.coManagers ?? [],
+  kindIssueCode: record.kindIssueCode ?? null,
+  priceBandLow: record.priceBandLow ?? null,
+  priceBandHigh: record.priceBandHigh ?? null,
+  offerPrice: record.offerPrice ?? null,
+  listingOpenPrice: record.listingOpenPrice ?? null,
+  listingOpenReturnRate: record.listingOpenReturnRate ?? null,
+  minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
+  depositRate: record.depositRate ?? null,
+  subscriptionStart: parseKstDate(record.subscriptionStart),
+  subscriptionEnd: parseKstDate(record.subscriptionEnd),
+  refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
+  listingDate: record.listingDate ? parseKstDate(record.listingDate) : null,
+  status: record.status ?? "UPCOMING",
+});
+
+export const buildIpoEventCreateManyData = (ipoId: string, record: SourceIpoRecord) =>
+  buildEvents(record, record.name).map((event) => ({
+    ipoId,
+    type: event.type,
+    title: event.title,
+    eventDate: event.eventDate,
+  }));
+
+const buildIpoAnalysisCreateData = (
+  ipoId: string,
+  analysis: ReturnType<typeof buildAnalysis>,
+) => ({
+  ipoId,
+  score: analysis.score,
+  ratingLabel: analysis.ratingLabel,
+  summary: analysis.summary,
+  keyPoints: analysis.keyPoints,
+  warnings: analysis.warnings,
+  generatedAt: analysis.generatedAt,
+});
+
+const buildIpoSourceSnapshotCreateData = (
+  ipoId: string,
+  sourceKey: string,
+  checksum: string,
+  persistedRecord: SourceIpoRecord,
+) => ({
+  ipoId,
+  sourceKey,
+  checksum,
+  payload: toPrismaJsonValue(persistedRecord),
+});
+
+const persistIpoRecord = async (
+  tx: Prisma.TransactionClient,
+  {
+    slug,
+    seenAt,
+    checksum,
+    persistedRecord,
+    analysis,
+  }: {
+    slug: string;
+    seenAt: Date;
+    checksum: string;
+    persistedRecord: SourceIpoRecord;
+    analysis: ReturnType<typeof buildAnalysis>;
+  },
+) => {
+  const latestSnapshot = await tx.ipo.findUnique({
+    where: { slug },
+    include: {
+      analyses: {
+        orderBy: { generatedAt: "desc" },
+        take: 1,
+      },
+      sourceSnapshots: {
+        orderBy: { fetchedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  const targetStatus = persistedRecord.status ?? "UPCOMING";
+
+  if (
+    latestSnapshot?.sourceSnapshots[0]?.sourceKey === persistedRecord.sourceKey
+    && latestSnapshot.sourceSnapshots[0]?.checksum === checksum
+  ) {
+    const latestSourceSnapshotId = latestSnapshot.sourceSnapshots[0]?.id;
+
+    if (latestSnapshot.status !== targetStatus) {
+      await tx.ipo.update({
+        where: { id: latestSnapshot.id },
+        data: {
+          status: targetStatus,
+        },
+      });
+    }
+
+    if (latestSourceSnapshotId) {
+      await tx.ipoSourceSnapshot.update({
+        where: { id: latestSourceSnapshotId },
+        data: {
+          fetchedAt: seenAt,
+        },
+      });
+    }
+
+    const latestAnalysis = latestSnapshot.analyses[0];
+    const analysisChanged = !latestAnalysis
+      || !isSameAnalysis(
+        {
+          score: latestAnalysis.score,
+          ratingLabel: latestAnalysis.ratingLabel,
+          summary: latestAnalysis.summary,
+          keyPoints: Array.isArray(latestAnalysis.keyPoints) ? (latestAnalysis.keyPoints as string[]) : [],
+          warnings: Array.isArray(latestAnalysis.warnings) ? (latestAnalysis.warnings as string[]) : [],
+        },
+        analysis,
+      );
+
+    if (analysisChanged) {
+      await tx.ipoAnalysis.create({
+        data: buildIpoAnalysisCreateData(latestSnapshot.id, analysis),
+      });
+    }
+
+    return latestSnapshot.id;
+  }
+
+  const ipo = await tx.ipo.upsert({
+    where: { slug },
+    update: buildIpoWriteData(persistedRecord),
+    create: {
+      slug,
+      ...buildIpoWriteData(persistedRecord),
+    },
+  });
+
+  await tx.ipoEvent.deleteMany({
+    where: { ipoId: ipo.id },
+  });
+
+  await tx.ipoEvent.createMany({
+    data: buildIpoEventCreateManyData(ipo.id, persistedRecord),
+  });
+
+  await tx.ipoSourceSnapshot.create({
+    data: buildIpoSourceSnapshotCreateData(ipo.id, persistedRecord.sourceKey, checksum, persistedRecord),
+  });
+
+  await tx.ipoAnalysis.create({
+    data: buildIpoAnalysisCreateData(ipo.id, analysis),
+  });
+
+  return ipo.id;
+};
 
 const mergeKindListingMetadata = async (
   records: SourceIpoRecord[],
@@ -764,171 +967,20 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
       },
     },
   });
-
-  const effectiveOfferPrice = record.offerPrice ?? latestSnapshot?.offerPrice ?? null;
-  const listingOpenPrice = record.listingOpenPrice ?? latestSnapshot?.listingOpenPrice ?? null;
-  const persistedRecord = {
-    ...record,
-    kindIssueCode: record.kindIssueCode ?? latestSnapshot?.kindIssueCode ?? null,
-    offerPrice: effectiveOfferPrice,
-    listingOpenPrice,
-    listingOpenReturnRate:
-      record.listingOpenReturnRate
-      ?? toListingOpenReturnRate(effectiveOfferPrice, listingOpenPrice)
-      ?? latestSnapshot?.listingOpenReturnRate
-      ?? null,
-  } satisfies SourceIpoRecord;
+  const persistedRecord = buildPersistedSourceIpoRecord(record, latestSnapshot);
   const seenAt = new Date();
   const checksum = toChecksum(persistedRecord);
   const analysis = buildAnalysis(persistedRecord);
-  const targetStatus = persistedRecord.status ?? "UPCOMING";
-
-  if (
-    latestSnapshot?.sourceSnapshots[0]?.sourceKey === persistedRecord.sourceKey
-    && latestSnapshot.sourceSnapshots[0]?.checksum === checksum
-  ) {
-    const latestSourceSnapshotId = latestSnapshot.sourceSnapshots[0]?.id;
-
-    if (latestSnapshot.id && latestSnapshot.status !== targetStatus) {
-      await prisma.ipo.update({
-        where: { id: latestSnapshot.id },
-        data: {
-          status: targetStatus,
-        },
-      });
-    }
-
-    if (latestSourceSnapshotId) {
-      await prisma.ipoSourceSnapshot.update({
-        where: { id: latestSourceSnapshotId },
-        data: {
-          fetchedAt: seenAt,
-        },
-      });
-    }
-
-    const latestAnalysis = latestSnapshot.analyses[0];
-    const analysisChanged = !latestAnalysis
-      || !isSameAnalysis(
-        {
-          score: latestAnalysis.score,
-          ratingLabel: latestAnalysis.ratingLabel,
-          summary: latestAnalysis.summary,
-          keyPoints: Array.isArray(latestAnalysis.keyPoints) ? (latestAnalysis.keyPoints as string[]) : [],
-          warnings: Array.isArray(latestAnalysis.warnings) ? (latestAnalysis.warnings as string[]) : [],
-        },
-        analysis,
-      );
-
-    if (analysisChanged && latestSnapshot.id) {
-      await prisma.ipoAnalysis.create({
-        data: {
-          ipoId: latestSnapshot.id,
-          score: analysis.score,
-          ratingLabel: analysis.ratingLabel,
-          summary: analysis.summary,
-          keyPoints: analysis.keyPoints,
-          warnings: analysis.warnings,
-          generatedAt: analysis.generatedAt,
-        },
-      });
-    }
-
-    if (latestSnapshot.id) {
-      await syncScoringArtifactsSafely({
-        legacyIpoId: latestSnapshot.id,
-        slug,
-        record: persistedRecord,
-        sourceChecksum: checksum,
-        seenAt,
-      });
-    }
-
-    const unchanged = await getIpoRecordBySlugFromDb(slug);
-    if (unchanged) {
-      return unchanged;
-    }
-  }
-
-  const ipo = await prisma.ipo.upsert({
-    where: { slug },
-    update: {
-      name: persistedRecord.name,
-      market: persistedRecord.market,
-      leadManager: persistedRecord.leadManager,
-      coManagers: persistedRecord.coManagers ?? [],
-      kindIssueCode: persistedRecord.kindIssueCode ?? null,
-      priceBandLow: persistedRecord.priceBandLow ?? null,
-      priceBandHigh: persistedRecord.priceBandHigh ?? null,
-      offerPrice: persistedRecord.offerPrice ?? null,
-      listingOpenPrice: persistedRecord.listingOpenPrice ?? null,
-      listingOpenReturnRate: persistedRecord.listingOpenReturnRate ?? null,
-      minimumSubscriptionShares: persistedRecord.minimumSubscriptionShares ?? null,
-      depositRate: persistedRecord.depositRate ?? null,
-      subscriptionStart: parseKstDate(persistedRecord.subscriptionStart),
-      subscriptionEnd: parseKstDate(persistedRecord.subscriptionEnd),
-      refundDate: persistedRecord.refundDate ? parseKstDate(persistedRecord.refundDate) : null,
-      listingDate: persistedRecord.listingDate ? parseKstDate(persistedRecord.listingDate) : null,
-      status: persistedRecord.status ?? "UPCOMING",
-    },
-    create: {
-      slug,
-      name: persistedRecord.name,
-      market: persistedRecord.market,
-      leadManager: persistedRecord.leadManager,
-      coManagers: persistedRecord.coManagers ?? [],
-      kindIssueCode: persistedRecord.kindIssueCode ?? null,
-      priceBandLow: persistedRecord.priceBandLow ?? null,
-      priceBandHigh: persistedRecord.priceBandHigh ?? null,
-      offerPrice: persistedRecord.offerPrice ?? null,
-      listingOpenPrice: persistedRecord.listingOpenPrice ?? null,
-      listingOpenReturnRate: persistedRecord.listingOpenReturnRate ?? null,
-      minimumSubscriptionShares: persistedRecord.minimumSubscriptionShares ?? null,
-      depositRate: persistedRecord.depositRate ?? null,
-      subscriptionStart: parseKstDate(persistedRecord.subscriptionStart),
-      subscriptionEnd: parseKstDate(persistedRecord.subscriptionEnd),
-      refundDate: persistedRecord.refundDate ? parseKstDate(persistedRecord.refundDate) : null,
-      listingDate: persistedRecord.listingDate ? parseKstDate(persistedRecord.listingDate) : null,
-      status: persistedRecord.status ?? "UPCOMING",
-    },
-  });
-
-  await prisma.ipoEvent.deleteMany({
-    where: { ipoId: ipo.id },
-  });
-
-  await prisma.ipoEvent.createMany({
-    data: buildEvents(persistedRecord, persistedRecord.name).map((event) => ({
-      ipoId: ipo.id,
-      type: event.type,
-      title: event.title,
-      eventDate: event.eventDate,
-    })),
-  });
-
-  await prisma.ipoSourceSnapshot.create({
-    data: {
-      ipoId: ipo.id,
-      sourceKey: persistedRecord.sourceKey,
-      checksum,
-      payload: toPrismaJsonValue(persistedRecord),
-    },
-  });
-
-  await prisma.ipoAnalysis.create({
-    data: {
-      ipoId: ipo.id,
-      score: analysis.score,
-      ratingLabel: analysis.ratingLabel,
-      summary: analysis.summary,
-      keyPoints: analysis.keyPoints,
-      warnings: analysis.warnings,
-      generatedAt: analysis.generatedAt,
-    },
-  });
+  const legacyIpoId = await prisma.$transaction((tx) => persistIpoRecord(tx, {
+    slug,
+    seenAt,
+    checksum,
+    persistedRecord,
+    analysis,
+  }));
 
   await syncScoringArtifactsSafely({
-    legacyIpoId: ipo.id,
+    legacyIpoId,
     slug,
     record: persistedRecord,
     sourceChecksum: checksum,

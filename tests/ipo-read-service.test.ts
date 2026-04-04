@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildSchedulerStatuses } from "@/lib/server/ipo-read-service";
+import {
+  buildSchedulerStatuses,
+  filterReadableIpos,
+  hasReadableIpoArtifacts,
+} from "@/lib/server/ipo-read-service";
 import type { OperationLogRecord } from "@/lib/types";
 
 const createLog = (overrides: Partial<OperationLogRecord>): OperationLogRecord => ({
@@ -12,6 +16,46 @@ const createLog = (overrides: Partial<OperationLogRecord>): OperationLogRecord =
   message: overrides.message ?? "10시 분석 메일 발송을 마쳤습니다.",
   context: overrides.context ?? null,
   createdAt: overrides.createdAt ?? new Date("2026-04-01T01:22:38.761Z"),
+});
+
+type ReadableCandidate = {
+  id: string;
+  analyses: unknown[];
+  sourceSnapshots: unknown[];
+};
+
+const createReadableCandidate = (overrides: Partial<ReadableCandidate> = {}): ReadableCandidate => ({
+  id: overrides.id ?? "ipo-1",
+  analyses: overrides.analyses ?? [{ id: "analysis-1" }],
+  sourceSnapshots: overrides.sourceSnapshots ?? [{ id: "snapshot-1" }],
+});
+
+test("hasReadableIpoArtifacts returns true only when analysis and source snapshot are both present", () => {
+  assert.equal(hasReadableIpoArtifacts(createReadableCandidate()), true);
+  assert.equal(hasReadableIpoArtifacts(createReadableCandidate({ analyses: [] })), false);
+  assert.equal(hasReadableIpoArtifacts(createReadableCandidate({ sourceSnapshots: [] })), false);
+  assert.equal(hasReadableIpoArtifacts(createReadableCandidate({ analyses: [], sourceSnapshots: [] })), false);
+  assert.equal(hasReadableIpoArtifacts(null), false);
+  assert.equal(hasReadableIpoArtifacts(undefined), false);
+});
+
+test("filterReadableIpos excludes legacy rows without snapshots and preserves original order", () => {
+  const readableFirst = createReadableCandidate({ id: "readable-first" });
+  const legacyWithoutSnapshot = createReadableCandidate({ id: "legacy-no-snapshot", sourceSnapshots: [] });
+  const unreadableWithoutAnalysis = createReadableCandidate({ id: "no-analysis", analyses: [] });
+  const readableLast = createReadableCandidate({ id: "readable-last" });
+
+  const filtered = filterReadableIpos([
+    readableFirst,
+    legacyWithoutSnapshot,
+    unreadableWithoutAnalysis,
+    readableLast,
+  ]);
+
+  assert.deepEqual(
+    filtered.map((ipo) => ipo.id),
+    ["readable-first", "readable-last"],
+  );
 });
 
 test("scheduler status uses the earliest completion after the expected time when multiple reruns exist", () => {

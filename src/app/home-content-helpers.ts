@@ -54,6 +54,27 @@ export type OverviewSection = {
   items: HomeIpoSummary[];
 };
 
+export type RenderedOverviewSection = OverviewSection & {
+  isCollapsed: boolean;
+  visibleItems: HomeIpoSummary[];
+  hiddenCount: number;
+};
+
+export type HomeContentViewModel = {
+  visibleWeekdayLabels: string[];
+  visibleMonthDays: string[];
+  eventIpoCounts: Record<CalendarEventType, number>;
+  calendarSpacCount: number;
+  visibleEventCount: number;
+  overviewFilterCounts: Record<OverviewFilterKey, number>;
+  spacCount: number;
+  filteredOverviewLabel: string;
+  renderedOverviewSections: RenderedOverviewSection[];
+  hasMoreOverviewItems: boolean;
+  hiddenOverviewCount: number;
+  isPastSectionForcedOpen: boolean;
+};
+
 export const overviewFilterItems: Array<{ key: OverviewFilterKey; label: string }> = [
   { key: "ALL", label: "전체" },
   { key: "THIS_WEEK", label: "이번주 마감" },
@@ -69,6 +90,7 @@ export const overviewSortItems: Array<{ key: OverviewSortKey; label: string }> =
 ];
 
 const calendarEventTypes: CalendarEventType[] = ["SUBSCRIPTION", "REFUND", "LISTING"];
+const weekdayLabels = ["일", "월", "화", "수", "목", "금", "토"];
 
 export const defaultCalendarFilters: CalendarEventFilters = {
   SUBSCRIPTION: true,
@@ -359,4 +381,114 @@ export const buildOverviewSections = (
       items: sortOverviewSectionItems(past, sortKey, "PAST"),
     },
   ].filter((section) => section.items.length > 0);
+};
+
+export const buildHomeContentViewModel = ({
+  monthDays,
+  eventsByDate,
+  ipos,
+  calendarFilters,
+  includeCalendarSpac,
+  overviewQuery,
+  selectedOverviewFilter,
+  selectedOverviewSort,
+  includeSpac,
+  isPastSectionExpanded,
+  showAllMobileSections,
+  isCompactViewport,
+  todayKey = getKstTodayKey(),
+  showWeekendColumns = false,
+  overviewMobileSectionLimit = 4,
+}: {
+  monthDays: string[];
+  eventsByDate: Record<string, CalendarEntry[]>;
+  ipos: HomeIpoSummary[];
+  calendarFilters: CalendarEventFilters;
+  includeCalendarSpac: boolean;
+  overviewQuery: string;
+  selectedOverviewFilter: OverviewFilterKey;
+  selectedOverviewSort: OverviewSortKey;
+  includeSpac: boolean;
+  isPastSectionExpanded: boolean;
+  showAllMobileSections: boolean;
+  isCompactViewport: boolean;
+  todayKey?: string;
+  showWeekendColumns?: boolean;
+  overviewMobileSectionLimit?: number;
+}): HomeContentViewModel => {
+  const visibleWeekdayLabels = weekdayLabels.filter((_, index) =>
+    showWeekendColumns ? true : index !== 0 && index !== 6,
+  );
+  const visibleMonthDays = monthDays.filter((dayValue) => {
+    if (showWeekendColumns) {
+      return true;
+    }
+
+    const dayOfWeek = getKstDayOfWeek(new Date(dayValue));
+    return dayOfWeek !== 0 && dayOfWeek !== 6;
+  });
+  const visibleMonthDayKeys = visibleMonthDays.map((dayValue) => kstDateKey(new Date(dayValue)));
+  const eventIpoCounts = getCalendarEventIpoCounts(eventsByDate, visibleMonthDayKeys, includeCalendarSpac);
+  const calendarSpacCount = getCalendarSpacIpoCount(eventsByDate, visibleMonthDayKeys, calendarFilters);
+  const visibleEventCount = getVisibleCalendarEventCount(
+    eventsByDate,
+    visibleMonthDayKeys,
+    calendarFilters,
+    includeCalendarSpac,
+  );
+
+  const overviewTiming = buildOverviewTiming(todayKey);
+  const searchMatchedIpos = ipos.filter((ipo) => matchesOverviewSearch(ipo, overviewQuery));
+  const overviewSpacScopeIpos = searchMatchedIpos.filter((ipo) =>
+    matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
+  const spacCount = overviewSpacScopeIpos.filter((ipo) => isSpacIpo(ipo)).length;
+  const overviewBaseIpos = includeSpac ? searchMatchedIpos : searchMatchedIpos.filter((ipo) => !isSpacIpo(ipo));
+  const overviewFilterCounts = getOverviewFilterCounts(overviewBaseIpos, overviewTiming);
+  const filteredIpos = overviewBaseIpos.filter((ipo) =>
+    matchesOverviewFilter(ipo, selectedOverviewFilter, overviewTiming));
+  const overviewSections = buildOverviewSections(filteredIpos, selectedOverviewSort, overviewTiming);
+  const hasNonPastOverviewSection = overviewSections.some((section) => section.id !== "PAST");
+  const hasPastOverviewSection = overviewSections.some((section) => section.id === "PAST");
+  const isPastSectionForcedOpen = selectedOverviewFilter === "PAST" || (hasPastOverviewSection && !hasNonPastOverviewSection);
+  const isPastSectionOpen = isPastSectionForcedOpen || isPastSectionExpanded;
+  const renderedOverviewSections = overviewSections.map((section) => {
+    const isPastSection = section.id === "PAST";
+    const isCollapsed = isPastSection && !isPastSectionOpen;
+    const visibleItems = isCollapsed
+      ? []
+      : (
+          isCompactViewport && !showAllMobileSections
+            ? section.items.slice(0, overviewMobileSectionLimit)
+            : section.items
+        );
+
+    return {
+      ...section,
+      isCollapsed,
+      visibleItems,
+      hiddenCount: Math.max(section.items.length - visibleItems.length, 0),
+    };
+  });
+  const hiddenOverviewCount = renderedOverviewSections.reduce((count, section) => {
+    if (section.isCollapsed) {
+      return count;
+    }
+
+    return count + section.hiddenCount;
+  }, 0);
+
+  return {
+    visibleWeekdayLabels,
+    visibleMonthDays,
+    eventIpoCounts,
+    calendarSpacCount,
+    visibleEventCount,
+    overviewFilterCounts,
+    spacCount,
+    filteredOverviewLabel: `${filteredIpos.length} / ${ipos.length}개 종목`,
+    renderedOverviewSections,
+    hasMoreOverviewItems: isCompactViewport && !showAllMobileSections && hiddenOverviewCount > 0,
+    hiddenOverviewCount,
+    isPastSectionForcedOpen,
+  };
 };

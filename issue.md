@@ -1,5 +1,82 @@
 # Issue Log
 
+## 2026-04-04
+
+### Thread Summary
+
+이번 스레드에서는 최근에 커진 server/page 계층의 중복과 파생 상태 계산을 단계적으로 정리했다. 목표는 실서비스 동작을 바꾸지 않은 채 read eligibility, alert prepare, sync persistence, home/detail view-model, admin auth/navigation, public cache revival 규칙을 각자 한 곳으로 모아 이후 유지보수와 QA 비용을 낮추는 것이었다.
+
+### What Changed In This Follow-up
+
+1. `ipo-read-service`에서 `analysis >= 1` 그리고 `sourceSnapshot >= 1`일 때만 read model로 노출하는 eligibility 판단을 공통 helper로 통합했다.
+2. `alert-service`의 일일 알림 준비와 마감 임박 알림 준비가 같은 파이프라인을 공유하도록 정리해 job id, idempotency key, scheduled time 계산 규칙을 한 곳에 모았다.
+3. `ipo-sync-service`의 종목 단위 DB 반영을 transaction 안으로 묶고, persisted source record 조립 / write payload 조립 / event row 생성 로직을 pure helper로 분리했다.
+4. `recipient-service`는 관리자 수신자 bootstrap, primary email repair, verified email channel 해석 규칙을 helper와 transaction 경계로 정리했다.
+5. 홈 `/`의 캘린더/종목 개요 파생 상태를 `buildHomeContentViewModel()`로 모아 count와 hidden count, section collapse 계산이 JSX 밖에서 한 번만 일어나도록 바꿨다.
+6. 상세 `/ipos/[slug]`도 score/status/quick facts/listing facts 조립을 `page-helpers`로 빼서 렌더와 계산 책임을 분리했다.
+7. 관리자 로그인 redirect, `next` 경로 정규화, `/admin` 경로 revalidate를 `admin-navigation` / `admin-surface` helper로 통합했다.
+8. `page-data`의 public snapshot revive 규칙은 `page-data-revival`로 분리해 캐시 wrapper와 날짜/score fallback 복원 로직을 분리했다.
+
+### Main Code Changes In This Follow-up
+
+- read / alert / sync / recipient service 정리
+  - `src/lib/server/ipo-read-service.ts`
+  - `src/lib/server/alert-service.ts`
+  - `src/lib/server/ipo-sync-service.ts`
+  - `src/lib/server/recipient-service.ts`
+- admin path / auth / cache revival helper 추가
+  - `src/lib/admin-navigation.ts`
+  - `src/lib/server/admin-surface.ts`
+  - `src/lib/page-data-revival.ts`
+- 홈 / 상세 / 관리자 UI 계산 정리
+  - `src/app/home-content.tsx`
+  - `src/app/home-content-helpers.ts`
+  - `src/app/ipos/[slug]/page.tsx`
+  - `src/app/ipos/[slug]/page-helpers.ts`
+  - `src/app/admin/actions.ts`
+  - `src/app/admin/page.tsx`
+  - `src/app/admin/recipients/actions.ts`
+  - `src/app/admin/recipients/page.tsx`
+  - `src/app/login/actions.ts`
+  - `src/app/login/page.tsx`
+  - `src/lib/page-data.ts`
+- 테스트
+  - `tests/ipo-read-service.test.ts`
+  - `tests/alert-service.test.ts`
+  - `tests/ipo-sync-service.test.ts`
+  - `tests/recipient-service.test.ts`
+  - `tests/home-content-helpers.test.ts`
+  - `tests/admin-navigation.test.ts`
+  - `tests/ipo-detail-page-helpers.test.ts`
+  - `tests/page-data-revival.test.ts`
+
+### Live Service Impact Assessment
+
+- 영향도: 낮음
+- 이유:
+  - 이번 변경은 정책 변경보다 규칙 공통화와 helper 분리에 집중했고, 공개/관리자 surface의 URL, 캐시 TTL, DB schema, cron schedule, mail payload 정책은 그대로 유지했다.
+  - `ipo-read-service` eligibility는 기존과 같은 `analysis + sourceSnapshot` 기준을 그대로 유지해 public detail `404`, 홈 목록 제외, admin dashboard 제외 정책이 달라지지 않는다.
+  - `alert-service`는 prepare 흐름을 공유했지만 alert variant별 schedule 시각과 idempotency suffix는 기존 의미를 유지한다.
+  - `ipo-sync-service`는 transaction 경계가 생겨 부분 반영 위험이 줄었고, transaction 밖에 둔 scoring hook / read-back도 기존 호출 순서를 유지한다.
+  - `admin` 경로 정리는 로그인 redirect와 `/admin` revalidate 규칙을 중앙화한 수준이라 운영 경로 자체는 바뀌지 않는다.
+  - `page-data-revival` 분리는 cached payload를 복원하는 위치만 바꿨고, 홈 `revalidate = 300`과 detail 캐시 태그 규칙은 유지했다.
+- 확인 결과:
+  - `next build`가 `/`, `/admin`, `/admin/recipients`, `/ipos/[slug]`, `/login` 전부 정상 생성했다.
+  - 추가된 pure helper 테스트들이 기존 런타임 포맷과 fallback copy를 잠가 줘, 구조 리팩토링으로 인한 미묘한 drift 가능성도 낮다.
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test -- tests/page-data-revival.test.ts tests/ipo-detail-page-helpers.test.ts tests/admin-navigation.test.ts tests/recipient-service.test.ts tests/alert-service.test.ts tests/ipo-read-service.test.ts tests/ipo-sync-service.test.ts tests/home-content-helpers.test.ts`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 구조 리팩토링은 끝냈지만 public 정책은 바꾸지 않았다.
+- `ipo-read-service`의 readable guard는 여전히 `analysis`와 `sourceSnapshot`이 모두 있어야 한다.
+- `admin-navigation` / `admin-surface`는 운영 경로 문자열과 인증 redirect 규칙의 기준점으로 유지한다.
+- `page-data-revival`은 cached public payload의 날짜/score fallback 복원 기준점으로 유지한다.
+
 ## 2026-04-01
 
 ### Follow-up: Scheduler Status QA / Nearest Run Selection

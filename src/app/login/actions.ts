@@ -10,25 +10,19 @@ import {
   isAdminAuthConfigured,
   isValidAdminPassword,
 } from "@/lib/admin-auth";
-
-const normalizeNext = (value: FormDataEntryValue | null) => {
-  if (typeof value !== "string" || !value.startsWith("/")) {
-    return "/admin";
-  }
-
-  return value;
-};
+import { ADMIN_HOME_PATH, buildAdminLoginPath, normalizeAdminNextPath } from "@/lib/admin-navigation";
 
 export async function loginAction(formData: FormData) {
-  const next = normalizeNext(formData.get("next"));
+  const nextValue = formData.get("next");
+  const next = normalizeAdminNextPath(typeof nextValue === "string" ? nextValue : null, ADMIN_HOME_PATH);
   const password = String(formData.get("password") ?? "");
 
   if (!isAdminAuthConfigured()) {
-    redirect(`/login?next=${encodeURIComponent(next)}&error=not-configured`);
+    redirect(buildAdminLoginPath(next, "not-configured"));
   }
 
   if (!isValidAdminPassword(password)) {
-    redirect(`/login?next=${encodeURIComponent(next)}&error=invalid`);
+    redirect(buildAdminLoginPath(next, "invalid"));
   }
 
   const cookieStore = await cookies();

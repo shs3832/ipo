@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { formatDateTime } from "@/lib/date";
 import { buildAdminStatusSummary, getDashboardSnapshot } from "@/lib/jobs";
-import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { triggerManualSyncAction } from "@/app/admin/actions";
 import { AdminManualSyncForm } from "@/app/admin/manual-sync-form";
 import { logoutAction } from "@/app/login/actions";
 import { AdminLogPanel } from "@/app/admin-log-panel";
+import { ADMIN_HOME_PATH, ADMIN_RECIPIENTS_PATH } from "@/lib/admin-navigation";
+import { ensureAdminAuthenticated } from "@/lib/server/admin-surface";
 import styles from "@/app/admin/page.module.scss";
 
 export const dynamic = "force-dynamic";
@@ -58,9 +58,7 @@ export default async function AdminPage({
 }: {
   searchParams: Promise<{ sync?: keyof typeof syncMessage; synced?: string }>;
 }) {
-  if (!(await isAdminAuthenticated())) {
-    redirect("/login?next=/admin");
-  }
+  await ensureAdminAuthenticated(ADMIN_HOME_PATH);
 
   const params = await searchParams;
   const snapshot = await getDashboardSnapshot();
@@ -99,7 +97,7 @@ export default async function AdminPage({
             </article>
             <div className={styles.actionGroup}>
               <AdminManualSyncForm action={triggerManualSyncAction} />
-              <Link className="button-secondary" href="/admin/recipients">
+              <Link className="button-secondary" href={ADMIN_RECIPIENTS_PATH}>
                 이메일 관리
               </Link>
               <Link className="button-primary" href="/">

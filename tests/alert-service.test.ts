@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { type IpoDataQualitySummary } from "@/lib/ipo-data-quality";
+import { atKstTime } from "@/lib/date";
 import {
   buildAlertPreparationLogEntry,
   buildAlertPreparationSummary,
   buildClosingDayAnalysisMessage,
+  buildClosingSoonReminderMessage,
   buildDispatchSelectionLogEntry,
   buildDispatchSelectionSummary,
+  buildPreparedJobsForCandidates,
   createDeliveryIdempotencyKey,
   renderMessageHtml,
 } from "@/lib/server/alert-service";
@@ -181,6 +184,28 @@ test("buildAlertPreparationSummary and log entry explain why no alerts were prep
   assert.equal(summary.readyCount, 2);
   assert.equal(logEntry.action, "alert_candidate_summary");
   assert.equal(logEntry.message, "10시 분석 알림 후보 4건 중 준비 2건, 스팩 제외 1건, 발송 보류 1건입니다.");
+});
+
+test("buildPreparedJobsForCandidates creates stable ids, schedules, and idempotency keys for shared prepare flow", () => {
+  const ipo = createIpo();
+
+  const jobs = buildPreparedJobsForCandidates(
+    [{ ipo, dataQuality: verifiedQuality }],
+    "2026-04-01",
+    {
+      jobIdSuffix: "closing-soon-reminder",
+      scheduledHour: 15,
+      scheduledMinute: 30,
+      idempotencySuffix: "closing-soon-reminder",
+      buildPayload: buildClosingSoonReminderMessage,
+    },
+  );
+
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0]?.id, "prepared-ipo-1-closing-soon-reminder");
+  assert.equal(jobs[0]?.scheduledFor.getTime(), atKstTime("2026-04-01", 15, 30).getTime());
+  assert.equal(jobs[0]?.idempotencyKey, "ipo-1:2026-04-01:closing-soon-reminder");
+  assert.equal(jobs[0]?.payload.subject, "[공모주] 테스트 종목 오늘 청약 마감 임박 알림");
 });
 
 test("buildDispatchSelectionSummary and log entry distinguish zero-send runs from real deliveries", () => {

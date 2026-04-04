@@ -5,6 +5,7 @@ import {
   getAdminAuthMissingEnvKeys,
   isAdminAuthenticated,
 } from "@/lib/admin-auth";
+import { ADMIN_HOME_PATH, normalizeAdminNextPath } from "@/lib/admin-navigation";
 import { loginAction } from "@/app/login/actions";
 import styles from "@/app/login/page.module.scss";
 
@@ -21,11 +22,11 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; error?: keyof typeof errorMessage }>;
 }) {
   if (await isAdminAuthenticated()) {
-    redirect("/admin");
+    redirect(ADMIN_HOME_PATH);
   }
 
   const params = await searchParams;
-  const next = params.next?.startsWith("/") ? params.next : "/admin";
+  const next = normalizeAdminNextPath(params.next);
   const error = params.error ? errorMessage[params.error] : null;
   const missingEnvKeys = getAdminAuthMissingEnvKeys();
   const hasMissingAdminEnv = missingEnvKeys.length > 0;

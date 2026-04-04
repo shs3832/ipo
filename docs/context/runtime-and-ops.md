@@ -22,6 +22,8 @@
 - `src/lib/server/ipo-read-service.ts`는 dashboard/public/detail/admin read model을 담당한다.
 - `src/lib/server/alert-service.ts`는 alert prepare/dispatch와 메일 render를 담당한다.
 - `src/lib/server/recipient-service.ts`는 관리자 수신자 CRUD를 담당한다.
+- `src/lib/admin-navigation.ts`와 `src/lib/server/admin-surface.ts`는 admin login redirect, next-path 정규화, admin 경로 revalidate 규칙을 공통화한다.
+- `src/lib/page-data-revival.ts`는 cached public snapshot/detail payload의 날짜 필드와 fallback scoreDisplay 복원을 담당한다.
 - `src/lib/server/ipo-mappers.ts`는 snapshot payload parsing과 read mapper를 담당한다.
 - `src/lib/server/job-shared.ts`는 scheduler 상수와 공용 helper/select를 담는다.
 
@@ -47,6 +49,7 @@
 - 홈 `/`는 `revalidate = 300`
 - 공개 read path에서는 recipient bootstrap 등 DB write를 하지 않음
 - 관리자 read와 public read는 분리된 경로를 사용
+- public cache wrapper는 `src/lib/page-data.ts`, revive 규칙은 `src/lib/page-data-revival.ts`에 분리돼 있다
 
 ## Alert Gate Rules
 
@@ -66,6 +69,8 @@
 
 - admin auth:
   - [src/lib/admin-auth.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-auth.ts)
+  - [src/lib/admin-navigation.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-navigation.ts)
+  - [src/lib/server/admin-surface.ts](/Users/shs/Desktop/Study/ipo/src/lib/server/admin-surface.ts)
   - [src/app/login/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/login/page.tsx)
   - [src/app/login/actions.ts](/Users/shs/Desktop/Study/ipo/src/app/login/actions.ts)
 - 필수 env:

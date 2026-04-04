@@ -40,6 +40,11 @@ import type {
   SchedulerStatusRecord,
 } from "@/lib/types";
 
+type ReadableIpoArtifacts = {
+  analyses: readonly unknown[];
+  sourceSnapshots: readonly unknown[];
+};
+
 const getSchedulerValidationLogs = async (date = new Date()): Promise<OperationLogRecord[]> => {
   const sources = schedulerDefinitions.map((definition) => definition.source);
   const since = atKstTime(shiftKstDateKey(getKstTodayKey(date), -1), 0);
@@ -186,13 +191,20 @@ export const buildSchedulerStatuses = (
   });
 };
 
+export const hasReadableIpoArtifacts = <T extends ReadableIpoArtifacts>(
+  ipo: T | null | undefined,
+): ipo is T => Boolean(ipo && ipo.analyses.length > 0 && ipo.sourceSnapshots.length > 0);
+
+export const filterReadableIpos = <T extends ReadableIpoArtifacts>(ipos: T[]) =>
+  ipos.filter((ipo): ipo is T => hasReadableIpoArtifacts(ipo));
+
 export const getIpoRecordBySlugFromDb = async (slug: string): Promise<IpoRecord | null> => {
   const ipo = await prisma.ipo.findUnique({
     where: { slug },
     include: IPO_READ_INCLUDE,
   });
 
-  if (!ipo || ipo.analyses.length === 0 || ipo.sourceSnapshots.length === 0) {
+  if (!hasReadableIpoArtifacts(ipo)) {
     return null;
   }
 
@@ -245,11 +257,7 @@ export const getDashboardSnapshot = async (): Promise<DashboardSnapshot> => {
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
-      ipos: ipos.flatMap((ipo) => (
-        ipo.analyses.length && ipo.sourceSnapshots.length
-          ? [mapDbIpoToIpoRecord(ipo)]
-          : []
-      )),
+      ipos: filterReadableIpos(ipos).map((ipo) => mapDbIpoToIpoRecord(ipo)),
       recipients: recipients.map(toRecipientRecord),
       jobs: jobs.map(toNotificationJobRecord),
       deliveries: deliveries.map(toNotificationDeliveryRecord),
@@ -299,11 +307,7 @@ export const getPublicHomeSnapshot = async (): Promise<PublicHomeSnapshot> => {
       mode: "database",
       generatedAt: new Date(),
       calendarMonth: displayRange.currentMonth.start,
-      ipos: ipos.flatMap((ipo) => (
-        ipo.analyses.length && ipo.sourceSnapshots.length
-          ? [mapDbIpoToIpoRecord(ipo)]
-          : []
-      )),
+      ipos: filterReadableIpos(ipos).map((ipo) => mapDbIpoToIpoRecord(ipo)),
       recipientCount,
       jobCount,
     };
@@ -355,7 +359,7 @@ export const getPublicIpoBySlug = async (slug: string): Promise<PublicIpoDetailR
     throw error;
   }
 
-  if (!ipo || ipo.analyses.length === 0 || ipo.sourceSnapshots.length === 0) {
+  if (!hasReadableIpoArtifacts(ipo)) {
     return null;
   }
 

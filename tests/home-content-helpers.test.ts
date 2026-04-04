@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildHomeContentViewModel,
   buildOverviewSections,
   buildOverviewTiming,
   getCalendarEventIpoCounts,
@@ -253,4 +254,113 @@ test("overview deposit sort places the lowest minimum deposit first and null val
 
   assert.equal(getMinimumDepositAmount(sections[0].items[0]), 25_000);
   assert.deepEqual(sections[0].items.map((ipo) => ipo.id), ["cheapest", "expensive", "missing-deposit"]);
+});
+
+test("buildHomeContentViewModel centralizes calendar and overview derived state without changing semantics", () => {
+  const viewModel = buildHomeContentViewModel({
+    monthDays: [
+      "2026-03-25T00:00:00.000Z",
+      "2026-03-28T00:00:00.000Z",
+      "2026-03-30T00:00:00.000Z",
+    ],
+    eventsByDate: {
+      "2026-03-25": [
+        createCalendarEntry({ title: "일반 공모주", slug: "common-ipo", type: "SUBSCRIPTION" }),
+        createCalendarEntry({ title: "엔에이치스팩33호", slug: "spac-ipo", type: "SUBSCRIPTION" }),
+        createCalendarEntry({ title: "미래반도체", slug: "future-chip", type: "LISTING" }),
+      ],
+      "2026-03-28": [
+        createCalendarEntry({ title: "주말 일정", slug: "weekend-ipo", type: "LISTING" }),
+      ],
+      "2026-03-30": [
+        createCalendarEntry({ title: "환불 종목", slug: "refund-ipo", type: "REFUND" }),
+      ],
+    },
+    ipos: [
+      createIpo({
+        id: "this-week",
+        slug: "this-week",
+        name: "이번주",
+        subscriptionStart: "2026-03-24T00:00:00.000Z",
+        subscriptionEnd: "2026-03-27T00:00:00.000Z",
+      }),
+      createIpo({
+        id: "upcoming-a",
+        slug: "upcoming-a",
+        name: "다음A",
+        subscriptionStart: "2026-03-29T00:00:00.000Z",
+        subscriptionEnd: "2026-04-02T00:00:00.000Z",
+      }),
+      createIpo({
+        id: "upcoming-b",
+        slug: "upcoming-b",
+        name: "다음B",
+        subscriptionStart: "2026-03-29T00:00:00.000Z",
+        subscriptionEnd: "2026-04-03T00:00:00.000Z",
+      }),
+      createIpo({
+        id: "past",
+        slug: "past",
+        name: "지난종목",
+        subscriptionStart: "2026-03-21T00:00:00.000Z",
+        subscriptionEnd: "2026-03-24T00:00:00.000Z",
+      }),
+      createIpo({
+        id: "spac",
+        slug: "spac",
+        name: "엔에이치스팩33호",
+        subscriptionStart: "2026-03-26T00:00:00.000Z",
+        subscriptionEnd: "2026-03-28T00:00:00.000Z",
+      }),
+    ],
+    calendarFilters: defaultCalendarFilters,
+    includeCalendarSpac: false,
+    overviewQuery: "",
+    selectedOverviewFilter: "ALL",
+    selectedOverviewSort: "DEADLINE",
+    includeSpac: false,
+    isPastSectionExpanded: false,
+    showAllMobileSections: false,
+    isCompactViewport: true,
+    todayKey: "2026-03-25",
+    showWeekendColumns: false,
+    overviewMobileSectionLimit: 1,
+  });
+
+  assert.deepEqual(viewModel.visibleWeekdayLabels, ["월", "화", "수", "목", "금"]);
+  assert.deepEqual(viewModel.visibleMonthDays, [
+    "2026-03-25T00:00:00.000Z",
+    "2026-03-30T00:00:00.000Z",
+  ]);
+  assert.deepEqual(viewModel.eventIpoCounts, {
+    SUBSCRIPTION: 1,
+    REFUND: 1,
+    LISTING: 1,
+  });
+  assert.equal(viewModel.calendarSpacCount, 1);
+  assert.equal(viewModel.visibleEventCount, 3);
+  assert.equal(viewModel.filteredOverviewLabel, "4 / 5개 종목");
+  assert.equal(viewModel.spacCount, 1);
+  assert.deepEqual(viewModel.overviewFilterCounts, {
+    ALL: 4,
+    THIS_WEEK: 1,
+    THIS_MONTH: 1,
+    OPEN_NOW: 1,
+    PAST: 1,
+  });
+  assert.equal(viewModel.isPastSectionForcedOpen, false);
+  assert.equal(viewModel.hasMoreOverviewItems, true);
+  assert.equal(viewModel.hiddenOverviewCount, 1);
+  assert.deepEqual(
+    viewModel.renderedOverviewSections.map((section) => ({
+      id: section.id,
+      isCollapsed: section.isCollapsed,
+      visibleIds: section.visibleItems.map((ipo) => ipo.id),
+    })),
+    [
+      { id: "THIS_WEEK", isCollapsed: false, visibleIds: ["this-week"] },
+      { id: "UPCOMING", isCollapsed: false, visibleIds: ["upcoming-a"] },
+      { id: "PAST", isCollapsed: true, visibleIds: [] },
+    ],
+  );
 });
