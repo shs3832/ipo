@@ -12,7 +12,9 @@ import {
   buildDispatchSelectionSummary,
   buildPreparedJobsForCandidates,
   createDeliveryIdempotencyKey,
+  decideAlertSourceRefreshAction,
   renderMessageHtml,
+  shouldPrepareAlertsBeforeDispatch,
 } from "@/lib/server/alert-service";
 import type { IpoRecord, NotificationJobRecord, RecipientRecord } from "@/lib/types";
 
@@ -257,4 +259,82 @@ test("buildDispatchSelectionSummary and log entry distinguish zero-send runs fro
       status: "READY",
     },
   ]);
+});
+
+test("decideAlertSourceRefreshAction skips, waits, cools down, or refreshes based on recent sync state", () => {
+  const now = new Date("2026-04-13T01:00:00.000Z");
+
+  assert.equal(
+    decideAlertSourceRefreshAction({
+      now,
+      recentSuccessAt: new Date("2026-04-13T00:10:00.000Z"),
+      latestDailySyncEvent: {
+        action: "completed",
+        createdAt: new Date("2026-04-13T00:10:00.000Z"),
+      },
+    }),
+    "skip_recent_success",
+  );
+
+  assert.equal(
+    decideAlertSourceRefreshAction({
+      now,
+      recentSuccessAt: null,
+      latestDailySyncEvent: {
+        action: "started",
+        createdAt: new Date("2026-04-13T00:50:00.000Z"),
+      },
+    }),
+    "wait_for_in_progress",
+  );
+
+  assert.equal(
+    decideAlertSourceRefreshAction({
+      now,
+      recentSuccessAt: null,
+      latestDailySyncEvent: {
+        action: "failed",
+        createdAt: new Date("2026-04-13T00:55:00.000Z"),
+      },
+    }),
+    "cooldown_after_failure",
+  );
+
+  assert.equal(
+    decideAlertSourceRefreshAction({
+      now,
+      recentSuccessAt: null,
+      latestDailySyncEvent: {
+        action: "completed",
+        createdAt: new Date("2026-04-12T20:00:00.000Z"),
+      },
+    }),
+    "start_refresh",
+  );
+});
+
+test("shouldPrepareAlertsBeforeDispatch reuses persisted READY jobs when database mode is active", () => {
+  assert.equal(
+    shouldPrepareAlertsBeforeDispatch({
+      useDatabase: true,
+      persistedReadyJobCount: 2,
+    }),
+    false,
+  );
+
+  assert.equal(
+    shouldPrepareAlertsBeforeDispatch({
+      useDatabase: true,
+      persistedReadyJobCount: 0,
+    }),
+    true,
+  );
+
+  assert.equal(
+    shouldPrepareAlertsBeforeDispatch({
+      useDatabase: false,
+      persistedReadyJobCount: 5,
+    }),
+    true,
+  );
 });

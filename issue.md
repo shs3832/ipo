@@ -1,5 +1,58 @@
 # Issue Log
 
+## 2026-04-13
+
+### Thread Summary
+
+이번 스레드에서는 4월 운영 로그를 기준으로 반복되던 `Transaction API error: Unable to start a transaction in the given time.` 장애를 추적했고, 실제 서비스 영향이 있는 경로를 코드와 QA까지 포함해 정리했다. 핵심은 `daily-sync`의 DB transaction fan-out을 줄이고, alert prepare/dispatch가 `daily-sync`를 중복 강제 실행하면서 장애를 증폭시키던 흐름을 완화하는 것이었다.
+
+### Follow-up: Daily Sync Concurrency Guard / Alert Refresh Dedup
+
+이번 후속에서는 4월 `ERROR` 169건이 사실상 하나의 transaction-start 실패 계열로 묶인다는 점을 기준으로, `daily-sync`와 alert 파이프라인의 운영 안정성을 직접 보강했다. 기능을 넓히는 작업이 아니라 기존 스케줄/알림 흐름이 같은 DB 부하를 서로 증폭시키지 않도록 보호 장치를 넣는 성격이 강하다.
+
+### What Changed In This Follow-up
+
+1. `runDailySync()`는 source record별 DB 반영을 더 이상 `Promise.all`로 동시에 열지 않고 순차 처리하도록 바꿨다.
+2. 그 결과 source record 수만큼 interactive transaction을 한꺼번에 요청하던 구조를 제거해 Prisma transaction slot 압박을 줄였다.
+3. `ensureFreshAlertSourceData()`는 이제 최근 성공 로그뿐 아니라 최근 `started` / `failed` 로그도 함께 보고 refresh 여부를 결정한다.
+4. 이미 `daily-sync`가 진행 중이면 alert job은 새 강제 refresh를 시작하지 않고 일정 시간 동안 완료를 기다리도록 정리했다.
+5. 방금 실패한 `daily-sync`가 있으면 alert job이 즉시 같은 강제 refresh를 다시 반복하지 않도록 cooldown을 넣었다.
+6. dispatch 단계는 같은 날 이미 저장된 `READY` notification job이 있으면 prepare를 다시 돌지 않고 기존 job을 재사용하도록 바꿨다.
+7. 이 새 분기들을 잠그기 위해 alert-service 테스트에 refresh decision과 dispatch reuse 관련 테스트를 추가했다.
+
+### Main Code Changes In This Follow-up
+
+- sync transaction pressure 완화
+  - `src/lib/server/ipo-sync-service.ts`
+- alert refresh dedup / READY job reuse
+  - `src/lib/server/alert-service.ts`
+- 테스트
+  - `tests/alert-service.test.ts`
+
+### Live Service Impact Assessment In This Follow-up
+
+- 영향도: 중간 이상, 긍정적
+- 이유:
+  - 4월 운영 로그에서 반복된 실제 장애 경로를 직접 겨냥한 수정이다.
+  - DB schema 변경이나 migration 없이 application flow만 조정해 배포 리스크는 비교적 낮다.
+  - `daily-sync`는 더 느려질 수 있지만, 목표는 처리 속도보다 transaction start 실패를 줄여 실제 성공률을 높이는 것이다.
+  - alert job은 이제 fresh sync가 없을 때도 무조건 새 강제 refresh를 때리지 않고, 진행 중/최근 실패 상태를 보고 더 보수적으로 행동한다.
+
+### Verification In This Follow-up
+
+- `npm run lint`
+  - 기존 [src/app/ipos/[slug]/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/ipos/%5Bslug%5D/page.tsx)의 unused import warning 1건만 유지
+- `npm test`
+  - `82개` 테스트 모두 통과
+- `npm run build`
+  - production build 통과
+
+### Current Decisions To Remember In This Follow-up
+
+- `daily-sync` DB upsert는 transaction pressure를 줄이기 위해 의도적으로 순차 처리한다.
+- alert prepare job은 fresh `daily-sync`가 없더라도, 이미 sync가 진행 중이면 기다리고 최근 실패 직후에는 즉시 재시도하지 않는다.
+- dispatch job은 같은 날 이미 저장된 `READY` job이 있으면 prepare를 재실행하지 않고 재사용한다.
+
 ## 2026-04-04
 
 ### Thread Summary

@@ -40,6 +40,31 @@ import type {
   RecipientRecord,
 } from "@/lib/types";
 
+const DAILY_SYNC_IN_PROGRESS_STALE_MS = 20 * 60 * 1000;
+const DAILY_SYNC_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
+const DAILY_SYNC_WAIT_POLL_MS = 5_000;
+const DAILY_SYNC_WAIT_TIMEOUT_MS = 90_000;
+
+let inFlightAlertSourceRefresh: Promise<void> | null = null;
+
+type DailySyncLogAction = "started" | "completed" | "failed";
+
+type DailySyncLogEvent = {
+  action: DailySyncLogAction;
+  createdAt: Date;
+};
+
+type DailySyncTerminalLogEvent = {
+  action: Exclude<DailySyncLogAction, "started">;
+  createdAt: Date;
+};
+
+type AlertSourceRefreshDecision =
+  | "skip_recent_success"
+  | "wait_for_in_progress"
+  | "cooldown_after_failure"
+  | "start_refresh";
+
 const getMinimumDepositAmount = (ipo: IpoRecord) => {
   if (
     ipo.offerPrice == null
@@ -484,8 +509,17 @@ const getPersistedReadyJobsByIdempotencySuffix = async (
   }));
 };
 
-const ensureFreshAlertSourceData = async (source: string, now = new Date()) => {
-  const recentSuccess = await prisma.operationLog.findFirst({
+const getTodayReadyJobWindow = (now: Date) => {
+  const todayKey = getKstTodayKey(now);
+
+  return {
+    scheduledFrom: atKstTime(todayKey, 0),
+    scheduledTo: atKstTime(shiftKstDateKey(todayKey, 1), 0),
+  };
+};
+
+const getRecentSuccessfulDailySync = async (now = new Date()) =>
+  prisma.operationLog.findFirst({
     where: {
       source: "job:daily-sync",
       action: "completed",
@@ -502,8 +536,162 @@ const ensureFreshAlertSourceData = async (source: string, now = new Date()) => {
     },
   });
 
+const getLatestDailySyncEvent = async (now = new Date()): Promise<DailySyncLogEvent | null> =>
+  prisma.operationLog.findFirst({
+    where: {
+      source: "job:daily-sync",
+      action: {
+        in: ["started", "completed", "failed"],
+      },
+      createdAt: {
+        gte: new Date(now.getTime() - Math.max(ALERT_DATA_FRESHNESS_MS, DAILY_SYNC_IN_PROGRESS_STALE_MS)),
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      action: true,
+      createdAt: true,
+    },
+  }) as Promise<DailySyncLogEvent | null>;
+
+const sleep = (ms: number) => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
+
+const waitForDailySyncSettlement = async (
+  startedAt: Date,
+  timeoutMs = DAILY_SYNC_WAIT_TIMEOUT_MS,
+): Promise<DailySyncTerminalLogEvent | null> => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    await sleep(DAILY_SYNC_WAIT_POLL_MS);
+
+    const terminalEvent = await prisma.operationLog.findFirst({
+      where: {
+        source: "job:daily-sync",
+        action: {
+          in: ["completed", "failed"],
+        },
+        createdAt: {
+          gt: startedAt,
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        action: true,
+        createdAt: true,
+      },
+    }) as DailySyncTerminalLogEvent | null;
+
+    if (terminalEvent) {
+      return terminalEvent;
+    }
+  }
+
+  return null;
+};
+
+export const decideAlertSourceRefreshAction = ({
+  now,
+  recentSuccessAt,
+  latestDailySyncEvent,
+}: {
+  now: Date;
+  recentSuccessAt?: Date | null;
+  latestDailySyncEvent?: DailySyncLogEvent | null;
+}): AlertSourceRefreshDecision => {
+  if (recentSuccessAt && recentSuccessAt.getTime() >= now.getTime() - ALERT_DATA_FRESHNESS_MS) {
+    return "skip_recent_success";
+  }
+
+  if (
+    latestDailySyncEvent?.action === "started"
+    && latestDailySyncEvent.createdAt.getTime() >= now.getTime() - DAILY_SYNC_IN_PROGRESS_STALE_MS
+  ) {
+    return "wait_for_in_progress";
+  }
+
+  if (
+    latestDailySyncEvent?.action === "failed"
+    && latestDailySyncEvent.createdAt.getTime() >= now.getTime() - DAILY_SYNC_RETRY_COOLDOWN_MS
+  ) {
+    return "cooldown_after_failure";
+  }
+
+  return "start_refresh";
+};
+
+export const shouldPrepareAlertsBeforeDispatch = ({
+  useDatabase,
+  persistedReadyJobCount,
+}: {
+  useDatabase: boolean;
+  persistedReadyJobCount: number;
+}) => !useDatabase || persistedReadyJobCount === 0;
+
+const ensureFreshAlertSourceData = async (source: string, now = new Date()) => {
+  const recentSuccess = await getRecentSuccessfulDailySync(now);
+
   if (recentSuccess) {
     return false;
+  }
+
+  if (inFlightAlertSourceRefresh) {
+    await logOperation({
+      level: "INFO",
+      source,
+      action: "awaiting_source_refresh",
+      message: "이미 진행 중인 알림용 일정 새로고침이 있어 완료를 기다립니다.",
+      context: {
+        waitTimeoutSeconds: DAILY_SYNC_WAIT_TIMEOUT_MS / 1000,
+      },
+    });
+
+    await inFlightAlertSourceRefresh;
+    return false;
+  }
+
+  const latestDailySyncEvent = await getLatestDailySyncEvent(now);
+  const refreshDecision = decideAlertSourceRefreshAction({
+    now,
+    recentSuccessAt: null,
+    latestDailySyncEvent,
+  });
+
+  if (refreshDecision === "wait_for_in_progress" && latestDailySyncEvent) {
+    await logOperation({
+      level: "INFO",
+      source,
+      action: "awaiting_source_refresh",
+      message: "이미 진행 중인 공모주 동기화가 있어 완료를 기다립니다.",
+      context: {
+        startedAt: latestDailySyncEvent.createdAt,
+        waitTimeoutSeconds: DAILY_SYNC_WAIT_TIMEOUT_MS / 1000,
+      },
+    });
+
+    const settled = await waitForDailySyncSettlement(latestDailySyncEvent.createdAt);
+    if (settled?.action === "completed") {
+      return false;
+    }
+
+    if (settled?.action === "failed") {
+      throw new Error("Concurrent daily-sync refresh failed while waiting for fresh alert source data.");
+    }
+
+    throw new Error("Timed out waiting for the in-progress daily-sync refresh to finish.");
+  }
+
+  if (refreshDecision === "cooldown_after_failure" && latestDailySyncEvent) {
+    throw new Error(
+      `Recent daily-sync refresh failed at ${latestDailySyncEvent.createdAt.toISOString()}; `
+      + "skipping an immediate duplicate refresh attempt.",
+    );
   }
 
   await logOperation({
@@ -516,7 +704,19 @@ const ensureFreshAlertSourceData = async (source: string, now = new Date()) => {
     },
   });
 
-  await runDailySync({ forceRefresh: true });
+  const refreshPromise = (async () => {
+    await runDailySync({ forceRefresh: true });
+  })();
+  inFlightAlertSourceRefresh = refreshPromise;
+
+  try {
+    await refreshPromise;
+  } finally {
+    if (inFlightAlertSourceRefresh === refreshPromise) {
+      inFlightAlertSourceRefresh = null;
+    }
+  }
+
   return true;
 };
 
@@ -866,13 +1066,36 @@ const dispatchPreparedAlerts = async ({
 
   try {
     const useDatabase = await canUseDatabase();
-    const recipients = await resolveAlertRecipients();
     const now = new Date();
-    const prepared = await prepare();
     const persistedReadyJobs =
       useDatabase && loadPersistedReadyJobs
         ? await loadPersistedReadyJobs(now)
         : [];
+    const shouldPrepare = shouldPrepareAlertsBeforeDispatch({
+      useDatabase,
+      persistedReadyJobCount: persistedReadyJobs.length,
+    });
+    const prepared: PreparedAlertsResult = shouldPrepare
+      ? await prepare()
+      : {
+          mode: "database",
+          timestamp: now,
+          jobs: [],
+        };
+
+    if (!shouldPrepare) {
+      await logOperation({
+        level: "INFO",
+        source,
+        action: "reuse_prepared_jobs",
+        message: `기존 READY ${selectionLabel} ${persistedReadyJobs.length}건을 재사용해 prepare 단계를 건너뜁니다.`,
+        context: {
+          jobs: persistedReadyJobs.length,
+        },
+      });
+    }
+
+    const recipients = await resolveAlertRecipients();
     const jobsById = new Map<string, NotificationJobRecord>();
 
     for (const job of prepared.jobs) {
@@ -1144,6 +1367,8 @@ export const dispatchAlerts = async (): Promise<DispatchResult> =>
         : `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
     failureMessage: "10시 분석 메일 발송 작업이 실패했습니다.",
     prepare: prepareDailyAlerts,
+    loadPersistedReadyJobs: async (now) =>
+      getPersistedReadyJobsByIdempotencySuffix(":closing-day-analysis", getTodayReadyJobWindow(now)),
   });
 
 export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
@@ -1158,14 +1383,10 @@ export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
     failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
     prepare: prepareClosingSoonAlerts,
     loadPersistedReadyJobs: async (now) => {
-      const todayKey = getKstTodayKey(now);
-      const dayStart = atKstTime(todayKey, 0);
-      const nextDayStart = atKstTime(shiftKstDateKey(todayKey, 1), 0);
-
-      return getPersistedReadyJobsByIdempotencySuffix(":closing-soon-reminder", {
-        scheduledFrom: dayStart,
-        scheduledTo: nextDayStart,
-      });
+      return getPersistedReadyJobsByIdempotencySuffix(
+        ":closing-soon-reminder",
+        getTodayReadyJobWindow(now),
+      );
     },
     isDispatchable: (job, now) => {
       const todayKey = kstDateKey(job.scheduledFor);

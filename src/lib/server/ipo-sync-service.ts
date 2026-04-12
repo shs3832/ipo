@@ -1039,7 +1039,11 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
       throw new Error("Live IPO source returned 0 records while existing display-range IPOs are present.");
     }
 
-    const ipos = await Promise.all(sourceRecords.map((record) => upsertDatabaseIpo(record)));
+    const ipos: Array<IpoRecord | null> = [];
+
+    for (const record of sourceRecords) {
+      ipos.push(await upsertDatabaseIpo(record));
+    }
     const synced = ipos.filter(Boolean).length;
     const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords, {
       immediateWithdrawSlugs: excludedNonIpoSlugs,

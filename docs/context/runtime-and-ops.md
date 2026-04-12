@@ -43,6 +43,9 @@
   - `10:10 KST`
   - `10:30 KST`
 - alert 준비 잡은 최근 `90분` 내 성공한 `daily-sync`가 없으면 강제 refresh를 먼저 시도
+- 다만 이미 `daily-sync`가 진행 중이면 새 refresh를 바로 시작하지 않고 기존 실행 완료를 대기
+- 최근 `daily-sync`가 방금 실패한 경우 alert job은 즉시 같은 강제 refresh를 반복하지 않고 cooldown 뒤 다음 실행으로 넘김
+- dispatch 잡은 같은 날 저장된 `READY` mail job이 있으면 prepare를 다시 돌지 않고 기존 job을 우선 재사용
 
 ## Public Read Path Rules
 
@@ -141,3 +144,4 @@
 - 공개 점수 rollout은 현재 pause 상태이며, public read path는 `ipo_score_snapshot`을 붙이지 않음
 - `src/lib/jobs.ts`는 facade만 남았고, 점수 sync / 재계산 no-op helper는 현재 `src/lib/server/ipo-sync-service.ts`에 있다
 - admin score summary data는 남겨 두지만, 현재 UI는 숨겨져 있고 재오픈 전까지 최신성 보장을 전제로 두지 않는다
+- `daily-sync`는 transaction start 실패를 줄이기 위해 종목별 DB 반영을 순차 처리한다
