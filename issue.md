@@ -65,6 +65,25 @@
 - 조기 cron 다중 호출을 사용하므로, prepare / dispatch / delivery 단계는 모두 idempotent 하게 유지해야 한다.
 - Vercel Cron은 분 단위 창 안에서 호출될 수 있으므로, 이번 구조는 정시 발송을 "보정"한 것이며 플랫폼 자체의 절대 보장을 대신하지는 않는다.
 
+### Follow-up: Pause Closing-Soon Alerts For Hobby Operation
+
+Vercel 공식 문서를 다시 확인한 결과 Hobby는 cron 자체를 여러 개 둘 수는 있지만 호출 정밀도가 `Hourly (±59 min)` 수준이라 `15:30` 마감 임박 알림의 체감 품질을 안정적으로 맞추기 어렵다. 그래서 이번 추가 후속에서는 기능을 완전히 지우는 대신 `마감 30분 전 알림`만 pause 처리하고, `10시 분석 메일` 경로만 운영 대상으로 남기도록 정리했다.
+
+### What Changed In This Hobby Follow-up
+
+1. `vercel.json`에서 `prepare-closing-alerts`, `dispatch-closing-alerts` cron 등록을 제거했다.
+2. `CLOSING_SOON_ALERTS_ENABLED = false` 상수를 두고, closing-soon prepare/dispatch 함수는 호출돼도 `disabled` 로그만 남기고 no-op 반환하도록 바꿨다.
+3. closing alert API route도 동일 플래그를 보고 `disabled: true` 응답으로 빠지게 정리해, stale cron/수동 호출이 있어도 실제 메일 발송으로 이어지지 않도록 했다.
+4. admin 대시보드의 상태 카드와 설명 문구에서 현재 운영 기준을 `06:00 동기화 + 09:55/10:00 메일` 중심으로 정리했다.
+
+### Live Service Impact Assessment In This Hobby Follow-up
+
+- 영향도: 낮음~중간, 보수적
+- 이유:
+  - 10시 메일 경로는 유지하고 closing-soon 경로만 명시적으로 비활성화했다.
+  - cron 제거와 no-op 가드를 함께 넣어 자동/수동 경로 모두에서 closing 메일이 나가지 않도록 했다.
+  - 다만 Hobby에서도 `10시` 자체는 여전히 Vercel 호출 정밀도 한계의 영향을 받으므로, 이번 변경은 운영 단순화이지 정시 보장을 새로 얻는 수정은 아니다.
+
 ## 2026-04-13
 
 ### Thread Summary

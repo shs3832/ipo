@@ -23,6 +23,7 @@ import {
   ALERT_DISPATCH_LATE_GRACE_MS,
   ALERT_DISPATCH_MAX_ADVANCE_WAIT_MS,
   ALERT_DATA_FRESHNESS_MS,
+  CLOSING_SOON_ALERTS_ENABLED,
   CLOSING_SOON_ALERT_HOUR,
   CLOSING_SOON_ALERT_MINUTE,
   CLOSING_TIME_HOUR,
@@ -1227,39 +1228,54 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> =>
   });
 
 export const prepareClosingSoonAlerts = async (): Promise<PreparedAlertsResult> =>
-  prepareAlerts({
-    source: "job:prepare-closing-alerts",
-    alertLabel: "마감 30분 전 알림",
-    startedMessage: "마감 30분 전 알림 준비를 시작했습니다.",
-    fallbackBlockedMessage: "DB 연결이 없어 마감 30분 전 알림 준비를 보류했습니다.",
-    completionMessage: (storedJobCount) => (
-      storedJobCount
-        ? `마감 30분 전 알림 ${storedJobCount}건을 준비했습니다.`
-        : "마감 30분 전 알림 대상이 없어 준비된 메일이 없습니다."
-    ),
-    failureMessage: "마감 30분 전 알림 준비에 실패했습니다.",
-    jobVariant: {
-      jobIdSuffix: "closing-soon-reminder",
-      scheduledHour: CLOSING_SOON_ALERT_HOUR,
-      scheduledMinute: CLOSING_SOON_ALERT_MINUTE,
-      idempotencySuffix: "closing-soon-reminder",
-      buildPayload: buildClosingSoonReminderMessage,
-    },
-    captureNowBeforeDashboard: true,
-    resolveWindow: (dashboard, now) => {
-      const todayKey = getKstTodayKey(now);
-      const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
-      const today = parseKstDate(todayKey);
-
-      return {
-        todayKey,
-        todayClosingIpos: now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [],
-        completionContext: {
-          afterClose: now >= closingCutoffAt,
+  CLOSING_SOON_ALERTS_ENABLED
+    ? prepareAlerts({
+        source: "job:prepare-closing-alerts",
+        alertLabel: "마감 30분 전 알림",
+        startedMessage: "마감 30분 전 알림 준비를 시작했습니다.",
+        fallbackBlockedMessage: "DB 연결이 없어 마감 30분 전 알림 준비를 보류했습니다.",
+        completionMessage: (storedJobCount) => (
+          storedJobCount
+            ? `마감 30분 전 알림 ${storedJobCount}건을 준비했습니다.`
+            : "마감 30분 전 알림 대상이 없어 준비된 메일이 없습니다."
+        ),
+        failureMessage: "마감 30분 전 알림 준비에 실패했습니다.",
+        jobVariant: {
+          jobIdSuffix: "closing-soon-reminder",
+          scheduledHour: CLOSING_SOON_ALERT_HOUR,
+          scheduledMinute: CLOSING_SOON_ALERT_MINUTE,
+          idempotencySuffix: "closing-soon-reminder",
+          buildPayload: buildClosingSoonReminderMessage,
         },
-      };
-    },
-  });
+        captureNowBeforeDashboard: true,
+        resolveWindow: (dashboard, now) => {
+          const todayKey = getKstTodayKey(now);
+          const closingCutoffAt = atKstTime(todayKey, CLOSING_TIME_HOUR);
+          const today = parseKstDate(todayKey);
+
+          return {
+            todayKey,
+            todayClosingIpos: now < closingCutoffAt ? getTodayClosingIpos(dashboard, today) : [],
+            completionContext: {
+              afterClose: now >= closingCutoffAt,
+            },
+          };
+        },
+      })
+    : (async () => {
+        const timestamp = new Date();
+        await logOperation({
+          level: "INFO",
+          source: "job:prepare-closing-alerts",
+          action: "disabled",
+          message: "마감 30분 전 알림 준비는 현재 비활성화돼 실행하지 않습니다.",
+        });
+        return {
+          mode: (await canUseDatabase()) ? "database" : "fallback",
+          timestamp,
+          jobs: [],
+        };
+      })();
 
 const dispatchPreparedAlerts = async ({
   source,
@@ -1609,29 +1625,49 @@ export const dispatchAlerts = async (): Promise<DispatchResult> =>
   });
 
 export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
-  dispatchPreparedAlerts({
-    source: "job:dispatch-closing-alerts",
-    selectionLabel: "마감 30분 전 알림 메일",
-    startedMessage: "마감 30분 전 알림 메일 발송을 시작했습니다.",
-    completionMessage: ({ attempted, sentCount, failedCount, skippedCount, staleSkippedCount }) =>
-      attempted === 0
-        ? "마감 30분 전 알림 메일 대상이 없어 실제 메일은 보내지 않았습니다."
-        : `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
-    failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
-    prepare: prepareClosingSoonAlerts,
-    loadPersistedJobs: async (now) =>
-      getPersistedJobsByIdempotencySuffix(":closing-soon-reminder", {
-        ...getTodayReadyJobWindow(now),
-        statuses: ["READY", "SENT", "PARTIAL_FAILURE"],
-      }),
-    isDispatchable: (job, now) => {
-      const todayKey = kstDateKey(job.scheduledFor);
-      return (
-        isWithinDispatchGraceWindow({
-          now,
-          scheduledFor: job.scheduledFor,
-        })
-        && now < atKstTime(todayKey, CLOSING_TIME_HOUR)
-      );
-    },
-  });
+  CLOSING_SOON_ALERTS_ENABLED
+    ? dispatchPreparedAlerts({
+        source: "job:dispatch-closing-alerts",
+        selectionLabel: "마감 30분 전 알림 메일",
+        startedMessage: "마감 30분 전 알림 메일 발송을 시작했습니다.",
+        completionMessage: ({ attempted, sentCount, failedCount, skippedCount, staleSkippedCount }) =>
+          attempted === 0
+            ? "마감 30분 전 알림 메일 대상이 없어 실제 메일은 보내지 않았습니다."
+            : `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
+        failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
+        prepare: prepareClosingSoonAlerts,
+        loadPersistedJobs: async (now) =>
+          getPersistedJobsByIdempotencySuffix(":closing-soon-reminder", {
+            ...getTodayReadyJobWindow(now),
+            statuses: ["READY", "SENT", "PARTIAL_FAILURE"],
+          }),
+        isDispatchable: (job, now) => {
+          const todayKey = kstDateKey(job.scheduledFor);
+          return (
+            isWithinDispatchGraceWindow({
+              now,
+              scheduledFor: job.scheduledFor,
+            })
+            && now < atKstTime(todayKey, CLOSING_TIME_HOUR)
+          );
+        },
+      })
+    : (async () => {
+        const timestamp = new Date();
+        await logOperation({
+          level: "INFO",
+          source: "job:dispatch-closing-alerts",
+          action: "disabled",
+          message: "마감 30분 전 알림 발송은 현재 비활성화돼 실행하지 않습니다.",
+        });
+        return {
+          mode: (await canUseDatabase()) ? "database" : "fallback",
+          timestamp,
+          attempted: 0,
+          sentCount: 0,
+          failedCount: 0,
+          skippedCount: 0,
+          staleSkippedCount: 0,
+          deliveries: [],
+        };
+      })();

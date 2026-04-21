@@ -3,8 +3,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { getJobAuthorization } from "@/lib/job-auth";
 import { prepareClosingSoonAlerts } from "@/lib/jobs";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
+import { CLOSING_SOON_ALERTS_ENABLED, canUseDatabase } from "@/lib/server/job-shared";
 
 export async function GET(request: NextRequest) {
+  if (!CLOSING_SOON_ALERTS_ENABLED) {
+    const timestamp = new Date();
+    await logOperation({
+      level: "INFO",
+      source: "api:prepare-closing-alerts",
+      action: "disabled",
+      message: "prepare-closing-alerts API 호출을 비활성화 상태로 건너뛰었습니다.",
+      context: { path: request.nextUrl.pathname },
+    });
+    return NextResponse.json({
+      disabled: true,
+      mode: (await canUseDatabase()) ? "database" : "fallback",
+      timestamp,
+      jobs: [],
+    });
+  }
+
   const auth = getJobAuthorization(request);
 
   if (!auth.authorized) {

@@ -70,6 +70,7 @@ export const DAILY_ALERT_HOUR = 10;
 export const DAILY_ALERT_MINUTE = 0;
 export const DAILY_ALERT_PREPARE_HOUR = 9;
 export const DAILY_ALERT_PREPARE_MINUTE = 55;
+export const CLOSING_SOON_ALERTS_ENABLED = false;
 export const CLOSING_SOON_PREPARE_HOUR = 15;
 export const CLOSING_SOON_PREPARE_MINUTE = 25;
 export const schedulerDefinitions: SchedulerDefinition[] = [
@@ -94,21 +95,27 @@ export const schedulerDefinitions: SchedulerDefinition[] = [
     expectedHour: DAILY_ALERT_HOUR,
     expectedMinute: DAILY_ALERT_MINUTE,
   },
-  {
-    id: "prepare-closing-alerts",
-    label: "마감 30분 전 메일 준비",
-    source: "job:prepare-closing-alerts",
-    expectedHour: CLOSING_SOON_PREPARE_HOUR,
-    expectedMinute: CLOSING_SOON_PREPARE_MINUTE,
-    acceptableEarlyMs: ALERT_PREPARE_WINDOW_MS,
-  },
-  {
-    id: "dispatch-closing-alerts",
-    label: "마감 30분 전 메일 발송",
-    source: "job:dispatch-closing-alerts",
-    expectedHour: 15,
-    expectedMinute: 30,
-  },
+  ...(
+    CLOSING_SOON_ALERTS_ENABLED
+      ? [
+          {
+            id: "prepare-closing-alerts",
+            label: "마감 30분 전 메일 준비",
+            source: "job:prepare-closing-alerts",
+            expectedHour: CLOSING_SOON_PREPARE_HOUR,
+            expectedMinute: CLOSING_SOON_PREPARE_MINUTE,
+            acceptableEarlyMs: ALERT_PREPARE_WINDOW_MS,
+          },
+          {
+            id: "dispatch-closing-alerts",
+            label: "마감 30분 전 메일 발송",
+            source: "job:dispatch-closing-alerts",
+            expectedHour: 15,
+            expectedMinute: 30,
+          },
+        ]
+      : []
+  ),
 ];
 
 export const CLOSING_TIME_HOUR = 16;

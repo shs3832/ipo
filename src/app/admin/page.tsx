@@ -140,7 +140,7 @@ export default async function AdminPage({
             <strong className={styles.summaryValue}>
               {summary.jobCount} / {summary.deliveryCount}
             </strong>
-            <p className={styles.cardCopy}>10시 분석 메일과 마감 30분 전 메일의 최근 작업 기록입니다.</p>
+            <p className={styles.cardCopy}>현재 운영 중인 10시 분석 메일 기준 최근 작업 기록입니다.</p>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>운영 모드</span>
@@ -154,8 +154,8 @@ export default async function AdminPage({
             <div className={styles.cardHeader}>
               <h2 className="section-title">일일 업데이트 검증</h2>
               <p className="section-copy">
-                Vercel Cron UTC 스케줄을 KST로 환산해 06:00 동기화, 09:00/10:00 분석 메일,
-                15:25/15:30 마감 리마인더 실행 여부를 검증합니다.
+                Vercel Cron UTC 스케줄을 KST로 환산해 06:00 동기화와 09:55/10:00 분석 메일 실행
+                여부를 검증합니다.
               </p>
             </div>
             <div className={styles.list}>
