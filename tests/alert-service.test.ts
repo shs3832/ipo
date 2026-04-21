@@ -13,6 +13,8 @@ import {
   buildPreparedJobsForCandidates,
   createDeliveryIdempotencyKey,
   decideAlertSourceRefreshAction,
+  getDispatchWaitMs,
+  isWithinDispatchGraceWindow,
   renderMessageHtml,
   shouldPrepareAlertsBeforeDispatch,
 } from "@/lib/server/alert-service";
@@ -317,7 +319,7 @@ test("shouldPrepareAlertsBeforeDispatch reuses persisted READY jobs when databas
   assert.equal(
     shouldPrepareAlertsBeforeDispatch({
       useDatabase: true,
-      persistedReadyJobCount: 2,
+      persistedJobCount: 2,
     }),
     false,
   );
@@ -325,7 +327,7 @@ test("shouldPrepareAlertsBeforeDispatch reuses persisted READY jobs when databas
   assert.equal(
     shouldPrepareAlertsBeforeDispatch({
       useDatabase: true,
-      persistedReadyJobCount: 0,
+      persistedJobCount: 0,
     }),
     true,
   );
@@ -333,8 +335,56 @@ test("shouldPrepareAlertsBeforeDispatch reuses persisted READY jobs when databas
   assert.equal(
     shouldPrepareAlertsBeforeDispatch({
       useDatabase: false,
-      persistedReadyJobCount: 5,
+      persistedJobCount: 5,
     }),
     true,
+  );
+});
+
+test("getDispatchWaitMs waits only when the scheduled time is close enough", () => {
+  const scheduledFor = atKstTime("2026-04-01", 10, 0);
+
+  assert.equal(
+    getDispatchWaitMs({
+      now: atKstTime("2026-04-01", 9, 55),
+      scheduledFor,
+    }),
+    5 * 60 * 1000,
+  );
+
+  assert.equal(
+    getDispatchWaitMs({
+      now: atKstTime("2026-04-01", 9, 40),
+      scheduledFor,
+    }),
+    0,
+  );
+
+  assert.equal(
+    getDispatchWaitMs({
+      now: atKstTime("2026-04-01", 10, 1),
+      scheduledFor,
+    }),
+    0,
+  );
+});
+
+test("isWithinDispatchGraceWindow blocks stale dispatches after the late grace window", () => {
+  const scheduledFor = atKstTime("2026-04-01", 15, 30);
+
+  assert.equal(
+    isWithinDispatchGraceWindow({
+      now: atKstTime("2026-04-01", 15, 34),
+      scheduledFor,
+    }),
+    true,
+  );
+
+  assert.equal(
+    isWithinDispatchGraceWindow({
+      now: atKstTime("2026-04-01", 15, 36),
+      scheduledFor,
+    }),
+    false,
   );
 });

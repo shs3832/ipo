@@ -14,7 +14,35 @@
     },
     {
       "path": "/api/jobs/prepare-daily-alerts",
-      "schedule": "0 0 * * *"
+      "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "35 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "40 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "45 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "50 0 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "35 0 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "45 0 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "55 0 * * *"
     },
     {
       "path": "/api/jobs/dispatch-alerts",
@@ -22,6 +50,38 @@
     },
     {
       "path": "/api/jobs/prepare-closing-alerts",
+      "schedule": "5 6 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-closing-alerts",
+      "schedule": "10 6 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-closing-alerts",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-closing-alerts",
+      "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-closing-alerts",
+      "schedule": "25 6 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-closing-alerts",
+      "schedule": "55 5 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-closing-alerts",
+      "schedule": "5 6 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-closing-alerts",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-closing-alerts",
       "schedule": "25 6 * * *"
     },
     {

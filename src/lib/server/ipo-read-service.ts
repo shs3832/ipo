@@ -93,7 +93,8 @@ export const buildSchedulerStatuses = (
     const expectedAt = atKstTime(todayKey, definition.expectedHour, definition.expectedMinute ?? 0);
     const sourceLogs = logs.filter((log) => log.source === definition.source);
     const todayLogs = sourceLogs.filter((log) => kstDateKey(log.createdAt) === todayKey);
-    const completionThreshold = expectedAt.getTime() - SCHEDULER_EARLY_GRACE_MS;
+    const acceptableEarlyMs = definition.acceptableEarlyMs ?? SCHEDULER_EARLY_GRACE_MS;
+    const completionThreshold = expectedAt.getTime() - acceptableEarlyMs;
     const completedAfterThreshold = getFirstLogAfterThreshold(todayLogs, "completed", completionThreshold);
     const failedAfterThreshold = getFirstLogAfterThreshold(todayLogs, "failed", completionThreshold);
     const earlyCompletion = todayLogs.find(

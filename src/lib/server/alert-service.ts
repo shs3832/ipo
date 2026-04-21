@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import nodemailer from "nodemailer";
 
 import { assessIpoDataQuality, type IpoDataQualitySummary } from "@/lib/ipo-data-quality";
@@ -5,6 +6,7 @@ import { partitionAlertEligibleIpos } from "@/lib/ipo-classification";
 import {
   atKstTime,
   formatDate,
+  formatDateTime,
   formatMoney,
   formatPercent,
   getKstTodayKey,
@@ -18,10 +20,14 @@ import { env, isEmailConfigured } from "@/lib/env";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 import { getDashboardSnapshot } from "@/lib/server/ipo-read-service";
 import {
+  ALERT_DISPATCH_LATE_GRACE_MS,
+  ALERT_DISPATCH_MAX_ADVANCE_WAIT_MS,
   ALERT_DATA_FRESHNESS_MS,
   CLOSING_SOON_ALERT_HOUR,
   CLOSING_SOON_ALERT_MINUTE,
   CLOSING_TIME_HOUR,
+  DAILY_ALERT_HOUR,
+  DAILY_ALERT_MINUTE,
   type DispatchPreparedAlertsOptions,
   type PreparedJobSeed,
   canUseDatabase,
@@ -44,6 +50,7 @@ const DAILY_SYNC_IN_PROGRESS_STALE_MS = 20 * 60 * 1000;
 const DAILY_SYNC_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
 const DAILY_SYNC_WAIT_POLL_MS = 5_000;
 const DAILY_SYNC_WAIT_TIMEOUT_MS = 90_000;
+const DELIVERY_PENDING_STALE_MS = 15 * 60 * 1000;
 
 let inFlightAlertSourceRefresh: Promise<void> | null = null;
 
@@ -468,19 +475,23 @@ const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
   return storedJobs;
 };
 
-const getPersistedReadyJobsByIdempotencySuffix = async (
+const getPersistedJobsByIdempotencySuffix = async (
   suffix: string,
   {
     scheduledFrom,
     scheduledTo,
+    statuses = ["READY"],
   }: {
     scheduledFrom: Date;
     scheduledTo: Date;
+    statuses?: NotificationJobRecord["status"][];
   },
 ) => {
   const jobs = await prisma.notificationJob.findMany({
     where: {
-      status: "READY",
+      status: {
+        in: statuses,
+      },
       idempotencyKey: {
         endsWith: suffix,
       },
@@ -560,6 +571,40 @@ const sleep = (ms: number) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });
 
+const isUniqueConstraintError = (error: unknown) =>
+  typeof error === "object"
+  && error !== null
+  && "code" in error
+  && String((error as Prisma.PrismaClientKnownRequestError).code) === "P2002";
+
+export const getDispatchWaitMs = ({
+  now,
+  scheduledFor,
+  maxAdvanceWaitMs = ALERT_DISPATCH_MAX_ADVANCE_WAIT_MS,
+}: {
+  now: Date;
+  scheduledFor: Date;
+  maxAdvanceWaitMs?: number;
+}) => {
+  const waitMs = scheduledFor.getTime() - now.getTime();
+
+  if (waitMs <= 0 || waitMs > maxAdvanceWaitMs) {
+    return 0;
+  }
+
+  return waitMs;
+};
+
+export const isWithinDispatchGraceWindow = ({
+  now,
+  scheduledFor,
+  lateGraceMs = ALERT_DISPATCH_LATE_GRACE_MS,
+}: {
+  now: Date;
+  scheduledFor: Date;
+  lateGraceMs?: number;
+}) => now.getTime() <= scheduledFor.getTime() + lateGraceMs;
+
 const waitForDailySyncSettlement = async (
   startedAt: Date,
   timeoutMs = DAILY_SYNC_WAIT_TIMEOUT_MS,
@@ -628,11 +673,11 @@ export const decideAlertSourceRefreshAction = ({
 
 export const shouldPrepareAlertsBeforeDispatch = ({
   useDatabase,
-  persistedReadyJobCount,
+  persistedJobCount,
 }: {
   useDatabase: boolean;
-  persistedReadyJobCount: number;
-}) => !useDatabase || persistedReadyJobCount === 0;
+  persistedJobCount: number;
+}) => !useDatabase || persistedJobCount === 0;
 
 const ensureFreshAlertSourceData = async (source: string, now = new Date()) => {
   const recentSuccess = await getRecentSuccessfulDailySync(now);
@@ -866,6 +911,148 @@ const sendEmail = async (to: string, payload: NotificationJobRecord["payload"]) 
   return { providerMessageId: info.messageId };
 };
 
+const toNotificationDeliveryRecord = (delivery: {
+  id: string;
+  jobId: string;
+  recipientId: string;
+  channelType: NotificationDeliveryRecord["channelType"];
+  channelAddress: string;
+  status: NotificationDeliveryRecord["status"];
+  providerMessageId: string | null;
+  errorMessage: string | null;
+  createdAt: Date;
+  sentAt: Date | null;
+  idempotencyKey: string;
+}): NotificationDeliveryRecord => ({
+  id: delivery.id,
+  jobId: delivery.jobId,
+  recipientId: delivery.recipientId,
+  channelType: delivery.channelType,
+  channelAddress: delivery.channelAddress,
+  status: delivery.status,
+  providerMessageId: delivery.providerMessageId,
+  errorMessage: delivery.errorMessage,
+  createdAt: delivery.createdAt,
+  sentAt: delivery.sentAt,
+  idempotencyKey: delivery.idempotencyKey,
+});
+
+const claimNotificationDelivery = async ({
+  jobId,
+  recipientId,
+  channelAddress,
+  idempotencyKey,
+  now,
+}: {
+  jobId: string;
+  recipientId: string;
+  channelAddress: string;
+  idempotencyKey: string;
+  now: Date;
+}) => {
+  const createPendingDelivery = async () =>
+    prisma.notificationDelivery.create({
+      data: {
+        jobId,
+        recipientId,
+        channelType: "EMAIL",
+        channelAddress,
+        status: "PENDING",
+        idempotencyKey,
+      },
+    });
+
+  try {
+    await createPendingDelivery();
+    return { action: "SEND" as const };
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+  }
+
+  const existing = await prisma.notificationDelivery.findUnique({
+    where: { idempotencyKey },
+  });
+
+  if (!existing) {
+    try {
+      await createPendingDelivery();
+      return { action: "SEND" as const };
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+    }
+
+    const raced = await prisma.notificationDelivery.findUnique({
+      where: { idempotencyKey },
+    });
+
+    if (!raced) {
+      return { action: "SEND" as const };
+    }
+
+    if (raced.status === "SENT") {
+      return { action: "SKIP_SENT" as const, delivery: toNotificationDeliveryRecord(raced) };
+    }
+
+    return { action: "SKIP_IN_PROGRESS" as const, delivery: toNotificationDeliveryRecord(raced) };
+  }
+
+  if (existing.status === "SENT") {
+    return { action: "SKIP_SENT" as const, delivery: toNotificationDeliveryRecord(existing) };
+  }
+
+  if (
+    existing.status === "PENDING"
+    && existing.createdAt.getTime() >= now.getTime() - DELIVERY_PENDING_STALE_MS
+  ) {
+    return { action: "SKIP_IN_PROGRESS" as const, delivery: toNotificationDeliveryRecord(existing) };
+  }
+
+  const reclaimed = await prisma.notificationDelivery.updateMany({
+    where: {
+      idempotencyKey,
+      status: existing.status === "PENDING" ? "PENDING" : "FAILED",
+      ...(existing.status === "PENDING"
+        ? {
+            createdAt: {
+              lt: new Date(now.getTime() - DELIVERY_PENDING_STALE_MS),
+            },
+          }
+        : {}),
+    },
+    data: {
+      status: "PENDING",
+      providerMessageId: null,
+      sentAt: null,
+      errorMessage:
+        existing.status === "PENDING"
+          ? "Stale pending delivery was reclaimed for retry."
+          : null,
+    },
+  });
+
+  if (reclaimed.count === 0) {
+    const raced = await prisma.notificationDelivery.findUnique({
+      where: { idempotencyKey },
+    });
+
+    if (!raced) {
+      return { action: "SEND" as const };
+    }
+
+    if (raced.status === "SENT") {
+      return { action: "SKIP_SENT" as const, delivery: toNotificationDeliveryRecord(raced) };
+    }
+
+    return { action: "SKIP_IN_PROGRESS" as const, delivery: toNotificationDeliveryRecord(raced) };
+  }
+
+  return { action: "SEND" as const };
+};
+
 const MISSING_VERIFIED_RECIPIENT_ERROR =
   "발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.";
 
@@ -916,6 +1103,32 @@ const prepareAlerts = async ({
         mode: "fallback",
         timestamp: new Date(),
         jobs: [],
+      };
+    }
+
+    const persistedReadyJobs = await getPersistedJobsByIdempotencySuffix(
+      `:${jobVariant.idempotencySuffix}`,
+      {
+        ...getTodayReadyJobWindow(new Date()),
+        statuses: ["READY"],
+      },
+    );
+
+    if (persistedReadyJobs.length > 0) {
+      await logOperation({
+        level: "INFO",
+        source,
+        action: "reuse_prepared_jobs",
+        message: `기존 READY ${alertLabel} ${persistedReadyJobs.length}건을 재사용해 prepare 단계를 건너뜁니다.`,
+        context: {
+          jobs: persistedReadyJobs.length,
+        },
+      });
+
+      return {
+        mode: "database",
+        timestamp: new Date(),
+        jobs: persistedReadyJobs,
       };
     }
 
@@ -997,7 +1210,8 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> =>
     failureMessage: "10시 분석 알림 준비에 실패했습니다.",
     jobVariant: {
       jobIdSuffix: "closing-day-analysis",
-      scheduledHour: 10,
+      scheduledHour: DAILY_ALERT_HOUR,
+      scheduledMinute: DAILY_ALERT_MINUTE,
       idempotencySuffix: "closing-day-analysis",
       buildPayload: buildClosingDayAnalysisMessage,
     },
@@ -1055,7 +1269,7 @@ const dispatchPreparedAlerts = async ({
   failureMessage,
   prepare,
   isDispatchable = () => true,
-  loadPersistedReadyJobs,
+  loadPersistedJobs,
 }: DispatchPreparedAlertsOptions): Promise<DispatchResult> => {
   await logOperation({
     level: "INFO",
@@ -1066,14 +1280,15 @@ const dispatchPreparedAlerts = async ({
 
   try {
     const useDatabase = await canUseDatabase();
-    const now = new Date();
-    const persistedReadyJobs =
-      useDatabase && loadPersistedReadyJobs
-        ? await loadPersistedReadyJobs(now)
+    let now = new Date();
+    const persistedJobs =
+      useDatabase && loadPersistedJobs
+        ? await loadPersistedJobs(now)
         : [];
+    const persistedReadyJobs = persistedJobs.filter((job) => job.status === "READY");
     const shouldPrepare = shouldPrepareAlertsBeforeDispatch({
       useDatabase,
-      persistedReadyJobCount: persistedReadyJobs.length,
+      persistedJobCount: persistedJobs.length,
     });
     const prepared: PreparedAlertsResult = shouldPrepare
       ? await prepare()
@@ -1084,18 +1299,21 @@ const dispatchPreparedAlerts = async ({
         };
 
     if (!shouldPrepare) {
+      const finalizedJobCount = persistedJobs.length - persistedReadyJobs.length;
       await logOperation({
         level: "INFO",
         source,
-        action: "reuse_prepared_jobs",
-        message: `기존 READY ${selectionLabel} ${persistedReadyJobs.length}건을 재사용해 prepare 단계를 건너뜁니다.`,
+        action: persistedReadyJobs.length > 0 ? "reuse_prepared_jobs" : "skip_prepare_existing_jobs",
+        message:
+          persistedReadyJobs.length > 0
+            ? `기존 READY ${selectionLabel} ${persistedReadyJobs.length}건을 재사용해 prepare 단계를 건너뜁니다.`
+            : `오늘 ${selectionLabel} job ${finalizedJobCount}건이 이미 처리돼 prepare 단계를 건너뜁니다.`,
         context: {
-          jobs: persistedReadyJobs.length,
+          readyJobs: persistedReadyJobs.length,
+          finalizedJobs: finalizedJobCount,
         },
       });
     }
-
-    const recipients = await resolveAlertRecipients();
     const jobsById = new Map<string, NotificationJobRecord>();
 
     for (const job of prepared.jobs) {
@@ -1107,6 +1325,33 @@ const dispatchPreparedAlerts = async ({
     }
 
     const mergedJobs = Array.from(jobsById.values());
+    const nextScheduledFor = mergedJobs.reduce<Date | null>(
+      (earliest, job) =>
+        earliest && earliest.getTime() <= job.scheduledFor.getTime() ? earliest : job.scheduledFor,
+      null,
+    );
+
+    if (nextScheduledFor) {
+      const waitMs = getDispatchWaitMs({ now, scheduledFor: nextScheduledFor });
+
+      if (waitMs > 0) {
+        await logOperation({
+          level: "INFO",
+          source,
+          action: "await_scheduled_dispatch",
+          message: `${selectionLabel} 예약 시각 ${formatDateTime(nextScheduledFor)}까지 기다린 뒤 발송합니다.`,
+          context: {
+            waitSeconds: Math.round(waitMs / 1000),
+            scheduledFor: nextScheduledFor,
+          },
+        });
+
+        await sleep(waitMs);
+        now = new Date();
+      }
+    }
+
+    const recipients = await resolveAlertRecipients();
     const dueJobs = mergedJobs.filter((job) => job.scheduledFor <= now);
     const readyJobs = dueJobs.filter((job) => isDispatchable(job, now));
     const staleJobs = dueJobs.filter((job) => !isDispatchable(job, now));
@@ -1160,25 +1405,26 @@ const dispatchPreparedAlerts = async ({
           const idempotencyKey = createDeliveryIdempotencyKey(job.idempotencyKey, recipient.id, channel.address);
 
           if (useDatabase) {
-            const existing = await prisma.notificationDelivery.findUnique({
-              where: { idempotencyKey },
+            const claim = await claimNotificationDelivery({
+              jobId: job.id,
+              recipientId: recipient.id,
+              channelAddress: channel.address,
+              idempotencyKey,
+              now,
             });
 
-            if (existing?.status === "SENT") {
+            if (claim.action === "SKIP_SENT") {
               deliveries.push({
-                id: existing.id,
-                jobId: existing.jobId,
-                recipientId: existing.recipientId,
-                channelType: existing.channelType,
-                channelAddress: existing.channelAddress,
+                ...claim.delivery,
                 status: "SKIPPED",
-                providerMessageId: existing.providerMessageId,
-                errorMessage: existing.errorMessage,
-                createdAt: existing.createdAt,
-                sentAt: existing.sentAt,
-                idempotencyKey: existing.idempotencyKey,
               });
               jobDeliveries.push("SKIPPED");
+              continue;
+            }
+
+            if (claim.action === "SKIP_IN_PROGRESS") {
+              deliveries.push(claim.delivery);
+              jobDeliveries.push("PENDING");
               continue;
             }
           }
@@ -1208,19 +1454,7 @@ const dispatchPreparedAlerts = async ({
                 },
               });
 
-              deliveries.push({
-                id: delivery.id,
-                jobId: delivery.jobId,
-                recipientId: delivery.recipientId,
-                channelType: delivery.channelType,
-                channelAddress: delivery.channelAddress,
-                status: delivery.status,
-                providerMessageId: delivery.providerMessageId,
-                errorMessage: delivery.errorMessage,
-                createdAt: delivery.createdAt,
-                sentAt: delivery.sentAt,
-                idempotencyKey: delivery.idempotencyKey,
-              });
+              deliveries.push(toNotificationDeliveryRecord(delivery));
             } else {
               deliveries.push({
                 id: `delivery-${recipient.id}-${job.id}`,
@@ -1271,19 +1505,7 @@ const dispatchPreparedAlerts = async ({
                 },
               });
 
-              deliveries.push({
-                id: delivery.id,
-                jobId: delivery.jobId,
-                recipientId: delivery.recipientId,
-                channelType: delivery.channelType,
-                channelAddress: delivery.channelAddress,
-                status: delivery.status,
-                providerMessageId: delivery.providerMessageId,
-                errorMessage: delivery.errorMessage,
-                createdAt: delivery.createdAt,
-                sentAt: delivery.sentAt,
-                idempotencyKey: delivery.idempotencyKey,
-              });
+              deliveries.push(toNotificationDeliveryRecord(delivery));
             } else {
               deliveries.push({
                 id: `delivery-failed-${recipient.id}-${job.id}`,
@@ -1304,7 +1526,7 @@ const dispatchPreparedAlerts = async ({
         }
       }
 
-      if (useDatabase) {
+      if (useDatabase && !jobDeliveries.includes("PENDING")) {
         await prisma.notificationJob.update({
           where: { id: job.id },
           data: {
@@ -1319,6 +1541,7 @@ const dispatchPreparedAlerts = async ({
     const sentCount = deliveries.filter((delivery) => delivery.status === "SENT").length;
     const failedCount = deliveries.filter((delivery) => delivery.status === "FAILED").length;
     const skippedCount = deliveries.filter((delivery) => delivery.status === "SKIPPED").length;
+    const completedAt = new Date();
 
     await logOperation({
       level: failedCount > 0 ? "WARN" : "INFO",
@@ -1331,12 +1554,18 @@ const dispatchPreparedAlerts = async ({
         skippedCount,
         staleSkippedCount,
       }),
-      context: { attempted: readyJobs.length, sentCount, failedCount, skippedCount, staleSkippedCount },
+      context: {
+        attempted: readyJobs.length,
+        sentCount,
+        failedCount,
+        skippedCount,
+        staleSkippedCount,
+      },
     });
 
     return {
       mode: useDatabase ? "database" : "fallback",
-      timestamp: now,
+      timestamp: completedAt,
       attempted: readyJobs.length,
       sentCount,
       failedCount,
@@ -1367,8 +1596,16 @@ export const dispatchAlerts = async (): Promise<DispatchResult> =>
         : `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
     failureMessage: "10시 분석 메일 발송 작업이 실패했습니다.",
     prepare: prepareDailyAlerts,
-    loadPersistedReadyJobs: async (now) =>
-      getPersistedReadyJobsByIdempotencySuffix(":closing-day-analysis", getTodayReadyJobWindow(now)),
+    loadPersistedJobs: async (now) =>
+      getPersistedJobsByIdempotencySuffix(":closing-day-analysis", {
+        ...getTodayReadyJobWindow(now),
+        statuses: ["READY", "SENT", "PARTIAL_FAILURE"],
+      }),
+    isDispatchable: (job, now) =>
+      isWithinDispatchGraceWindow({
+        now,
+        scheduledFor: job.scheduledFor,
+      }),
   });
 
 export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
@@ -1382,14 +1619,19 @@ export const dispatchClosingSoonAlerts = async (): Promise<DispatchResult> =>
         : `마감 30분 전 알림 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건, 마감 후 차단 ${staleSkippedCount}건입니다.`,
     failureMessage: "마감 30분 전 알림 메일 발송 작업이 실패했습니다.",
     prepare: prepareClosingSoonAlerts,
-    loadPersistedReadyJobs: async (now) => {
-      return getPersistedReadyJobsByIdempotencySuffix(
-        ":closing-soon-reminder",
-        getTodayReadyJobWindow(now),
-      );
-    },
+    loadPersistedJobs: async (now) =>
+      getPersistedJobsByIdempotencySuffix(":closing-soon-reminder", {
+        ...getTodayReadyJobWindow(now),
+        statuses: ["READY", "SENT", "PARTIAL_FAILURE"],
+      }),
     isDispatchable: (job, now) => {
       const todayKey = kstDateKey(job.scheduledFor);
-      return now < atKstTime(todayKey, CLOSING_TIME_HOUR);
+      return (
+        isWithinDispatchGraceWindow({
+          now,
+          scheduledFor: job.scheduledFor,
+        })
+        && now < atKstTime(todayKey, CLOSING_TIME_HOUR)
+      );
     },
   });

@@ -30,6 +30,7 @@ type SchedulerDefinition = {
   source: string;
   expectedHour: number;
   expectedMinute?: number;
+  acceptableEarlyMs?: number;
 };
 
 export type PreparedJobSeed = {
@@ -57,11 +58,20 @@ export type DispatchPreparedAlertsOptions = {
   failureMessage: string;
   prepare: () => Promise<PreparedAlertsResult>;
   isDispatchable?: (job: NotificationJobRecord, now: Date) => boolean;
-  loadPersistedReadyJobs?: (now: Date) => Promise<NotificationJobRecord[]>;
+  loadPersistedJobs?: (now: Date) => Promise<NotificationJobRecord[]>;
 };
 
 export const SCHEDULER_EARLY_GRACE_MS = 5 * 60 * 1000;
 export const SCHEDULER_LATE_GRACE_MS = 30 * 60 * 1000;
+export const ALERT_PREPARE_WINDOW_MS = 20 * 60 * 1000;
+export const ALERT_DISPATCH_MAX_ADVANCE_WAIT_MS = 10 * 60 * 1000;
+export const ALERT_DISPATCH_LATE_GRACE_MS = 5 * 60 * 1000;
+export const DAILY_ALERT_HOUR = 10;
+export const DAILY_ALERT_MINUTE = 0;
+export const DAILY_ALERT_PREPARE_HOUR = 9;
+export const DAILY_ALERT_PREPARE_MINUTE = 55;
+export const CLOSING_SOON_PREPARE_HOUR = 15;
+export const CLOSING_SOON_PREPARE_MINUTE = 25;
 export const schedulerDefinitions: SchedulerDefinition[] = [
   {
     id: "daily-sync",
@@ -73,20 +83,24 @@ export const schedulerDefinitions: SchedulerDefinition[] = [
     id: "prepare-daily-alerts",
     label: "10시 분석 메일 준비",
     source: "job:prepare-daily-alerts",
-    expectedHour: 9,
+    expectedHour: DAILY_ALERT_PREPARE_HOUR,
+    expectedMinute: DAILY_ALERT_PREPARE_MINUTE,
+    acceptableEarlyMs: ALERT_PREPARE_WINDOW_MS,
   },
   {
     id: "dispatch-alerts",
     label: "10시 분석 메일 발송",
     source: "job:dispatch-alerts",
-    expectedHour: 10,
+    expectedHour: DAILY_ALERT_HOUR,
+    expectedMinute: DAILY_ALERT_MINUTE,
   },
   {
     id: "prepare-closing-alerts",
     label: "마감 30분 전 메일 준비",
     source: "job:prepare-closing-alerts",
-    expectedHour: 15,
-    expectedMinute: 25,
+    expectedHour: CLOSING_SOON_PREPARE_HOUR,
+    expectedMinute: CLOSING_SOON_PREPARE_MINUTE,
+    acceptableEarlyMs: ALERT_PREPARE_WINDOW_MS,
   },
   {
     id: "dispatch-closing-alerts",

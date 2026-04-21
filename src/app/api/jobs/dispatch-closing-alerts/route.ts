@@ -4,6 +4,8 @@ import { getJobAuthorization } from "@/lib/job-auth";
 import { dispatchClosingSoonAlerts } from "@/lib/jobs";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 
+export const maxDuration = 600;
+
 export async function GET(request: NextRequest) {
   const auth = getJobAuthorization(request);
 

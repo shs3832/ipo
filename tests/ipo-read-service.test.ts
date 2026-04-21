@@ -83,3 +83,23 @@ test("scheduler status uses the earliest completion after the expected time when
   assert.match(dispatchStatus.detail, /최근 성공 2026\.04\.01 10:22/);
   assert.match(dispatchStatus.detail, /실제 메일은 보내지 않았습니다/);
 });
+
+test("scheduler status treats prepare alerts completed inside the early preparation window as healthy", () => {
+  const statuses = buildSchedulerStatuses(
+    [
+      createLog({
+        id: "prepare-daily-early",
+        source: "job:prepare-daily-alerts",
+        message: "10시 분석 알림 1건을 준비했습니다.",
+        createdAt: new Date("2026-04-01T00:42:00.000Z"),
+      }),
+    ],
+    new Date("2026-04-01T01:30:00.000Z"),
+  );
+
+  const prepareStatus = statuses.find((status) => status.id === "prepare-daily-alerts");
+
+  assert.ok(prepareStatus);
+  assert.equal(prepareStatus.status, "HEALTHY");
+  assert.match(prepareStatus.detail, /09:55 기준으로 정상 실행됐습니다/);
+});

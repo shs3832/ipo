@@ -42,10 +42,19 @@
 - listing-day opening price capture:
   - `10:10 KST`
   - `10:30 KST`
+- `prepare-daily-alerts` 운영 기준: `09:55 KST`
+- `dispatch-alerts` 운영 기준: `10:00 KST`
+- `prepare-closing-alerts` 운영 기준: `15:25 KST`
+- `dispatch-closing-alerts` 운영 기준: `15:30 KST`
+- alert cron은 Vercel 지연을 흡수하기 위해 조기 시각에도 여러 번 깨우며, 실제 발송은 dispatch 단계에서 목표 시각에 맞춘다
 - alert 준비 잡은 최근 `90분` 내 성공한 `daily-sync`가 없으면 강제 refresh를 먼저 시도
 - 다만 이미 `daily-sync`가 진행 중이면 새 refresh를 바로 시작하지 않고 기존 실행 완료를 대기
 - 최근 `daily-sync`가 방금 실패한 경우 alert job은 즉시 같은 강제 refresh를 반복하지 않고 cooldown 뒤 다음 실행으로 넘김
 - dispatch 잡은 같은 날 저장된 `READY` mail job이 있으면 prepare를 다시 돌지 않고 기존 job을 우선 재사용
+- 같은 날 이미 `SENT` / `PARTIAL_FAILURE` 상태로 끝난 alert job이 있으면 dispatch는 prepare를 다시 돌려 기존 결과를 덮어쓰지 않는다
+- dispatch route는 목표 시각보다 조금 일찍 호출되면 최대 `10분`까지 대기한 뒤 `10:00` / `15:30`에 맞춰 전송을 시도한다
+- 목표 시각을 `5분` 넘긴 alert job은 늦게 보내지 않고 stale 처리한다
+- Vercel Cron은 호출 시각을 절대 보장하지 않으므로, 현재 구조는 정시 발송을 보정하는 것이지 외부 스케줄러 수준의 hard guarantee는 아니다
 
 ## Public Read Path Rules
 
@@ -131,9 +140,12 @@
 - `job:prepare-daily-alerts`, `job:prepare-closing-alerts`
   - `alert_candidate_summary`: 당일 마감 종목 수, 스팩 제외 수, 발송 보류 수, 준비 완료 수를 함께 기록
   - `no_alert_candidates`: 당일 기준 발송 대상 종목 자체가 없어서 준비된 메일이 없음을 의미
+  - `reuse_prepared_jobs`: 이미 같은 날 `READY` job이 있어 prepare를 재실행하지 않았음을 의미
 - `job:dispatch-alerts`, `job:dispatch-closing-alerts`
   - `dispatch_selection_summary`: 실제 발송 직전의 due job 수, dispatchable job 수, stale job 수, 수신자/이메일 채널 수를 기록
   - `no_dispatchable_jobs`: 스케줄은 정상 실행됐지만 실제 전송 가능한 READY 메일이 없어 메일을 보내지 않았음을 의미
+  - `await_scheduled_dispatch`: dispatch가 일찍 깨어 목표 시각까지 대기한 뒤 발송하려 했음을 의미
+  - `skip_prepare_existing_jobs`: 같은 날 이미 완료된 job이 있어 prepare를 다시 돌리지 않았음을 의미
 - `completed` 메시지는 이제 `0건`일 때도 실제 메일이 없었다는 뜻이 드러나도록 남긴다.
 - `/admin` 운영 로그 패널에서는 `context` JSON을 pretty-print로 보여 주므로, 후보 종목명과 제외/보류 사유를 화면에서 바로 확인할 수 있다.
 - `/admin` 스케줄 상태 카드는 같은 날 재실행이 여러 번 있어도, 예정 시각 임계값 이후 가장 먼저 성공/실패한 실행을 대표 런으로 본다. 더 늦은 재실행은 `최근 성공`에는 반영되지만 지연 판정 기준 자체를 덮어쓰지 않는다.
@@ -145,3 +157,4 @@
 - `src/lib/jobs.ts`는 facade만 남았고, 점수 sync / 재계산 no-op helper는 현재 `src/lib/server/ipo-sync-service.ts`에 있다
 - admin score summary data는 남겨 두지만, 현재 UI는 숨겨져 있고 재오픈 전까지 최신성 보장을 전제로 두지 않는다
 - `daily-sync`는 transaction start 실패를 줄이기 위해 종목별 DB 반영을 순차 처리한다
+- 현재 알림 보정은 Vercel Cron의 분 단위 호출 지연을 흡수하도록 설계돼 있지만, 플랫폼이 목표 시각보다 많이 늦게 호출하면 늦은 메일보다는 skip/stale 처리 쪽을 우선한다

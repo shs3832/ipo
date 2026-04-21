@@ -1,5 +1,70 @@
 # Issue Log
 
+## 2026-04-21
+
+### Thread Summary
+
+이번 스레드에서는 사용자가 실제로 받은 `10시 분석 메일`, `마감 30분 전 메일`의 도착 시각이 늦다는 제보를 기준으로, 운영 로그와 `notification_job` / `notification_delivery.sentAt`를 직접 확인해 실제 발송 시점을 추적했다. 확인 결과 메일 서버가 오래 지연된 것이 아니라 `dispatch-alerts`, `dispatch-closing-alerts` 자체가 각각 `10:18`, `15:59` 부근에 시작하고 있었고, 기존 로직은 `scheduledFor`를 "이 시각 이후면 보내도 됨"으로만 취급해 늦게 실행돼도 그대로 발송하는 구조였다.
+
+### Follow-up: Scheduled Alert Timing Guard / Dispatch Window Hardening
+
+이번 후속에서는 알림을 "늦게라도 보내기"보다 "최소 5분 전 준비 + 정시 발송 시도 + 너무 늦으면 stale 처리" 쪽으로 재정의했다. 핵심은 prepare와 dispatch를 더 촘촘한 cron으로 여러 번 깨우되, 실제 메일은 목표 시각 직전까지만 기다렸다가 발송하고, 늦은 실행이나 중복 cron 이벤트는 DB idempotency와 delivery claim으로 흡수하도록 바꾸는 것이었다.
+
+### What Changed In This Follow-up
+
+1. `prepare-daily-alerts`의 운영 기준 시각을 `09:55 KST`, `prepare-closing-alerts`를 `15:25 KST`로 명시하고, 관리자 스케줄 상태도 이 기준에 맞춰 보이도록 조정했다.
+2. Vercel cron 지연을 흡수하기 위해 `prepare-daily-alerts`, `dispatch-alerts`, `prepare-closing-alerts`, `dispatch-closing-alerts`를 여러 개의 조기 cron으로 분산 등록했다.
+3. dispatch 단계는 목표 시각보다 조금 일찍 호출되면 최대 `10분`까지 대기한 뒤 `10:00` / `15:30`에 맞춰 발송하도록 바꿨다.
+4. 목표 시각을 `5분` 넘긴 알림 job은 더 이상 늦게 보내지 않고 stale 경로로 빠지도록 정리했다.
+5. 같은 날 이미 `READY` job이 있으면 prepare를 재실행하지 않고 재사용하고, 이미 `SENT` / `PARTIAL_FAILURE` job이 있으면 dispatch가 prepare를 다시 돌려 기존 결과를 덮어쓰지 않도록 바꿨다.
+6. 중복 cron 호출이나 동시 dispatch 실행이 있어도 같은 이메일이 두 번 보내지지 않도록 `NotificationDelivery`를 `PENDING`으로 선점하는 claim 로직을 추가했다.
+7. 이 새 규칙을 잠그기 위해 alert-service 테스트에 dispatch wait, late grace, persisted job reuse 테스트를 추가했고, scheduler status 테스트도 조기 prepare window를 정상으로 해석하도록 보강했다.
+
+### Main Code Changes In This Follow-up
+
+- 알림 스케줄 상수 / dispatch window / delivery claim
+  - `src/lib/server/alert-service.ts`
+  - `src/lib/server/job-shared.ts`
+- 관리자 스케줄 상태 판정
+  - `src/lib/server/ipo-read-service.ts`
+- route max duration
+  - `src/app/api/jobs/dispatch-alerts/route.ts`
+  - `src/app/api/jobs/dispatch-closing-alerts/route.ts`
+- cron 배치
+  - `vercel.json`
+- 테스트
+  - `tests/alert-service.test.ts`
+  - `tests/ipo-read-service.test.ts`
+
+### Live Service Impact Assessment In This Follow-up
+
+- 영향도: 중간, 긍정적
+- 이유:
+  - 실제 사용자 체감 품질 문제였던 "늦은 알림"을 직접 겨냥한 수정이다.
+  - DB schema 변경이나 migration 없이 application flow와 cron 배치만 바꿨다.
+  - 중복 발송 방지와 stale 차단 로직을 함께 넣어, 조기 cron을 여러 번 추가해도 메일이 중복 발송될 가능성을 낮췄다.
+  - 다만 절대적인 정시 보장은 여전히 Vercel Cron 호출 품질에 의존한다. 이번 변경은 플랫폼 지연을 흡수하도록 보정한 것이지, 외부 스케줄러 수준의 hard guarantee를 추가한 것은 아니다.
+  - 따라서 플랫폼 호출이 매우 늦으면 예전처럼 늦은 메일을 보내는 대신, 이번 버전은 늦은 메일을 skip/stale 처리하는 쪽으로 더 보수적으로 동작한다.
+
+### Verification In This Follow-up
+
+- `npm test`
+  - 전체 `85개` 테스트 통과
+- `npx tsc --noEmit`
+  - 타입 체크 통과
+- `npm run build`
+  - production build 통과
+- `npm run lint`
+  - 기존 [src/app/ipos/[slug]/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/ipos/%5Bslug%5D/page.tsx)의 unused import warning 1건만 유지
+
+### Current Decisions To Remember In This Follow-up
+
+- `10시 분석 메일` 준비 기준은 `09:55 KST`, 발송 기준은 `10:00 KST`다.
+- `마감 30분 전 메일` 준비 기준은 `15:25 KST`, 발송 기준은 `15:30 KST`다.
+- dispatch는 목표 시각보다 조금 일찍 깨우면 기다렸다가 정시에 보내고, 목표 시각을 `5분` 넘기면 늦은 메일을 보내지 않는다.
+- 조기 cron 다중 호출을 사용하므로, prepare / dispatch / delivery 단계는 모두 idempotent 하게 유지해야 한다.
+- Vercel Cron은 분 단위 창 안에서 호출될 수 있으므로, 이번 구조는 정시 발송을 "보정"한 것이며 플랫폼 자체의 절대 보장을 대신하지는 않는다.
+
 ## 2026-04-13
 
 ### Thread Summary
