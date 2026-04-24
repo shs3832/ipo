@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { getKstTodayKey } from "@/lib/date";
+import { redactSecretString } from "@/lib/secret-redaction";
 
 const OPENDART_OK_STATUS = "000";
 const OPENDART_EMPTY_RESULT_STATUS = "013";
@@ -12,6 +13,8 @@ export type OpendartHealthCheckResult = {
   usingKey: boolean;
 };
 
+const redactOpendartEndpoint = (endpoint: string) => redactSecretString(endpoint);
+
 export const buildOpendartUrl = (path: string, params: Record<string, string>) => {
   const baseUrl = env.opendartBaseUrl.replace(/\/+$/, "");
   const search = new URLSearchParams(params);
@@ -19,10 +22,12 @@ export const buildOpendartUrl = (path: string, params: Record<string, string>) =
 };
 
 export const checkOpendartApiKey = async (): Promise<OpendartHealthCheckResult> => {
-  if (!env.opendartApiKey) {
+  const opendartApiKey = process.env.OPENDART_API_KEY ?? env.opendartApiKey;
+
+  if (!opendartApiKey) {
     return {
       ok: false,
-      endpoint: buildOpendartUrl("/api/list.json", { crtfc_key: "missing" }),
+      endpoint: redactOpendartEndpoint(buildOpendartUrl("/api/list.json", { crtfc_key: "missing" })),
       status: null,
       message: "OPENDART_API_KEY is not set",
       usingKey: false,
@@ -32,7 +37,7 @@ export const checkOpendartApiKey = async (): Promise<OpendartHealthCheckResult> 
   const dateKey = getKstTodayKey().replaceAll("-", "");
 
   const endpoint = buildOpendartUrl("/api/list.json", {
-    crtfc_key: env.opendartApiKey,
+    crtfc_key: opendartApiKey,
     bgn_de: dateKey,
     end_de: dateKey,
     page_no: "1",
@@ -50,7 +55,7 @@ export const checkOpendartApiKey = async (): Promise<OpendartHealthCheckResult> 
   if (!response.ok) {
     return {
       ok: false,
-      endpoint,
+      endpoint: redactOpendartEndpoint(endpoint),
       status,
       message: message ?? `HTTP ${response.status}`,
       usingKey: true,
@@ -59,7 +64,7 @@ export const checkOpendartApiKey = async (): Promise<OpendartHealthCheckResult> 
 
   return {
     ok: status === OPENDART_OK_STATUS || status === OPENDART_EMPTY_RESULT_STATUS,
-    endpoint,
+    endpoint: redactOpendartEndpoint(endpoint),
     status,
     message,
     usingKey: true,

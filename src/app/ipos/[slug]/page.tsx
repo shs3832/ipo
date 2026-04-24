@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
 
 import { BrokerChipList } from "@/components/broker-chip";
 import { isAdminAuthenticated } from "@/lib/admin-auth";

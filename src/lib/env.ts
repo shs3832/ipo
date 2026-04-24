@@ -11,6 +11,23 @@ const parsePort = (value: string | undefined) => {
   return Number.isFinite(port) ? port : null;
 };
 
+export const parseIpoSourceUrl = (
+  value: string | undefined,
+  nodeEnv = process.env.NODE_ENV,
+) => {
+  const sourceUrl = value ?? "";
+  if (!sourceUrl || nodeEnv !== "production") {
+    return sourceUrl;
+  }
+
+  try {
+    const url = new URL(sourceUrl);
+    return url.protocol === "https:" ? sourceUrl : "";
+  } catch {
+    return "";
+  }
+};
+
 export const env = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   cronSecret: process.env.CRON_SECRET ?? "",
@@ -24,7 +41,7 @@ export const env = {
   smtpUser: process.env.SMTP_USER ?? "",
   smtpPass: process.env.SMTP_PASS ?? "",
   smtpFrom: process.env.SMTP_FROM ?? "IPO Calendar <alerts@example.com>",
-  ipoSourceUrl: process.env.IPO_SOURCE_URL ?? "",
+  ipoSourceUrl: parseIpoSourceUrl(process.env.IPO_SOURCE_URL),
   opendartApiKey: process.env.OPENDART_API_KEY ?? "",
   opendartBaseUrl: process.env.OPENDART_BASE_URL ?? "https://opendart.fss.or.kr",
   seibroServiceKey: process.env.SEIBRO_SERVICE_KEY ?? process.env.SEIBRO_API_KEY ?? "",

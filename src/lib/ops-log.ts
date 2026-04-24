@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { isDatabaseEnabled } from "@/lib/env";
+import { redactSecrets } from "@/lib/secret-redaction";
 import type { OperationLogLevel, OperationLogRecord } from "@/lib/types";
 
 type LogInput = {
@@ -68,13 +69,14 @@ export const logOperation = async ({
   context = null,
 }: LogInput): Promise<void> => {
   const line = `[${level}] ${source}:${action} ${message}`;
+  const safeContext = context ? (redactSecrets(context) as Record<string, unknown>) : null;
 
   if (level === "ERROR") {
-    console.error(line, context ?? {});
+    console.error(line, safeContext ?? {});
   } else if (level === "WARN") {
-    console.warn(line, context ?? {});
+    console.warn(line, safeContext ?? {});
   } else {
-    console.log(line, context ?? {});
+    console.log(line, safeContext ?? {});
   }
 
   if (!isDatabaseEnabled()) {
@@ -88,7 +90,7 @@ export const logOperation = async ({
         source,
         action,
         message,
-        context,
+        context: safeContext,
       },
     });
   } catch (error) {
