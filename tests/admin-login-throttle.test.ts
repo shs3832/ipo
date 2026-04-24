@@ -5,9 +5,14 @@ import {
   ADMIN_LOGIN_ATTEMPT_WINDOW_MS,
   ADMIN_LOGIN_LOCKOUT_MS,
   ADMIN_LOGIN_MAX_FAILURES,
+  type AdminLoginThrottleStorage,
   type AdminLoginThrottleState,
   getAdminLoginClientKey,
+  getAdminLoginThrottleCacheKey,
   getAdminLoginThrottleSnapshot,
+  getPersistentAdminLoginThrottleStatusForClient,
+  isAdminLoginThrottleState,
+  registerPersistentAdminLoginFailureForClient,
   registerAdminLoginFailureState,
 } from "@/lib/admin-login-throttle";
 
@@ -58,4 +63,58 @@ test("getAdminLoginClientKey prefers the first forwarded client address", () => 
   );
 
   assert.equal(clientKey, "203.0.113.10");
+});
+
+test("isAdminLoginThrottleState validates persisted throttle payloads", () => {
+  assert.equal(isAdminLoginThrottleState({ failures: [1, 2], lockedUntil: null }), true);
+  assert.equal(isAdminLoginThrottleState({ failures: [1], lockedUntil: 10 }), true);
+  assert.equal(isAdminLoginThrottleState({ failures: ["1"], lockedUntil: null }), false);
+  assert.equal(isAdminLoginThrottleState({ failures: [], lockedUntil: "10" }), false);
+});
+
+test("persistent admin login throttle shares state through storage", async () => {
+  const rows = new Map<string, AdminLoginThrottleState>();
+  const storage: AdminLoginThrottleStorage = {
+    read: async (cacheKey) => rows.get(cacheKey) ?? null,
+    write: async (cacheKey, state) => {
+      rows.set(cacheKey, state);
+    },
+    delete: async (cacheKey) => {
+      rows.delete(cacheKey);
+    },
+  };
+  const clientKey = "203.0.113.20";
+  const now = Date.UTC(2026, 3, 4, 1, 0, 0);
+
+  await registerPersistentAdminLoginFailureForClient(clientKey, now, storage);
+  const snapshot = await getPersistentAdminLoginThrottleStatusForClient(clientKey, now + 1, storage);
+
+  assert.equal(snapshot.storageMode, "database");
+  assert.equal(snapshot.degraded, false);
+  assert.equal(snapshot.failureCount, 1);
+  assert.ok(rows.has(getAdminLoginThrottleCacheKey(clientKey)));
+});
+
+test("persistent admin login throttle falls back to memory when storage fails", async () => {
+  const storage: AdminLoginThrottleStorage = {
+    read: async () => {
+      throw new Error("storage unavailable");
+    },
+    write: async () => {
+      throw new Error("storage unavailable");
+    },
+    delete: async () => {
+      throw new Error("storage unavailable");
+    },
+  };
+  const clientKey = "203.0.113.21";
+  const now = Date.UTC(2026, 3, 4, 1, 0, 0);
+
+  const failed = await registerPersistentAdminLoginFailureForClient(clientKey, now, storage);
+  const snapshot = await getPersistentAdminLoginThrottleStatusForClient(clientKey, now + 1, storage);
+
+  assert.equal(failed.storageMode, "memory");
+  assert.equal(failed.degraded, true);
+  assert.equal(snapshot.storageMode, "memory");
+  assert.equal(snapshot.failureCount, 1);
 });

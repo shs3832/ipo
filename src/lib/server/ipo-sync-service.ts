@@ -7,13 +7,14 @@ import {
   getKstMinutesOfDay,
   getKstTodayKey,
   isOnOrAfterKstDayOffset,
-  parseKstDate,
   shiftKstDateKey,
 } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
+import { validateSourceIpoRecords } from "@/lib/source-record-validation";
 import {
   IPO_SOURCE_URL_CACHE_TTL_MS,
   STALE_SOURCE_WITHDRAWAL_GRACE_DAYS,
@@ -29,8 +30,13 @@ import {
   toListingOpenReturnRate,
   toPrismaJsonValue,
 } from "@/lib/server/job-shared";
-import { buildEvents, normalizeSourceIpoRecord } from "@/lib/server/ipo-mappers";
+import { normalizeSourceIpoRecord } from "@/lib/server/ipo-mappers";
 import { getIpoRecordBySlugFromDb } from "@/lib/server/ipo-read-service";
+import {
+  buildIpoEventCreateManyData,
+  buildIpoWriteData,
+  buildPersistedSourceIpoRecord,
+} from "@/lib/server/ipo-sync-persistence";
 import { enrichBrokerSubscriptionMetadata } from "@/lib/sources/broker-subscription";
 import { fetchKindListingDates } from "@/lib/sources/kind-listings";
 import { fetchKindListingSchedule } from "@/lib/sources/kind-listing-schedule";
@@ -48,28 +54,6 @@ import type {
   SourceIpoRecord,
   SyncResult,
 } from "@/lib/types";
-
-type LatestIpoSnapshotState = {
-  id: string;
-  kindIssueCode: string | null;
-  offerPrice: number | null;
-  listingOpenPrice: number | null;
-  listingOpenReturnRate: number | null;
-  status: IpoRecord["status"];
-  analyses: Array<{
-    score: number;
-    ratingLabel: string;
-    summary: string;
-    keyPoints: unknown;
-    warnings: unknown;
-    generatedAt: Date;
-  }>;
-  sourceSnapshots: Array<{
-    id: string;
-    sourceKey: string;
-    checksum: string;
-  }>;
-} | null;
 
 const isSameAnalysis = (
   left: {
@@ -93,53 +77,11 @@ const isSameAnalysis = (
   && JSON.stringify(left.keyPoints) === JSON.stringify(right.keyPoints)
   && JSON.stringify(left.warnings) === JSON.stringify(right.warnings);
 
-export const buildPersistedSourceIpoRecord = (
-  record: SourceIpoRecord,
-  latestSnapshot: LatestIpoSnapshotState,
-): SourceIpoRecord => {
-  const effectiveOfferPrice = record.offerPrice ?? latestSnapshot?.offerPrice ?? null;
-  const listingOpenPrice = record.listingOpenPrice ?? latestSnapshot?.listingOpenPrice ?? null;
-
-  return {
-    ...record,
-    kindIssueCode: record.kindIssueCode ?? latestSnapshot?.kindIssueCode ?? null,
-    offerPrice: effectiveOfferPrice,
-    listingOpenPrice,
-    listingOpenReturnRate:
-      record.listingOpenReturnRate
-      ?? toListingOpenReturnRate(effectiveOfferPrice, listingOpenPrice)
-      ?? latestSnapshot?.listingOpenReturnRate
-      ?? null,
-  } satisfies SourceIpoRecord;
-};
-
-export const buildIpoWriteData = (record: SourceIpoRecord) => ({
-  name: record.name,
-  market: record.market,
-  leadManager: record.leadManager,
-  coManagers: record.coManagers ?? [],
-  kindIssueCode: record.kindIssueCode ?? null,
-  priceBandLow: record.priceBandLow ?? null,
-  priceBandHigh: record.priceBandHigh ?? null,
-  offerPrice: record.offerPrice ?? null,
-  listingOpenPrice: record.listingOpenPrice ?? null,
-  listingOpenReturnRate: record.listingOpenReturnRate ?? null,
-  minimumSubscriptionShares: record.minimumSubscriptionShares ?? null,
-  depositRate: record.depositRate ?? null,
-  subscriptionStart: parseKstDate(record.subscriptionStart),
-  subscriptionEnd: parseKstDate(record.subscriptionEnd),
-  refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
-  listingDate: record.listingDate ? parseKstDate(record.listingDate) : null,
-  status: record.status ?? "UPCOMING",
-});
-
-export const buildIpoEventCreateManyData = (ipoId: string, record: SourceIpoRecord) =>
-  buildEvents(record, record.name).map((event) => ({
-    ipoId,
-    type: event.type,
-    title: event.title,
-    eventDate: event.eventDate,
-  }));
+export {
+  buildIpoEventCreateManyData,
+  buildIpoWriteData,
+  buildPersistedSourceIpoRecord,
+} from "@/lib/server/ipo-sync-persistence";
 
 const buildIpoAnalysisCreateData = (
   ipoId: string,
@@ -774,11 +716,7 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
         bypass: forceRefresh,
       },
       async () => {
-        const response = await fetch(env.ipoSourceUrl, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`IPO source fetch failed: ${response.status}`);
-        }
-
+        const response = await fetchWithRetry(env.ipoSourceUrl, { cache: "no-store" });
         return (await response.json()) as SourceIpoRecord[];
       },
     );
@@ -788,6 +726,22 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
     excludedNonIpoSlugs = opendartResult.excludedNonIpoNames.map((name) => slugify(name));
   } else {
     throw new Error("No live IPO source is configured. Set IPO_SOURCE_URL or OPENDART_API_KEY.");
+  }
+
+  const validation = validateSourceIpoRecords(sourceRecords);
+  sourceRecords = validation.validRecords;
+
+  if (validation.skippedRecords.length > 0) {
+    await logOperation({
+      level: "WARN",
+      source: "job:daily-sync",
+      action: "source_record_validation_skipped",
+      message: `필수 필드 검증에 실패한 source record ${validation.skippedRecords.length}건을 건너뛰었습니다.`,
+      context: {
+        skippedCount: validation.skippedRecords.length,
+        skippedRecords: validation.skippedRecords.slice(0, 12),
+      },
+    });
   }
 
   let recordsWithOpendartEnrichment = sourceRecords;

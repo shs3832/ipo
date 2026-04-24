@@ -1,4 +1,9 @@
-import type { IpoRecord, PublicHomeSnapshot, PublicIpoDetailRecord } from "@/lib/types";
+import type {
+  IpoRecord,
+  PublicHomeIpoSummary,
+  PublicHomeSnapshot,
+  PublicIpoDetailRecord,
+} from "@/lib/types";
 
 const fallbackScoreDisplay: IpoRecord["latestAnalysis"]["scoreDisplay"] = {
   isVisible: false,
@@ -59,11 +64,39 @@ export const reviveIpoRecord = <T extends IpoRecord | PublicIpoDetailRecord>(ipo
     : {}),
 }) as T;
 
+export const revivePublicHomeIpoSummary = (ipo: PublicHomeIpoSummary): PublicHomeIpoSummary => ({
+  id: ipo.id,
+  slug: ipo.slug,
+  name: ipo.name,
+  market: ipo.market,
+  leadManager: ipo.leadManager,
+  subscriptionStart: toDate(ipo.subscriptionStart) ?? new Date(),
+  subscriptionEnd: toDate(ipo.subscriptionEnd) ?? new Date(),
+  offerPrice: ipo.offerPrice,
+  minimumSubscriptionShares: ipo.minimumSubscriptionShares,
+  depositRate: ipo.depositRate,
+  listingOpenPrice: ipo.listingOpenPrice,
+  listingOpenReturnRate: ipo.listingOpenReturnRate,
+  events: ipo.events.map((event) => ({
+    id: event.id,
+    type: event.type,
+    title: event.title,
+    eventDate: toDate(event.eventDate) ?? new Date(),
+  })),
+  publicScore: ipo.publicScore
+    ? {
+        totalScore: ipo.publicScore.totalScore,
+        status: ipo.publicScore.status,
+        coverageStatus: ipo.publicScore.coverageStatus,
+      }
+    : null,
+});
+
 export const revivePublicHomeSnapshot = (snapshot: PublicHomeSnapshot): PublicHomeSnapshot => ({
   ...snapshot,
   generatedAt: toDate(snapshot.generatedAt) ?? new Date(),
   calendarMonth: toDate(snapshot.calendarMonth) ?? new Date(),
-  ipos: snapshot.ipos.map((ipo) => reviveIpoRecord(ipo)),
+  ipos: snapshot.ipos.map((ipo) => revivePublicHomeIpoSummary(ipo)),
 });
 
 export const revivePublicIpoDetailRecord = (ipo: PublicIpoDetailRecord | null) =>

@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { getKstTodayKey } from "@/lib/date";
 import { redactSecretString } from "@/lib/secret-redaction";
 
@@ -44,7 +45,7 @@ export const checkOpendartApiKey = async (): Promise<OpendartHealthCheckResult> 
     page_count: "1",
   });
 
-  const response = await fetch(endpoint, { cache: "no-store" });
+  const response = await fetchWithRetry(endpoint, { cache: "no-store" });
   const body = (await response.json()) as {
     status?: string;
     message?: string;

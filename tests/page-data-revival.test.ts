@@ -95,6 +95,8 @@ test("revivePublicHomeSnapshot restores top-level cache dates and nested ipo rec
   assert.ok(snapshot.generatedAt instanceof Date);
   assert.ok(snapshot.calendarMonth instanceof Date);
   assert.ok(snapshot.ipos[0]?.subscriptionEnd instanceof Date);
+  assert.equal("latestSourceKey" in (snapshot.ipos[0] as unknown as Record<string, unknown>), false);
+  assert.equal("sourceFetchedAt" in (snapshot.ipos[0] as unknown as Record<string, unknown>), false);
 });
 
 test("revivePublicIpoDetailRecord keeps null and revives detail payloads", () => {

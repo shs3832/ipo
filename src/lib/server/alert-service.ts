@@ -18,6 +18,7 @@ import {
 import { prisma } from "@/lib/db";
 import { env, isEmailConfigured } from "@/lib/env";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
+import { createDeliveryIdempotencyKey } from "@/lib/server/alert-delivery";
 import { getDashboardSnapshot } from "@/lib/server/ipo-read-service";
 import {
   ALERT_DISPATCH_LATE_GRACE_MS,
@@ -807,11 +808,7 @@ const logAlertQualitySignals = async (
   }
 };
 
-export const createDeliveryIdempotencyKey = (
-  jobIdempotencyKey: string,
-  recipientId: string,
-  channelAddress: string,
-) => `${jobIdempotencyKey}:${recipientId}:EMAIL:${encodeURIComponent(channelAddress.trim().toLowerCase())}`;
+export { createDeliveryIdempotencyKey } from "@/lib/server/alert-delivery";
 
 const createTransporter = () =>
   nodemailer.createTransport({

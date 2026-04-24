@@ -11,11 +11,11 @@ import {
   isValidAdminPassword,
 } from "@/lib/admin-auth";
 import {
-  clearAdminLoginThrottleForClient,
+  clearPersistentAdminLoginThrottleForClient,
   getAdminLoginAuditKey,
   getAdminLoginClientKey,
-  getAdminLoginThrottleStatusForClient,
-  registerAdminLoginFailureForClient,
+  getPersistentAdminLoginThrottleStatusForClient,
+  registerPersistentAdminLoginFailureForClient,
   toAdminLoginRetryAfterSeconds,
 } from "@/lib/admin-login-throttle";
 import { ADMIN_HOME_PATH, buildAdminLoginPath, normalizeAdminNextPath } from "@/lib/admin-navigation";
@@ -28,7 +28,20 @@ export async function loginAction(formData: FormData) {
   const headersList = await headers();
   const clientKey = getAdminLoginClientKey(headersList);
   const clientAuditKey = getAdminLoginAuditKey(clientKey);
-  const throttleStatus = getAdminLoginThrottleStatusForClient(clientKey);
+  const throttleStatus = await getPersistentAdminLoginThrottleStatusForClient(clientKey);
+
+  if (throttleStatus.degraded) {
+    await logOperation({
+      level: "WARN",
+      source: "admin:login",
+      action: "throttle_degraded",
+      message: "관리자 로그인 제한 저장소가 DB에서 메모리 fallback으로 전환됐습니다.",
+      context: {
+        clientAuditKey,
+        storageMode: throttleStatus.storageMode,
+      },
+    });
+  }
 
   if (!isAdminAuthConfigured()) {
     redirect(buildAdminLoginPath(next, "not-configured"));
@@ -45,7 +58,7 @@ export async function loginAction(formData: FormData) {
   }
 
   if (!isValidAdminPassword(password)) {
-    const failedAttempt = registerAdminLoginFailureForClient(clientKey);
+    const failedAttempt = await registerPersistentAdminLoginFailureForClient(clientKey);
     const retryAfterSeconds = failedAttempt.lockoutApplied
       ? toAdminLoginRetryAfterSeconds(failedAttempt.remainingLockoutMs)
       : undefined;
@@ -62,6 +75,8 @@ export async function loginAction(formData: FormData) {
         nextPath: next,
         failureCount: failedAttempt.failureCount,
         retryAfterSeconds: retryAfterSeconds ?? null,
+        throttleStorageMode: failedAttempt.storageMode,
+        throttleDegraded: failedAttempt.degraded,
       },
     });
 
@@ -74,7 +89,7 @@ export async function loginAction(formData: FormData) {
     );
   }
 
-  clearAdminLoginThrottleForClient(clientKey);
+  await clearPersistentAdminLoginThrottleForClient(clientKey);
 
   const cookieStore = await cookies();
   cookieStore.set({

@@ -158,6 +158,27 @@ export type IpoRecord = {
   sourceFetchedAt: Date;
 };
 
+export type PublicHomeIpoSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  market: string;
+  leadManager: string;
+  subscriptionStart: Date;
+  subscriptionEnd: Date;
+  offerPrice: number | null;
+  minimumSubscriptionShares: number | null;
+  depositRate: number | null;
+  listingOpenPrice: number | null;
+  listingOpenReturnRate: number | null;
+  events: IpoEventRecord[];
+  publicScore: {
+    totalScore: number | null;
+    status: PublicIpoScoreRecord["status"];
+    coverageStatus: PublicIpoScoreRecord["coverageStatus"];
+  } | null;
+};
+
 export type RecipientChannelRecord = {
   id: string;
   type: ChannelType;
@@ -280,7 +301,7 @@ export type PublicHomeSnapshot = {
   mode: "database" | "fallback";
   generatedAt: Date;
   calendarMonth: Date;
-  ipos: IpoRecord[];
+  ipos: PublicHomeIpoSummary[];
 };
 
 export type AdminStatusSummary = {
