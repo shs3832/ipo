@@ -2,6 +2,10 @@
 
 ## 2026-04-24
 
+### Follow-up: AI Development Reflection / Midpoint Review
+
+이번 후속에서는 코드 변경 없이, AI와 함께 이 프로젝트를 진행하는 방식에 대한 중간 회고를 문서화했다. 프로젝트 난이도, 프론트/백엔드/운영 경계, 목표 중심 프롬프트 작성, AI가 빠진 전제와 리스크를 질문하게 하는 개인화 설정 방향, 이력서/면접용 설명 언어의 필요성을 [docs/context/ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)에 정리했다.
+
 ### Thread Summary
 
 이번 스레드에서는 프로젝트 전체 코드를 둘러보고 개선점, 리팩토링, 보안 미비점을 점검한 뒤, 기존 서비스 정상 구동을 최우선 조건으로 `1차 저위험 보안 패치`와 `2차 운영 안정화/구조 개선`을 분리해 적용했다. 작업은 `codex/ipo-security-phase-1`, `codex/ipo-security-phase-2` 브랜치에서 단계별로 진행했고, 각 단계마다 QA gate를 통과한 뒤 다음 단계로 넘어갔다.

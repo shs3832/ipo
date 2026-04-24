@@ -13,7 +13,8 @@
 3. [data-and-scoring.md](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
 4. [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 5. [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
-6. 현재 스레드 맥락은 [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
+6. [ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)
+7. 현재 스레드 맥락은 [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
 
 ## Which Doc To Read For Which Task
 
@@ -28,6 +29,8 @@
   - [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 - 홈/상세/UI 배치, 공개/비공개 판단:
   - [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
+- AI와의 개발 방식, 프롬프트, 프로젝트 중간 회고:
+  - [ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)
 
 ## Documentation Rules
 
