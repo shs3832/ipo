@@ -1,5 +1,118 @@
 # Issue Log
 
+## 2026-04-24
+
+### Thread Summary
+
+이번 스레드에서는 프로젝트 전체 코드를 둘러보고 개선점, 리팩토링, 보안 미비점을 점검한 뒤, 기존 서비스 정상 구동을 최우선 조건으로 `1차 저위험 보안 패치`와 `2차 운영 안정화/구조 개선`을 분리해 적용했다. 작업은 `codex/ipo-security-phase-1`, `codex/ipo-security-phase-2` 브랜치에서 단계별로 진행했고, 각 단계마다 QA gate를 통과한 뒤 다음 단계로 넘어갔다.
+
+### Follow-up: Phase 1 Security Patch / Low-Risk Hardening
+
+1차에서는 기능 동작을 크게 건드리지 않는 범위에서 보안 패치와 로그 민감정보 보호를 적용했다.
+
+### What Changed In Phase 1
+
+1. `next` / `eslint-config-next`를 `16.2.4`, `nodemailer`를 `8.0.5`, `prisma` / `@prisma/client`를 `6.19.3`으로 올렸다.
+2. `npm audit fix`로 lockfile의 transitive 취약 패키지를 정리해 `npm audit --audit-level=moderate` 기준 취약점 0건을 확인했다.
+3. 상세 페이지의 기존 unused `ReactNode` import를 제거해 lint warning을 없앴다.
+4. 공통 secret redaction helper를 추가해 운영 로그 DB 저장과 콘솔 출력에서 `secret`, `password`, `token`, `crtfc_key`, `DATABASE_URL` 성격의 값을 가리도록 했다.
+5. OpenDART health check와 `source:check:opendart` 출력에서 `crtfc_key`가 노출되지 않도록 redacted endpoint만 반환하게 했다.
+6. production 환경에서 `IPO_SOURCE_URL`은 `https:`만 허용하고, development/test에서는 기존 로컬 URL 사용성을 유지하도록 했다.
+
+### Follow-up: Phase 2 Operational Hardening / Scoped Refactor
+
+2차에서는 1차 QA 통과 후, 공개 데이터 경계와 운영 안정성을 높이되 알림 idempotency, daily-sync 순차 처리, 점수/closing-soon pause 상태는 유지했다.
+
+### What Changed In Phase 2
+
+1. 공개 홈 snapshot의 `ipos`를 full `IpoRecord` 대신 홈에 필요한 공개 요약 타입으로 축소해 public cache 객체 안에 `latestSourceKey`, `sourceFetchedAt`, `latestAnalysis`, co-manager 등 상세/admin 성격 필드가 남지 않도록 했다.
+2. 관리자 로그인 throttle을 DB-backed 공유 저장소 우선으로 보강하되, DB 장애 시 기존 process memory throttle로 fallback하고 `throttle_degraded` 운영 로그만 남기도록 했다.
+3. 외부 fetch 공통 helper를 추가해 timeout과 retry를 중앙화하고, 우선 OpenDART health check와 `IPO_SOURCE_URL` fetch 경로에 적용했다.
+4. source record 검증을 skip-mode로 추가해 필수 필드가 깨진 외부 레코드는 전체 동기화 hard fail 대신 WARN 로그와 함께 건너뛰도록 했다.
+5. pause 상태인 closing-soon job route는 이제 disabled no-op 응답도 job 인증을 통과한 호출에만 반환한다. 무인증 호출은 기존 job API와 동일하게 `401`로 차단한다.
+6. 테스트가 이미 붙은 순수 helper부터 `alert-delivery`, `ipo-sync-persistence` 모듈로 분리하고, 기존 service 파일의 export 호환은 유지했다.
+
+### Main Code Changes
+
+- 패키지 보안 업데이트
+  - `package.json`
+  - `package-lock.json`
+- secret redaction / env guard / OpenDART health check
+  - `src/lib/secret-redaction.ts`
+  - `src/lib/env.ts`
+  - `src/lib/ops-log.ts`
+  - `src/lib/sources/opendart.ts`
+- public home projection hardening
+  - `src/lib/public-home-snapshot.ts`
+  - `src/lib/page-data-revival.ts`
+  - `src/lib/types.ts`
+- admin login throttle
+  - `src/lib/admin-login-throttle.ts`
+  - `src/app/login/actions.ts`
+- source fetch / validation
+  - `src/lib/fetch-with-retry.ts`
+  - `src/lib/source-record-validation.ts`
+  - `src/lib/server/ipo-sync-service.ts`
+- scoped helper refactor
+  - `src/lib/server/alert-delivery.ts`
+  - `src/lib/server/ipo-sync-persistence.ts`
+- paused closing job auth order
+  - `src/app/api/jobs/prepare-closing-alerts/route.ts`
+  - `src/app/api/jobs/dispatch-closing-alerts/route.ts`
+- 테스트
+  - `tests/env.test.ts`
+  - `tests/secret-redaction.test.ts`
+  - `tests/opendart-health.test.ts`
+  - `tests/admin-login-throttle.test.ts`
+  - `tests/public-home-snapshot.test.ts`
+  - `tests/page-data-revival.test.ts`
+  - `tests/fetch-with-retry.test.ts`
+  - `tests/source-record-validation.test.ts`
+
+### Live Service Impact Assessment
+
+- 영향도: 중간, 보수적/긍정적
+- 이유:
+  - Next/Nodemailer/Prisma patch update와 `npm audit fix`가 포함돼 dependency 레벨 영향은 있지만, major upgrade와 DB migration은 하지 않았다.
+  - 공개 홈은 렌더링에 필요한 필드는 유지하고 cache payload만 축소했으므로 공개 UI 동작은 유지하면서 노출 경계를 좁혔다.
+  - 로그인 throttle은 DB 공유 저장소를 우선 사용하지만 DB가 실패해도 memory fallback으로 로그인 자체가 막히지 않게 했다.
+  - 외부 source 검증은 hard fail이 아니라 skip-mode라, 일부 깨진 레코드가 전체 `daily-sync`를 깨뜨릴 가능성을 낮춘다.
+  - closing-soon 알림은 계속 pause 상태이며, 자동/수동 발송 재개는 하지 않았다.
+  - 공개 점수 rollout도 계속 pause 상태로 유지했다.
+
+### Verification
+
+- 1차 QA
+  - `npm test`
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `npm audit --audit-level=moderate`
+  - production server smoke: `/`, `/login`, job route unauthorized/wrong secret, paused closing route no-op, `source:check:opendart` redaction 확인
+- 2차 QA
+  - `npm test`
+    - 전체 `97개` 테스트 통과
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `npm audit --audit-level=moderate`
+    - 취약점 `0건`
+  - production server smoke:
+    - `/` 200
+    - `/login` 200
+    - `/api/jobs/daily-sync` 무인증/잘못된 secret `401`
+    - `/api/jobs/prepare-closing-alerts` 무인증 `401`
+    - `/api/jobs/prepare-closing-alerts` 유효 `x-job-secret` header 기준 disabled no-op `200`
+    - `source:check:opendart` 출력의 `crtfc_key` redaction 확인
+
+### Current Decisions To Remember
+
+- 기존 기능 보장을 위해 major dependency upgrade, DB migration, 점수 공개 재오픈, closing-soon 재오픈은 하지 않았다.
+- `PublicHomeSnapshot`은 이제 공개 홈 요약 타입만 담아야 하며, admin/source metadata를 nested IPO payload에 다시 넣지 않는다.
+- 관리자 로그인 제한은 DB-backed 공유 저장소 우선, 장애 시 memory fallback이다.
+- source record validation은 운영 안정성을 위해 skip-mode이며, invalid record가 있어도 전체 동기화를 바로 실패시키지 않는다.
+- pause 상태인 closing-soon job API도 인증 없는 호출에는 disabled no-op을 반환하지 않는다.
+
 ## 2026-04-21
 
 ### Thread Summary
