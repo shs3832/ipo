@@ -3,7 +3,7 @@
 .layout {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .scoreHidden {
@@ -12,7 +12,7 @@
 
 .calendarPanel,
 .sidePanel {
-  @include surface(26px, 30px);
+  @include surface(20px, var(--radius-xl));
 }
 
 .panelHeader {
@@ -36,12 +36,11 @@
 
 .calendarNotice {
   margin-bottom: 18px;
-  padding: 14px 16px;
-  border: 1px solid rgba(191, 116, 40, 0.18);
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, rgba(255, 244, 227, 0.96), rgba(255, 251, 242, 0.96));
-  color: #8a531d;
+  padding: 12px 14px;
+  border: 1px solid #f1d79d;
+  border-radius: var(--radius-lg);
+  background: var(--warning-soft);
+  color: var(--warning);
   font-size: 0.92rem;
   line-height: 1.6;
 }
@@ -51,13 +50,13 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  min-height: 52px;
-  padding: 10px 16px;
-  border: 1px solid rgba(208, 215, 228, 0.92);
-  border-radius: 999px;
-  background: #f7f9fc;
-  color: #4b5565;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  box-shadow: none;
   cursor: pointer;
   transition:
     transform var(--transition-base),
@@ -77,11 +76,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  border: 1.5px solid rgba(185, 193, 206, 0.96);
-  background: #fff;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
   flex-shrink: 0;
   transition:
     border-color var(--transition-base),
@@ -113,7 +112,7 @@
   color: inherit;
   font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .filterChipCount {
@@ -121,11 +120,11 @@
   align-items: center;
   justify-content: center;
   min-width: 28px;
-  height: 28px;
+  height: 24px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(220, 226, 236, 0.9);
-  color: #6b7280;
+  background: #e7ebf1;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 800;
   transition:
@@ -134,18 +133,16 @@
 }
 
 .filterChipActive {
-  border-color: rgba(42, 115, 245, 0.2);
-  background: #fff;
-  color: #191f28;
-  box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border-color: var(--primary-soft-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 
 .filterChipActive .filterCheck {
-  border-color: #3182f6;
-  background: #3182f6;
-  box-shadow: 0 6px 16px rgba(49, 130, 246, 0.22);
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: none;
   transform: translateY(-0.5px);
 }
 
@@ -161,10 +158,8 @@
 
 .filterChip:focus-within {
   outline: 0;
-  border-color: rgba(42, 115, 245, 0.28);
-  box-shadow:
-    0 0 0 4px rgba(49, 130, 246, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .filterChip:hover {
@@ -206,35 +201,27 @@
 }
 
 .calendarCell {
-  min-height: 172px;
-  padding: 15px;
+  min-height: 150px;
+  padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .calendarSunday {
-  background:
-    linear-gradient(180deg, rgba(211, 69, 69, 0.08), transparent 42%),
-    rgba(255, 255, 255, 0.88);
+  background: var(--surface);
 }
 
 .calendarSaturday {
-  background:
-    linear-gradient(180deg, rgba(107, 93, 246, 0.08), transparent 42%),
-    rgba(255, 255, 255, 0.88);
+  background: var(--surface);
 }
 
 .calendarToday {
   position: relative;
-  border-color: rgba(42, 115, 245, 0.24);
-  background:
-    linear-gradient(180deg, rgba(42, 115, 245, 0.14), rgba(255, 255, 255, 0.96) 46%),
-    rgba(255, 255, 255, 0.96);
-  box-shadow:
-    0 18px 32px rgba(42, 115, 245, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  border-color: var(--primary-soft-strong);
+  background: #f8fbff;
+  box-shadow: none;
 }
 
 .calendarToday::after {
@@ -279,10 +266,10 @@
   min-width: 42px;
   min-height: 40px;
   padding: 0 12px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(42, 115, 245, 0.16), rgba(42, 115, 245, 0.06));
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
   color: var(--primary-strong);
-  box-shadow: 0 10px 22px rgba(42, 115, 245, 0.16);
+  box-shadow: none;
 }
 
 .todayBadge {
@@ -296,9 +283,9 @@
   color: #fff;
   font-size: 0.74rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   flex-shrink: 0;
-  box-shadow: 0 12px 20px rgba(18, 88, 216, 0.18);
+  box-shadow: none;
 }
 
 .calendarEvents,
@@ -316,11 +303,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid transparent;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  box-shadow: none;
   transition:
     transform var(--transition-base),
     border-color var(--transition-base);
@@ -388,7 +375,7 @@
 }
 
 .ipoCard {
-  @include softSurface(18px, 22px);
+  @include softSurface(16px, var(--radius-lg));
 
   display: flex;
   flex-direction: column;
@@ -413,10 +400,10 @@
   justify-content: center;
   min-height: 32px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.76rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -504,19 +491,19 @@
   color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .overviewSearchInputWrap {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 52px;
+  min-height: 44px;
   padding: 0 14px;
-  border: 1px solid rgba(208, 215, 228, 0.92);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: none;
   transition:
     border-color var(--transition-base),
     box-shadow var(--transition-base),
@@ -525,8 +512,8 @@
 
 .overviewSearchInputWrap:focus-within,
 .overviewSortSelect:focus {
-  border-color: rgba(42, 115, 245, 0.28);
-  box-shadow: 0 0 0 4px rgba(49, 130, 246, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .overviewSearchIcon {
@@ -612,14 +599,14 @@
 
 .overviewSortSelect {
   width: 100%;
-  min-height: 52px;
+  min-height: 44px;
   padding: 0 14px;
-  border: 1px solid rgba(208, 215, 228, 0.92);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
   color: var(--text-primary);
   font: inherit;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  box-shadow: none;
   cursor: pointer;
 }
 
@@ -644,11 +631,12 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  min-height: 46px;
-  padding: 0 14px;
-  border-color: rgba(208, 215, 228, 0.92);
-  background: #f7f9fc;
-  color: #4b5565;
+  min-height: 42px;
+  padding: 0 12px;
+  border-color: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
   font-size: 0.86rem;
   font-weight: 800;
 }
@@ -666,9 +654,9 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  border: 1.5px solid rgba(185, 193, 206, 0.96);
-  border-radius: 999px;
-  background: #fff;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   flex-shrink: 0;
   transition:
     border-color var(--transition-base),
@@ -707,25 +695,23 @@
   min-width: 24px;
   height: 24px;
   padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(220, 226, 236, 0.92);
-  color: #64748b;
+  border-radius: var(--radius-sm);
+  background: #e7ebf1;
+  color: var(--text-secondary);
   font-size: 0.76rem;
 }
 
 .overviewOptionToggleActive {
-  border-color: rgba(42, 115, 245, 0.22);
-  background: #fff;
-  color: #191f28;
-  box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border-color: var(--primary-soft-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 
 .overviewOptionToggleActive .overviewOptionIndicator {
-  border-color: #3182f6;
-  background: #3182f6;
-  box-shadow: 0 6px 16px rgba(49, 130, 246, 0.22);
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: none;
   transform: translateY(-0.5px);
 }
 
@@ -735,15 +721,13 @@
 }
 
 .overviewOptionToggleActive .overviewOptionCount {
-  background: rgba(49, 130, 246, 0.12);
-  color: #2257d5;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
 }
 
 .overviewOptionToggle:focus-within {
-  border-color: rgba(42, 115, 245, 0.28);
-  box-shadow:
-    0 0 0 4px rgba(49, 130, 246, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
 .overviewFilterChip {
@@ -752,10 +736,10 @@
   gap: 10px;
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid rgba(208, 215, 228, 0.92);
-  border-radius: 999px;
-  background: #f7f9fc;
-  color: #4b5565;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
   font-size: 0.88rem;
   font-weight: 800;
   cursor: pointer;
@@ -774,29 +758,27 @@
   min-width: 24px;
   height: 24px;
   padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(220, 226, 236, 0.92);
-  color: #64748b;
+  border-radius: var(--radius-sm);
+  background: #e7ebf1;
+  color: var(--text-secondary);
   font-size: 0.76rem;
 }
 
 .overviewFilterChip:hover {
   transform: translateY(-1px);
-  background: #fff;
+  background: var(--surface);
 }
 
 .overviewFilterChipActive {
-  border-color: rgba(42, 115, 245, 0.22);
-  background: #fff;
-  color: #191f28;
-  box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border-color: var(--primary-soft-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 
 .overviewFilterChipActive strong {
-  background: rgba(49, 130, 246, 0.12);
-  color: #2257d5;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
 }
 
 .overviewSections {
@@ -806,11 +788,10 @@
 }
 
 .overviewSection {
-  padding: 18px;
-  border: 1px solid rgba(208, 215, 228, 0.82);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(248, 250, 253, 0.94), rgba(255, 255, 255, 0.96));
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--surface-subtle);
 }
 
 .overviewSectionHeader {
@@ -845,9 +826,9 @@
   justify-content: center;
   min-height: 30px;
   padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(226, 232, 240, 0.78);
-  color: #475569;
+  border-radius: var(--radius-sm);
+  background: #e7ebf1;
+  color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -856,23 +837,23 @@
 .overviewResetButton {
   min-height: 34px;
   padding: 0 14px;
-  border-color: rgba(208, 215, 228, 0.92);
-  background: rgba(255, 255, 255, 0.94);
-  color: #334155;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text-primary);
   font-size: 0.8rem;
   font-weight: 800;
 }
 
 .overviewMoreButton {
   align-self: flex-start;
-  min-height: 46px;
+  min-height: 42px;
   padding: 0 18px;
-  border-color: rgba(42, 115, 245, 0.14);
-  background: rgba(255, 255, 255, 0.96);
+  border-color: var(--primary-soft-strong);
+  background: var(--surface);
   color: var(--primary-strong);
   font-size: 0.9rem;
   font-weight: 800;
-  box-shadow: 0 12px 22px rgba(42, 115, 245, 0.1);
+  box-shadow: none;
 }
 
 .overviewEmptyState {
@@ -881,9 +862,9 @@
   align-items: flex-start;
   gap: 12px;
   padding: 22px;
-  border: 1px dashed rgba(191, 200, 214, 0.96);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.78);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
   color: var(--text-secondary);
   line-height: 1.6;
 }
@@ -905,8 +886,8 @@
 
   .calendarPanel,
   .sidePanel {
-    padding: 20px;
-    border-radius: 24px;
+    padding: 18px;
+    border-radius: var(--radius-xl);
   }
 
   .panelHeader {
@@ -924,8 +905,8 @@
 
   .overviewSearchInputWrap,
   .overviewSortSelect {
-    min-height: 48px;
-    border-radius: 16px;
+    min-height: 44px;
+    border-radius: var(--radius-md);
   }
 
   .overviewFilterRow {
@@ -942,8 +923,8 @@
   }
 
   .overviewSection {
-    padding: 16px;
-    border-radius: 20px;
+    padding: 14px;
+    border-radius: var(--radius-lg);
   }
 
   .overviewSectionHeader {
@@ -1006,7 +987,7 @@
   .calendarCell {
     min-height: 136px;
     padding: 12px;
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
   }
 
   .calendarDateRow {
@@ -1021,7 +1002,7 @@
     min-width: 38px;
     min-height: 36px;
     padding: 0 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
   }
 
   .todayBadge {
@@ -1038,7 +1019,7 @@
   .eventChip {
     gap: 6px;
     padding: 10px;
-    border-radius: 16px;
+    border-radius: var(--radius-md);
   }
 
   .eventChip strong {
@@ -1054,7 +1035,7 @@
 
   .ipoCard {
     padding: 16px;
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
   }
 
   .ipoCardHead {
@@ -1090,8 +1071,8 @@
   }
 
   .sidePanel {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 16px;
+    border-radius: var(--radius-lg);
   }
 
   .panelHeader {
@@ -1113,7 +1094,7 @@
   .overviewSortSelect {
     min-height: 46px;
     padding-inline: 12px;
-    border-radius: 14px;
+    border-radius: var(--radius-md);
   }
 
   .overviewSearchClear {
@@ -1144,7 +1125,7 @@
 
   .overviewSection {
     padding: 14px;
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
   }
 
   .overviewSectionTitle {
@@ -1171,12 +1152,12 @@
 
   .overviewEmptyState {
     padding: 18px;
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
   }
 
   .ipoCard {
     padding: 14px;
-    border-radius: 16px;
+    border-radius: var(--radius-md);
   }
 
   .ipoCardHead {

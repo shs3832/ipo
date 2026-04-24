@@ -3,7 +3,7 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
 }
 
 .scoreHidden {
@@ -11,10 +11,10 @@
 }
 
 .hero {
-  @include surface(34px, 32px);
+  @include surface(24px, var(--radius-xl));
 
   display: grid;
-  gap: 28px;
+  gap: 24px;
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 340px);
 }
 
@@ -40,7 +40,7 @@
 .heroStatusCard,
 .summaryCard,
 .card {
-  @include surface(24px, 28px);
+  @include surface(18px, var(--radius-xl));
 }
 
 .heroStatusCard {
@@ -83,7 +83,7 @@
 }
 
 .feedbackBanner {
-  @include surface(18px, 22px);
+  @include surface(16px, var(--radius-lg));
 
   border: 1px solid transparent;
 }
@@ -122,9 +122,9 @@
 
 .cardValue,
 .summaryValue {
-  font-size: clamp(1.55rem, 3vw, 2.2rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
+  font-size: 1.55rem;
+  line-height: 1.16;
+  letter-spacing: 0;
 }
 
 .cardCopy {
@@ -157,7 +157,7 @@
 }
 
 .row {
-  @include softSurface(18px, 22px);
+  @include softSurface(14px, var(--radius-lg));
 
   display: flex;
   flex-direction: column;
@@ -199,7 +199,7 @@
   min-width: 72px;
   min-height: 36px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.88rem;
   font-weight: 800;
   white-space: nowrap;
@@ -323,8 +323,8 @@
   .hero,
   .summaryCard,
   .card {
-    padding: 22px;
-    border-radius: 24px;
+    padding: 18px;
+    border-radius: var(--radius-xl);
   }
 
   .page {
@@ -336,8 +336,8 @@
   }
 
   .heroStatusCard {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 14px;
+    border-radius: var(--radius-lg);
   }
 
   .summaryGrid {
@@ -350,8 +350,8 @@
   }
 
   .row {
-    padding: 16px;
-    border-radius: 18px;
+    padding: 14px;
+    border-radius: var(--radius-lg);
   }
 
   .rowHead {
@@ -376,14 +376,14 @@
   .hero,
   .summaryCard,
   .card {
-    padding: 18px;
-    border-radius: 20px;
+    padding: 14px;
+    border-radius: var(--radius-lg);
   }
 
   .heroStatusCard,
   .row {
-    padding: 14px;
-    border-radius: 16px;
+    padding: 12px;
+    border-radius: var(--radius-md);
   }
 
   .summaryGrid,

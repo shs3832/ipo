@@ -64,6 +64,8 @@ npm run mail:sample
 ## Current Product Status
 
 - 공개 홈과 상세는 현재 점수형 UI를 숨기고 공시 기반 체크 포인트 중심으로 노출
+- 현재 UI 방향은 `Calm IPO Desk`로, 과한 장식보다 차분한 금융 업무 화면과 정보 가독성을 우선
+- 모바일/좁은 화면 기준은 `1024px`이며, 이 구간에서는 캘린더를 숨기고 종목 개요를 우선 노출
 - 점수 시스템 코드는 유지하지만, 공개 rollout은 pause 상태
 - 점수 데이터 구조는 남겨두지만, 현재는 admin UI까지 포함해 점수 관련 화면을 숨겨 둠
 - 점수 재오픈 기준과 복구 포인트는 [`docs/context/score-rollout-status.md`](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 봄

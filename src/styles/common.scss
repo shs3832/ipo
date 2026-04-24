@@ -4,7 +4,7 @@
 .page-shell {
   width: min(var(--page-max), calc(100vw - 32px));
   margin: 0 auto;
-  padding: 32px 0 88px;
+  padding: 24px 0 72px;
 }
 
 .page-eyebrow {
@@ -12,33 +12,39 @@
   align-items: center;
   gap: 8px;
   color: var(--primary-strong);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .page-title {
-  font-size: clamp(2.25rem, 4.8vw, 4rem);
-  line-height: 1.04;
-  letter-spacing: -0.05em;
+  font-size: 2.25rem;
+  line-height: 1.16;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .page-copy,
 .section-copy {
   color: var(--text-secondary);
   line-height: 1.72;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .page-copy {
   max-width: 62ch;
-  font-size: 1rem;
+  font-size: 0.98rem;
 }
 
 .section-title {
-  font-size: clamp(1.25rem, 2vw, 1.55rem);
-  line-height: 1.18;
-  letter-spacing: -0.03em;
+  font-size: 1.2rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .button-primary,
@@ -60,8 +66,8 @@
 
 .button-primary,
 .button-secondary {
-  min-height: 48px;
-  padding: 0 18px;
+  min-height: 42px;
+  padding: 0 16px;
   font-weight: 700;
   border: 1px solid transparent;
   cursor: pointer;
@@ -69,8 +75,8 @@
 
 .button-primary {
   color: #ffffff;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
-  box-shadow: 0 14px 26px rgba(42, 115, 245, 0.22);
+  background: var(--primary);
+  box-shadow: none;
 }
 
 .button-primary:hover,
@@ -81,35 +87,36 @@
 
 .button-secondary {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--surface);
   border-color: var(--line);
 }
 
 .inline-link,
 .status-pill {
   width: fit-content;
-  min-height: 38px;
-  padding: 0 14px;
-  font-size: 0.9rem;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.84rem;
   font-weight: 700;
   white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .inline-link {
   color: var(--primary-strong);
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(42, 115, 245, 0.14);
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 
 .status-pill {
   color: var(--primary-strong);
   background: var(--primary-soft);
-  border: 1px solid rgba(42, 115, 245, 0.08);
+  border: 1px solid var(--primary-soft-strong);
 }
 
 .status-pill-soft {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.74);
+  background: var(--surface-subtle);
 }
 
 .mono-text {
@@ -124,7 +131,7 @@
   }
 
   .page-title {
-    font-size: clamp(1.9rem, 8vw, 2.8rem);
+    font-size: 1.9rem;
     line-height: 1.08;
   }
 
@@ -159,7 +166,7 @@
   }
 
   .page-title {
-    font-size: clamp(1.65rem, 10vw, 2.2rem);
+    font-size: 1.65rem;
     line-height: 1.12;
   }
 

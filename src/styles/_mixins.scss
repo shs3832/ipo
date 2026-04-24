@@ -1,21 +1,18 @@
 @use "tokens" as *;
 
-@mixin surface($padding: 28px, $radius: 24px) {
+@mixin surface($padding: 24px, $radius: var(--radius-xl)) {
   padding: $padding;
   border-radius: $radius;
   border: 1px solid var(--line);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.9)),
-    var(--surface-strong);
+  background: var(--surface);
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(18px);
 }
 
-@mixin softSurface($padding: 22px, $radius: 22px) {
+@mixin softSurface($padding: 18px, $radius: var(--radius-lg)) {
   padding: $padding;
   border-radius: $radius;
   border: 1px solid var(--line);
-  background: rgba(248, 251, 255, 0.82);
+  background: var(--surface-subtle);
   box-shadow: var(--shadow-soft);
 }
 

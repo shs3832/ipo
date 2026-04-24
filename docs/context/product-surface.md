@@ -50,6 +50,8 @@
 ## UI Constraints
 
 - `유통가능물량(floatRatio)`은 이미 percent 값이므로 UI에서 다시 100배 하면 안 됨
+- 현재 시각 방향은 `Calm IPO Desk`
+- 과한 그라데이션, 큰 blur, 과도한 pill radius보다 중립 배경, 흰색 surface, 낮은 radius, 명확한 정보 위계를 우선
 - 루트 viewport 기준은 `device-width`
 - 공통 density breakpoint는 `1024px`, 2열 레이아웃 붕괴 기준은 `900px`, 초소형 폰 보정은 `480px`
 - 스타일 구조:

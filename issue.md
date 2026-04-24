@@ -2,6 +2,56 @@
 
 ## 2026-04-24
 
+### Follow-up: Calm IPO Desk UI Refinement / Responsive Visual QA
+
+이번 후속에서는 기존 Toss 참고 기반 스타일이 다소 초보적인 카드/그라데이션 느낌으로 보인다는 피드백을 기준으로, 프로젝트 성격에 맞는 `Calm IPO Desk` 방향의 차분한 금융 대시보드 톤으로 전체 공개/관리자 화면 스타일을 재정리했다. 핵심 목표는 과한 장식보다 정보 밀도, 읽기 쉬운 표면, 낮은 radius, 안정적인 반응형 흐름을 우선하는 것이었다.
+
+### What Changed In This UI Follow-up
+
+1. 공통 디자인 토큰을 중립 회색 배경, 흰색 surface, 낮은 그림자, 낮은 radius 중심으로 재정리했다.
+2. `surface`, `softSurface`, reset/common 스타일에서 강한 그라데이션, 큰 blur, 둥근 pill 위주의 인상을 줄이고 더 담백한 카드형 UI로 맞췄다.
+3. 홈, 캘린더, 종목 개요, 상세, 로그인, 관리자, 수신자 관리, 운영 로그 패널의 SCSS를 같은 시각 언어로 정돈했다.
+4. 모바일 기준은 `1024px` breakpoint를 유지하고, 모바일에서는 캘린더를 숨긴 뒤 종목 개요 중심으로 보이도록 기존 정책을 보존했다.
+5. 데스크톱 캘린더는 청약 일정과 무관한 토요일/일요일 열을 숨긴 평일 중심 표시를 유지했다.
+6. 좁은 폭에서 긴 한글 문장이 잘려 보일 수 있는 경우를 줄이기 위해 공통 타이포그래피에 `overflow-wrap` / `word-break` 방어를 추가했다.
+7. 검증용 Chrome CLI 캡처에서 390px 화면이 잘려 보이는 현상이 있었으나, Playwright의 실제 CSS viewport 캡처로 재검증한 결과 도구 캡처 방식의 한계로 판단했다.
+
+### Main Code Changes In This UI Follow-up
+
+- 공통 스타일 토큰 / mixin / reset
+  - `src/styles/_tokens.scss`
+  - `src/styles/_mixins.scss`
+  - `src/styles/reset.scss`
+  - `src/styles/common.scss`
+- 공개 홈 / 캘린더 / 종목 개요
+  - `src/app/page.module.scss`
+  - `src/app/home-content.module.scss`
+- 공개 상세
+  - `src/app/ipos/[slug]/page.module.scss`
+- 관리자 / 로그인 / 운영 화면
+  - `src/app/admin/page.module.scss`
+  - `src/app/admin/recipients/page.module.scss`
+  - `src/app/admin-log-panel.module.scss`
+  - `src/app/login/page.module.scss`
+
+### Verification In This UI Follow-up
+
+- `npm run lint`
+- `npm run build`
+- `curl -I http://localhost:3000`
+  - `200 OK`
+- Playwright + Chrome channel screenshot QA
+  - 홈 `390px`, `1024px`, `1440px`
+  - 로그인 `390px`
+  - 상세 `390px`
+
+### Current Decisions To Remember In This UI Follow-up
+
+- 현재 시각 방향은 `Calm IPO Desk`: 과한 앱 프로모션형 장식보다 차분한 금융 업무 화면을 우선한다.
+- 모바일/좁은 화면의 기준 breakpoint는 `1024px`이며, 이 구간에서는 캘린더보다 종목 개요를 우선 노출한다.
+- 캘린더의 주말 열은 현재 숨김이 기본값이며, 필요 시 `home-content.tsx`의 렌더링 토글로 복구할 수 있다.
+- 스타일은 공통 token/reset/common과 페이지별 `*.module.scss` 분리 구조를 유지한다.
+
 ### Follow-up: AI Development Reflection / Midpoint Review
 
 이번 후속에서는 코드 변경 없이, AI와 함께 이 프로젝트를 진행하는 방식에 대한 중간 회고를 문서화했다. 프로젝트 난이도, 프론트/백엔드/운영 경계, 목표 중심 프롬프트 작성, AI가 빠진 전제와 리스크를 질문하게 하는 개인화 설정 방향, 이력서/면접용 설명 언어의 필요성을 [docs/context/ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)에 정리했다.

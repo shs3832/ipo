@@ -24,40 +24,10 @@ body {
 body {
   position: relative;
   color: var(--text-primary);
-  background:
-    radial-gradient(circle at 12% 14%, rgba(42, 115, 245, 0.12), transparent 24%),
-    radial-gradient(circle at 86% 10%, rgba(22, 145, 138, 0.12), transparent 18%),
-    linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 52%, var(--bg-tertiary) 100%);
+  background: var(--bg-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-body::before,
-body::after {
-  position: fixed;
-  inset: auto;
-  border-radius: 999px;
-  content: "";
-  pointer-events: none;
-  filter: blur(24px);
-  z-index: -1;
-}
-
-body::before {
-  top: -120px;
-  right: -90px;
-  width: 320px;
-  height: 320px;
-  background: rgba(42, 115, 245, 0.12);
-}
-
-body::after {
-  bottom: 8%;
-  left: -90px;
-  width: 280px;
-  height: 280px;
-  background: rgba(107, 93, 246, 0.08);
 }
 
 img,
