@@ -51,6 +51,7 @@
 - Message follow-up: 관리자 수신 채널 화면, 앱푸시 버튼/피드백, 테스트 푸시 본문, 발송 selection 로그의 문구를 “이 기기에서 다음 10시 자동 알림을 받을 수 있는지” 중심으로 정리했다. 메일 전용 표현은 채널 공통 알림 표현으로 바꿨다.
 - README follow-up: 루트 README의 프로젝트 요약, stack, admin 기능, notification pipeline, portfolio notes, command, runtime note를 현재 이메일/앱푸시 채널 구조와 관리자 앱푸시 운영 상태에 맞게 갱신했다.
 - Pending UX follow-up: `/admin/recipients`의 서버 액션 버튼과 앱푸시 API 버튼에 처리 중 문구와 스피너를 추가하고, 수신자 관리 페이지 이동/초기 렌더 중 전용 loading 화면을 보여 주도록 했다.
+- Push navigation follow-up: 푸시 알림 클릭 시 이미 열린 앱 창이 있으면 서비스워커가 앱에 이동 메시지를 보내고, 앱 루트에서 “푸시 알림을 열고 있습니다” 오버레이와 스피너를 표시한 뒤 대상 URL로 이동하게 했다. 새 창/콜드 스타트용 전역 loading 화면도 추가했다.
 
 ### Follow-up: Admin Notification Channel Toggle UI
 

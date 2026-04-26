@@ -124,6 +124,106 @@
   font-size: 0.82rem;
 }
 
+.app-loading-card {
+  @include surface(24px, var(--radius-xl));
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 320px;
+  justify-content: center;
+}
+
+.app-loading-spinner,
+.notification-navigation-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: app-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.app-loading-spinner {
+  color: var(--primary);
+}
+
+.app-loading-bars {
+  display: grid;
+  gap: 10px;
+  width: min(320px, 100%);
+}
+
+.app-loading-bars span {
+  min-height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.16),
+    rgba(148, 163, 184, 0.34),
+    rgba(148, 163, 184, 0.16)
+  );
+  background-size: 200% 100%;
+  animation: app-shimmer 1.2s ease-in-out infinite;
+}
+
+.app-loading-bars span:last-child {
+  width: 72%;
+}
+
+.notification-navigation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(244, 247, 251, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.notification-navigation-card {
+  @include surface(18px, var(--radius-xl));
+
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(420px, 100%);
+  color: var(--text-primary);
+  box-shadow: 0 18px 44px rgba(37, 48, 67, 0.14);
+}
+
+.notification-navigation-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.notification-navigation-card p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.notification-navigation-spinner {
+  color: var(--primary);
+}
+
+@keyframes app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes app-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 @media (max-width: $bp-mobile) {
   .page-shell {
     width: min(calc(100vw - 32px), var(--page-max));
@@ -150,6 +250,16 @@
     max-width: 100%;
     white-space: normal;
     text-align: center;
+  }
+
+  .app-loading-card {
+    min-height: 280px;
+    padding: 18px;
+    border-radius: var(--radius-xl);
+  }
+
+  .notification-navigation-card {
+    align-items: flex-start;
   }
 }
 

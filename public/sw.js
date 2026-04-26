@@ -32,6 +32,23 @@ self.addEventListener("notificationclick", (event) => {
         }
       }
 
+      const appClient = clientList.find((client) => {
+        try {
+          return new URL(client.url).origin === self.location.origin && "focus" in client;
+        } catch {
+          return false;
+        }
+      });
+
+      if (appClient) {
+        return appClient.focus().then((focusedClient) => {
+          focusedClient.postMessage({
+            type: "IPO_NOTIFICATION_NAVIGATE",
+            url: targetUrl,
+          });
+        });
+      }
+
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }
