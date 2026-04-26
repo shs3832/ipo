@@ -1,5 +1,8 @@
 # Project Overview
 
+이 문서는 AI 작업자가 프로젝트의 현재 모습을 빠르게 복원하기 위한 내부 요약이다.
+외부 제출/포트폴리오용 설명은 [README.md](/Users/shs/Desktop/Study/ipo/README.md)를 기준으로 보고, 세부 운영 정책은 각 context 문서를 기준으로 본다.
+
 ## Identity
 
 - 개인용 공모주 일정/분석/알림 서비스

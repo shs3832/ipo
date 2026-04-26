@@ -185,6 +185,8 @@ AI가 빠뜨릴 수 있는 전제는 다음 기준으로 다시 확인합니다.
 
 ## Quick Start
 
+세부 운영 규칙과 스케줄 정책은 [runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)를 기준으로 봅니다.
+
 ```bash
 source ~/.nvm/nvm.sh && nvm use
 cp .env.example .env
@@ -211,14 +213,14 @@ npm run mail:sample
 - Node 버전은 `v24.14.0`
 - 날짜/스케줄 판단은 항상 `Asia/Seoul`
 - 홈 `/`는 `5분` 캐시를 사용
-- 공개 read path는 DB write를 하지 않음
-- 자동 알림은 종목명 기준 스팩(`기업인수목적`, `스팩`, `SPAC`)을 제외함
-- 자동 알림은 `offerPrice`, `refundDate`, `leadManager`가 없으면 차단됨
+- 공개 read path와 알림 idempotency 규칙은 [runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)에 유지
+- UI/제품 노출 정책은 [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)에 유지
 
 ## Document Map
 
 - 작업자/AI 진입점: [`AGENTS.md`](/Users/shs/Desktop/Study/ipo/AGENTS.md)
-- 문서 인덱스: [`docs/README.md`](/Users/shs/Desktop/Study/ipo/docs/README.md)
+- 사람용 문서 지도: [`docs/README.md`](/Users/shs/Desktop/Study/ipo/docs/README.md)
+- AI 작업자용 읽기 순서: [`docs/context/README.md`](/Users/shs/Desktop/Study/ipo/docs/context/README.md)
 - 프로젝트 개요: [`docs/context/project-overview.md`](/Users/shs/Desktop/Study/ipo/docs/context/project-overview.md)
 - 런타임/운영: [`docs/context/runtime-and-ops.md`](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)
 - 데이터/점수: [`docs/context/data-and-scoring.md`](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
@@ -238,7 +240,7 @@ npm run mail:sample
 
 ## Environment Variables
 
-주요 변수는 아래입니다.
+주요 변수는 아래입니다. 상세 설명과 운영상 주의점은 [runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)를 기준으로 봅니다.
 
 - `DATABASE_URL`
 - `ADMIN_ACCESS_PASSWORD`
@@ -251,5 +253,3 @@ npm run mail:sample
 - `IPO_SOURCE_URL`
 - `OPENDART_API_KEY`
 - `SEIBRO_SERVICE_KEY`
-
-세부 운영 메모는 [`docs/context/runtime-and-ops.md`](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)를 참고합니다.

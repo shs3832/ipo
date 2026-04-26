@@ -1,6 +1,7 @@
 # AI Context Index
 
-이 디렉터리는 AI 작업자가 프로젝트 맥락을 빠르게 복원하도록 역할별로 분리한 문서 모음입니다.
+이 문서는 AI 작업자가 프로젝트 맥락을 빠르게 복원하기 위한 읽기 순서입니다.
+사람이 전체 문서 목록을 훑을 때는 [docs/README.md](/Users/shs/Desktop/Study/ipo/docs/README.md)를 먼저 봅니다.
 
 ## Read This First
 
@@ -15,6 +16,7 @@
 5. [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
 6. [ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)
 7. 현재 스레드 맥락은 [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
+8. 오래된 스레드 맥락이 필요하면 [docs/archive/issues-2026-03-to-04.md](/Users/shs/Desktop/Study/ipo/docs/archive/issues-2026-03-to-04.md)
 
 ## Which Doc To Read For Which Task
 
@@ -35,6 +37,7 @@
 ## Documentation Rules
 
 - `issue.md`는 스레드별 변경 로그만 기록
+- `issue.md`는 최근 작업 맥락 중심으로 유지하고, 오래된 로그는 `docs/archive/`로 이동
 - 긴 운영 메모는 `docs/context/`로 이동
 - 상위 문서는 요약과 링크만 두고, 세부 내용은 하위 문서에 유지
 - 같은 설명을 여러 파일에 반복 복붙하지 않음
