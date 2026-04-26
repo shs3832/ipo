@@ -1,15 +1,16 @@
 # IPO Calendar Alerts
 
-공모주 일정을 자동 수집하고, 청약 마감 당일 오전 10시에 분석 메일을 보내는 개인용 풀스택 서비스입니다.
+공모주 일정을 자동 수집하고, 청약 마감 당일 오전 10시에 이메일 또는 앱푸시로 분석 알림을 보내는 개인용 풀스택 서비스입니다.
 
-이 프로젝트는 단순 캘린더가 아니라, 외부 금융 데이터를 수집해 사용자에게 필요한 일정과 판단 포인트를 보여주고, 운영자는 관리자 화면에서 데이터 동기화와 메일 발송 상태를 추적할 수 있도록 만든 서비스입니다.
+이 프로젝트는 단순 캘린더가 아니라, 외부 금융 데이터를 수집해 사용자에게 필요한 일정과 판단 포인트를 보여주고, 운영자는 관리자 화면에서 데이터 동기화, 알림 채널, 발송 상태를 추적할 수 있도록 만든 서비스입니다.
 
 ## Project Summary
 
 - 공모주 청약 일정, 환불일, 상장일을 캘린더와 카드 UI로 제공
 - 공시 기반 핵심 정보를 공개 홈/상세 페이지에서 확인
-- 청약 마감 당일 오전 10시 분석 메일 발송
-- 관리자 화면에서 동기화, 운영 로그, 발송 상태, 수신자 관리
+- 청약 마감 당일 오전 10시 분석 알림 발송
+- 이메일 / 앱푸시 채널별 수신 설정
+- 관리자 화면에서 동기화, 운영 로그, 발송 상태, 수신자 채널 관리
 - 외부 데이터가 비거나 깨지는 상황을 고려한 validation, fallback, 운영 로그 설계
 - AI 프롬프트 기반 개발 workflow로 문제 정의, 구현, 리팩토링, 테스트, 문서화를 반복
 
@@ -32,6 +33,7 @@
 - Neon
 - Vercel Cron
 - Nodemailer + Gmail SMTP
+- Web Push
 
 ### Data Sources
 
@@ -75,6 +77,8 @@
 - daily sync 수동 실행
 - 알림 발송 상태 확인
 - 수신자 이메일 채널 관리
+- 10시 자동 알림의 이메일 / 앱푸시 on-off 관리
+- 현재 기기 앱푸시 저장, 해제, 테스트 발송
 - 좁은 화면에서도 운영 정보가 깨지지 않도록 responsive UI 구성
 
 현재 UI 방향은 `Calm IPO Desk`입니다. 과한 장식보다 금융 업무 화면에 가까운 차분한 정보 밀도, 낮은 radius, 읽기 쉬운 카드와 표면을 우선합니다.
@@ -93,12 +97,14 @@
 
 ### Notification Pipeline
 
-- 청약 마감 당일 오전 분석 메일 준비
+- 청약 마감 당일 오전 분석 알림 준비
 - Vercel Cron 기반 prepare/dispatch 분리
 - 같은 날 이미 준비된 job 재사용
 - 이미 발송된 job 재준비 방지
 - 늦게 실행된 dispatch의 stale 처리
 - delivery claim으로 중복 발송 방지
+- 이메일 / 앱푸시 채널별 delivery idempotency key 분리
+- Web Push 구독 만료 응답(`404` / `410`)은 unverified 처리
 - 종목명 기준 스팩 자동 제외
 - 필수값 누락 시 자동 발송 차단
 
@@ -120,7 +126,7 @@
 - 알림은 중복 발송되면 안 됨
 - 공개 화면과 관리자 데이터 경계를 지켜야 함
 - 점수/추천 정보는 신뢰도와 표현 책임이 큼
-- 운영자는 왜 메일이 보내졌는지, 왜 보내지지 않았는지 추적할 수 있어야 함
+- 운영자는 왜 알림이 보내졌는지, 왜 보내지지 않았는지 추적할 수 있어야 함
 
 따라서 핵심 개발 방향은 기능 추가보다 `데이터 신뢰도`, `idempotency`, `공개/관리자 경계`, `운영 로그`, `장애 추적 가능성`을 함께 챙기는 것입니다.
 
@@ -137,7 +143,7 @@ AI는 단순 코드 생성 도구가 아니라, 페어 프로그래밍 파트너
 예시:
 
 ```text
-이번 목표는 10시 분석 메일의 운영 신뢰도를 높이는 것이다.
+이번 목표는 10시 분석 알림의 운영 신뢰도를 높이는 것이다.
 
 성공 기준:
 - 이미 READY job이 있으면 재사용한다.
@@ -178,7 +184,7 @@ AI가 빠뜨릴 수 있는 전제는 다음 기준으로 다시 확인합니다.
 - Prisma/PostgreSQL 기반 데이터 모델링
 - 외부 데이터 수집과 정규화
 - Vercel Cron 기반 scheduled job 설계
-- 메일 알림 pipeline과 중복 발송 방지
+- 이메일 / 앱푸시 알림 pipeline과 중복 발송 방지
 - 공개/관리자 데이터 경계 분리
 - 운영 로그와 장애 추적 가능성 확보
 - AI-assisted development workflow를 활용한 반복 구현과 검증
@@ -206,6 +212,7 @@ npm run prisma:generate
 npm run job:daily-sync
 npm run job:score-recalc
 npm run mail:sample
+npm run web-push:generate-keys
 ```
 
 ## Required Runtime Notes
@@ -215,6 +222,14 @@ npm run mail:sample
 - 홈 `/`는 `5분` 캐시를 사용
 - 공개 read path와 알림 idempotency 규칙은 [runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)에 유지
 - UI/제품 노출 정책은 [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)에 유지
+
+## Notification Channels
+
+- 기본 운영값은 `이메일 ON`, `앱푸시 OFF`입니다.
+- `/admin/recipients`에서 이메일과 앱푸시를 각각 켜고 끌 수 있습니다.
+- 앱푸시는 관리자 수신자 기준으로 먼저 연결되어 있으며, 현재 기기를 수신 대상으로 저장한 뒤 테스트 발송할 수 있습니다.
+- iPhone/iPad는 Safari 탭이 아니라 홈 화면에 추가한 PWA에서 앱푸시 수신을 기대할 수 있습니다.
+- 다음 10시 자동 알림의 실제 수신 채널은 `/admin/recipients`의 `알림 채널 설정` 상태 문구를 기준으로 확인합니다.
 
 ## Document Map
 
