@@ -100,7 +100,7 @@ export default async function AdminPage({
               <Link className="button-secondary" href={ADMIN_RECIPIENTS_PATH}>
                 이메일 관리
               </Link>
-              <Link className="button-primary" href="/">
+              <Link className="button-secondary" href="/">
                 캘린더 보기
               </Link>
               <form action={logoutAction} className={styles.logoutForm}>

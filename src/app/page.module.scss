@@ -94,7 +94,7 @@
   line-height: 1.65;
 }
 
-@include tablet {
+@include desktop {
   .hero {
     grid-template-columns: 1fr;
   }
@@ -146,7 +146,7 @@
 @include phone {
   .hero,
   .summaryCard {
-    padding: 14px;
+    padding: 12px;
     border-radius: var(--radius-lg);
   }
 

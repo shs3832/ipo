@@ -28,6 +28,7 @@
 
 .heroBody {
   gap: 16px;
+  min-width: 0;
 }
 
 .metaRow {
@@ -38,6 +39,7 @@
 
 .heroAside {
   gap: 14px;
+  min-width: 0;
 }
 
 .metricCard,
@@ -166,6 +168,14 @@
   min-width: 0;
 }
 
+.rowHead strong,
+.rowHead p,
+.helper,
+.deleteHint {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .channelBadge {
   display: inline-flex;
   align-items: center;
@@ -224,7 +234,7 @@
   line-height: 1.65;
 }
 
-@include tablet {
+@include desktop {
   .hero,
   .grid {
     grid-template-columns: 1fr;
@@ -274,7 +284,7 @@
   .metricCard,
   .card,
   .feedbackBanner {
-    padding: 14px;
+    padding: 12px;
     border-radius: var(--radius-lg);
   }
 

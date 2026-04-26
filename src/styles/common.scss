@@ -126,7 +126,7 @@
 
 @media (max-width: $bp-mobile) {
   .page-shell {
-    width: min(100vw - 20px, var(--page-max));
+    width: min(calc(100vw - 32px), var(--page-max));
     padding: 16px 0 52px;
   }
 
@@ -155,8 +155,8 @@
 
 @include phone {
   .page-shell {
-    width: min(100vw - 16px, var(--page-max));
-    padding: 12px 0 40px;
+    width: min(calc(100vw - 28px), var(--page-max));
+    padding: 14px 0 40px;
   }
 
   .page-eyebrow {

@@ -1,5 +1,31 @@
 # Issue Log
 
+## 2026-04-26
+
+### Follow-up: Calm IPO Desk Detail Pass / Browser Review
+
+이번 후속에서는 인앱 브라우저로 홈, 종목 개요, 상세, 관리자 화면을 직접 훑으며 `Calm IPO Desk` 컨셉이 실제 화면에 잘 반영됐는지 확인했다. 전체 방향은 유지하되, 더 차분한 업무용 화면에 맞게 필요한 부분만 추가로 다듬었다.
+
+### What Changed In This Detail Pass
+
+1. 모바일/좁은 화면에서 카드가 화면보다 커 보이지 않도록 공통 `page-shell` 여백과 홈 카드 padding을 조정했다.
+2. 1024px 전후에서 홈/관리자 히어로가 반쪽 레이아웃처럼 보이지 않도록 1열 전환 기준을 더 이른 breakpoint로 맞췄다.
+3. 홈 종목 개요 정렬 select는 네이티브 접근성을 유지하면서 `appearance: none`, 커스텀 화살표, hover/focus 상태를 입혀 브라우저 기본 디자인 느낌을 줄였다.
+4. 종목 개요 필터 칩의 active tone을 강한 블루에서 저채도 회색/블루 계열로 낮춰 차분한 콘솔 톤에 맞췄다.
+5. 모바일 종목 카드의 세부 정보는 세로로 길게 쌓이는 영수증 같은 느낌을 줄이고, 좌우 요약형으로 읽히도록 정리했다.
+6. 관리자 화면은 `최신 데이터 가져오기`만 primary로 유지하고, 이메일 관리/캘린더 보기/로그아웃은 더 조용한 secondary tone으로 낮췄다.
+7. 관리자/수신자/로그 패널의 긴 key, 이메일, 로그 문구가 좁은 폭에서 넘치지 않도록 줄바꿈 방어를 보강했다.
+
+### Verification In This Detail Pass
+
+- 인앱 브라우저 점검
+  - 홈 상단
+  - 종목 개요 / 정렬 select
+  - 상세 페이지 quick facts
+  - 관리자 콘솔 상단 / 스케줄러 카드
+- `npm run lint`
+- `npm run build`
+
 ## 2026-04-24
 
 ### Follow-up: Calm IPO Desk UI Refinement / Responsive Visual QA

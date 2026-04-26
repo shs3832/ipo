@@ -51,7 +51,26 @@
 
 .actionGroup {
   display: grid;
-  gap: 12px;
+  gap: 10px;
+}
+
+.actionGroup :global(.button-primary),
+.actionGroup :global(.button-secondary) {
+  width: 100%;
+}
+
+.actionGroup :global(.button-secondary) {
+  color: var(--text-secondary);
+  background: var(--surface-subtle);
+}
+
+.actionGroup :global(.button-secondary):hover {
+  background: var(--surface);
+}
+
+.logoutForm :global(.button-secondary) {
+  color: var(--text-tertiary);
+  border-color: transparent;
 }
 
 .syncForm,
@@ -192,6 +211,13 @@
   min-width: 0;
 }
 
+.rowHead strong,
+.rowHead p,
+.row > p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .schedulerBadge {
   display: inline-flex;
   align-items: center;
@@ -255,6 +281,11 @@
   word-break: break-word;
 }
 
+.row :global(.mono-text) {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
 .loadingInline {
   display: inline-flex;
   align-items: center;
@@ -312,7 +343,7 @@
   }
 }
 
-@include tablet {
+@include desktop {
   .hero,
   .grid {
     grid-template-columns: 1fr;
@@ -376,7 +407,7 @@
   .hero,
   .summaryCard,
   .card {
-    padding: 14px;
+    padding: 12px;
     border-radius: var(--radius-lg);
   }
 

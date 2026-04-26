@@ -485,6 +485,41 @@
   min-width: 0;
 }
 
+.overviewSortField {
+  position: relative;
+}
+
+.overviewSortField::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  bottom: 17px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-tertiary);
+  border-bottom: 2px solid var(--text-tertiary);
+  pointer-events: none;
+  transform: rotate(45deg);
+  transition:
+    border-color var(--transition-base),
+    transform var(--transition-base);
+}
+
+.overviewSortField::before {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  pointer-events: none;
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
 .overviewControlLabel {
   display: block;
   margin-bottom: 8px;
@@ -514,6 +549,21 @@
 .overviewSortSelect:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.overviewSortField:hover .overviewSortSelect {
+  border-color: var(--line-strong);
+  background: #fff;
+}
+
+.overviewSortField:hover::before,
+.overviewSortField:focus-within::before {
+  background: var(--primary-soft);
+}
+
+.overviewSortField:focus-within::after {
+  border-color: var(--primary-strong);
+  transform: translateY(-1px) rotate(45deg);
 }
 
 .overviewSearchIcon {
@@ -598,16 +648,28 @@
 }
 
 .overviewSortSelect {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   min-height: 44px;
-  padding: 0 14px;
+  padding: 0 52px 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background:
+    linear-gradient(180deg, #fff 0%, var(--surface-subtle) 100%);
   color: var(--text-primary);
   font: inherit;
-  box-shadow: none;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   cursor: pointer;
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.overviewSortSelect::-ms-expand {
+  display: none;
 }
 
 .overviewSortSelect:focus {
@@ -702,15 +764,15 @@
 }
 
 .overviewOptionToggleActive {
-  border-color: var(--primary-soft-strong);
-  background: var(--surface);
+  border-color: var(--line-strong);
+  background: #f6f8fb;
   color: var(--text-primary);
   box-shadow: none;
 }
 
 .overviewOptionToggleActive .overviewOptionIndicator {
-  border-color: var(--primary);
-  background: var(--primary);
+  border-color: #64748b;
+  background: #64748b;
   box-shadow: none;
   transform: translateY(-0.5px);
 }
@@ -721,8 +783,8 @@
 }
 
 .overviewOptionToggleActive .overviewOptionCount {
-  background: var(--primary-soft);
-  color: var(--primary-strong);
+  background: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .overviewOptionToggle:focus-within {
@@ -770,15 +832,15 @@
 }
 
 .overviewFilterChipActive {
-  border-color: var(--primary-soft-strong);
-  background: var(--surface);
+  border-color: var(--line-strong);
+  background: #f6f8fb;
   color: var(--text-primary);
   box-shadow: none;
 }
 
 .overviewFilterChipActive strong {
-  background: var(--primary-soft);
-  color: var(--primary-strong);
+  background: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .overviewSections {
@@ -1054,14 +1116,15 @@
   }
 
   .ipoStats div {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    padding-top: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 10px;
+    padding-top: 10px;
   }
 
   .ipoStats dd {
-    text-align: left;
+    text-align: right;
   }
 }
 
@@ -1071,7 +1134,7 @@
   }
 
   .sidePanel {
-    padding: 16px;
+    padding: 14px;
     border-radius: var(--radius-lg);
   }
 
@@ -1095,6 +1158,20 @@
     min-height: 46px;
     padding-inline: 12px;
     border-radius: var(--radius-md);
+  }
+
+  .overviewSortSelect {
+    padding-right: 50px;
+  }
+
+  .overviewSortField::before {
+    right: 6px;
+    bottom: 6px;
+  }
+
+  .overviewSortField::after {
+    right: 15px;
+    bottom: 17px;
   }
 
   .overviewSearchClear {
@@ -1124,7 +1201,7 @@
   }
 
   .overviewSection {
-    padding: 14px;
+    padding: 12px;
     border-radius: var(--radius-lg);
   }
 
@@ -1151,12 +1228,12 @@
   }
 
   .overviewEmptyState {
-    padding: 18px;
+    padding: 14px;
     border-radius: var(--radius-lg);
   }
 
   .ipoCard {
-    padding: 14px;
+    padding: 12px;
     border-radius: var(--radius-md);
   }
 
@@ -1180,10 +1257,18 @@
   }
 
   .ipoStats {
-    gap: 6px;
+    gap: 2px;
   }
 
   .ipoStats div {
-    padding-top: 6px;
+    padding-top: 9px;
+  }
+
+  .ipoStats dt {
+    font-size: 0.84rem;
+  }
+
+  .ipoStats dd {
+    font-size: 0.95rem;
   }
 }

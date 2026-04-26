@@ -43,6 +43,13 @@
     background var(--transition-base);
 }
 
+.filterPill,
+.row strong,
+.row p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .filterPill strong {
   color: var(--text-primary);
   font-size: 0.84rem;
@@ -156,5 +163,17 @@
   .logMeta {
     flex-direction: column;
     gap: 10px;
+  }
+}
+
+@include phone {
+  .card {
+    padding: 12px;
+    border-radius: var(--radius-lg);
+  }
+
+  .row {
+    padding: 12px;
+    border-radius: var(--radius-md);
   }
 }
