@@ -46,12 +46,12 @@ const CHANNEL_PREFERENCE_COPY: Record<
 > = {
   EMAIL: {
     label: "이메일",
-    description: "검증된 이메일 주소로 10시 분석 메일을 발송합니다.",
+    description: "ON이면 verified 이메일 주소로 다음 10시 자동 알림을 보냅니다.",
     isAvailable: true,
   },
   WEB_PUSH: {
     label: "앱푸시",
-    description: "PWA 설치와 Web Push 구독 저장을 연결한 뒤 활성화합니다.",
+    description: "ON이면 저장된 이 기기 앱푸시 구독으로 다음 10시 자동 알림을 보냅니다.",
     isAvailable: true,
   },
 };
@@ -389,8 +389,8 @@ export const getAdminNotificationPreferences = async (
         ? {
             isAvailable: false,
             description: !isWebPushConfigured()
-              ? "VAPID 환경변수를 설정한 뒤 앱푸시를 구독할 수 있습니다."
-              : "이 브라우저의 앱푸시 구독을 먼저 저장해야 활성화할 수 있습니다.",
+              ? "VAPID 환경변수를 설정해야 앱푸시 수신 기기를 저장할 수 있습니다."
+              : "먼저 이 기기에서 앱푸시 구독을 저장해야 ON으로 바꿀 수 있습니다.",
           }
         : undefined,
     );

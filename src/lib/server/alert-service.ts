@@ -366,7 +366,7 @@ export const buildAlertPreparationLogEntry = (
   action: summary.totalClosingCount === 0 ? "no_alert_candidates" : "alert_candidate_summary",
   message:
     summary.totalClosingCount === 0
-      ? `${alertLabel} 대상 청약 마감 종목이 없어 준비된 메일이 없습니다.`
+      ? `${alertLabel} 대상 청약 마감 종목이 없어 준비된 알림이 없습니다.`
       : `${alertLabel} 후보 ${summary.totalClosingCount}건 중 준비 ${summary.readyCount}건, 스팩 제외 ${summary.excludedSpacCount}건, 발송 보류 ${summary.blockedCount}건입니다.`,
   context: summary,
 });
@@ -432,9 +432,9 @@ export const buildDispatchSelectionLogEntry = (
   message:
     summary.dispatchableJobCount === 0
       ? summary.dueJobCount === 0
-        ? `${alertLabel} 발송 시점에 준비된 메일이 없어 실제 전송을 하지 않았습니다.`
-        : `${alertLabel} 준비 메일 ${summary.dueJobCount}건 중 실제 전송 가능한 메일이 없어 발송을 건너뛰었습니다.`
-      : `${alertLabel} 발송 대상 ${summary.dispatchableJobCount}건, 수신자 ${summary.recipientCount}명, 이메일 채널 ${summary.recipientEmailCount}개를 확인했습니다.`,
+        ? `${alertLabel} 발송 시점에 준비된 알림이 없어 실제 전송을 하지 않았습니다.`
+        : `${alertLabel} 준비 알림 ${summary.dueJobCount}건 중 실제 전송 가능한 알림이 없어 발송을 건너뛰었습니다.`
+      : `${alertLabel} 발송 대상 ${summary.dispatchableJobCount}건, 수신자 ${summary.recipientCount}명, 이메일 채널 ${summary.recipientEmailCount}개, 앱푸시 채널 ${summary.recipientWebPushCount}개를 확인했습니다.`,
   context: summary,
 });
 
@@ -1226,7 +1226,7 @@ export const prepareDailyAlerts = async (): Promise<PreparedAlertsResult> =>
     completionMessage: (storedJobCount) => (
       storedJobCount
         ? `10시 분석 알림 ${storedJobCount}건을 준비했습니다.`
-        : "10시 분석 알림 대상이 없어 준비된 메일이 없습니다."
+        : "10시 분석 알림 대상이 없어 준비된 알림이 없습니다."
     ),
     failureMessage: "10시 분석 알림 준비에 실패했습니다.",
     jobVariant: {

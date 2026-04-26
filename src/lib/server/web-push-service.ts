@@ -320,8 +320,8 @@ export const sendAdminTestWebPush = async () => {
       await sendWebPushNotification({
         subscription,
         payload: {
-          title: "IPO Calendar Alerts",
-          body: "앱푸시 테스트 알림입니다.",
+          title: "IPO 10시 알림 테스트",
+          body: "이 기기로 앱푸시가 정상 도착했습니다. 앱푸시 채널이 ON이면 10시 자동 알림도 이 기기로 받습니다.",
           url: "/admin/recipients",
           tag: "admin-web-push-test",
         },

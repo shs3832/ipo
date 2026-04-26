@@ -4,7 +4,7 @@ self.addEventListener("push", (event) => {
   }
 
   const data = event.data.json();
-  const title = data.title || "IPO Calendar Alerts";
+  const title = data.title || "IPO 10시 자동 알림";
   const options = {
     body: data.body || "",
     icon: data.icon || "/icons/icon.svg",

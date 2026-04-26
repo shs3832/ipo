@@ -48,6 +48,7 @@
   - `npm audit --audit-level=moderate`
 - Production follow-up: Vercel에서 `/admin/recipients` 렌더 중 `prisma.notificationPreference.upsert()`가 interactive transaction 5초 제한을 넘는 문제가 확인됐다. 관리자 recipient bootstrap의 긴 `$transaction`을 제거하고, 페이지 렌더에서는 `ensureAdminRecipient()`를 한 번만 실행한 뒤 이메일 채널, preference, Web Push 상태 조회가 같은 recipient id를 재사용하게 바꿨다.
 - UX follow-up: 관리자 알림 채널 안내가 현재 발송 가능한 상태를 정확히 말하도록 바꿨다. 이메일 OFF + 앱푸시 ON + 구독 있음이면 앱푸시로 10시 자동 알림이 발송된다고 표시하고, 실제 발송 가능한 채널이 없을 때만 경고를 표시한다.
+- Message follow-up: 관리자 수신 채널 화면, 앱푸시 버튼/피드백, 테스트 푸시 본문, 발송 selection 로그의 문구를 “이 기기에서 다음 10시 자동 알림을 받을 수 있는지” 중심으로 정리했다. 메일 전용 표현은 채널 공통 알림 표현으로 바꿨다.
 
 ### Follow-up: Admin Notification Channel Toggle UI
 

@@ -226,7 +226,7 @@ test("buildDispatchSelectionSummary and log entry distinguish zero-send runs fro
   const emptyLogEntry = buildDispatchSelectionLogEntry("10시 분석 메일", summary);
 
   assert.equal(emptyLogEntry.action, "no_dispatchable_jobs");
-  assert.equal(emptyLogEntry.message, "10시 분석 메일 발송 시점에 준비된 메일이 없어 실제 전송을 하지 않았습니다.");
+  assert.equal(emptyLogEntry.message, "10시 분석 메일 발송 시점에 준비된 알림이 없어 실제 전송을 하지 않았습니다.");
 
   const readySummary = buildDispatchSelectionSummary({
     preparedJobs: [dueJob],
@@ -251,7 +251,10 @@ test("buildDispatchSelectionSummary and log entry distinguish zero-send runs fro
   const readyLogEntry = buildDispatchSelectionLogEntry("10시 분석 메일", readySummary);
 
   assert.equal(readyLogEntry.action, "dispatch_selection_summary");
-  assert.equal(readyLogEntry.message, "10시 분석 메일 발송 대상 1건, 수신자 2명, 이메일 채널 2개를 확인했습니다.");
+  assert.equal(
+    readyLogEntry.message,
+    "10시 분석 메일 발송 대상 1건, 수신자 2명, 이메일 채널 2개, 앱푸시 채널 0개를 확인했습니다.",
+  );
   assert.deepEqual(readySummary.dispatchableJobs, [
     {
       id: "job-1",

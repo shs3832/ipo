@@ -53,27 +53,27 @@ export default async function AdminRecipientsPage({
       return {
         tone: "warning" as const,
         message:
-          "켜진 발송 채널이 없습니다. 이메일을 켜거나 앱푸시 구독 저장 후 앱푸시를 켜야 다음 10시 자동 알림이 발송됩니다.",
+          "현재 받을 채널이 없습니다. 이메일을 켜거나 이 기기에서 앱푸시 구독을 저장한 뒤 앱푸시를 ON으로 바꿔야 다음 10시 자동 알림이 발송됩니다.",
       };
     }
 
     if (!isEmailDeliveryActive && isWebPushDeliveryActive) {
       return {
         tone: "info" as const,
-        message: `이메일 채널은 꺼져 있고, 다음 10시 자동 알림은 앱푸시 구독 ${webPushState.subscriptionCount}개로 발송됩니다.`,
+        message: `현재 앱푸시만 받는 상태입니다. 다음 10시 자동 알림은 저장된 앱푸시 구독 ${webPushState.subscriptionCount}개로 발송되고, 이메일은 보내지 않습니다.`,
       };
     }
 
     if (isEmailDeliveryActive && isWebPushDeliveryActive) {
       return {
         tone: "info" as const,
-        message: `이메일과 앱푸시가 모두 켜져 있어 다음 10시 자동 알림은 이메일과 앱푸시 구독 ${webPushState.subscriptionCount}개로 함께 발송됩니다.`,
+        message: `현재 이메일과 앱푸시를 함께 받는 상태입니다. 다음 10시 자동 알림은 verified 이메일과 앱푸시 구독 ${webPushState.subscriptionCount}개로 발송됩니다.`,
       };
     }
 
     return {
       tone: "info" as const,
-      message: "앱푸시 채널은 꺼져 있고, 다음 10시 자동 알림은 이메일로 발송됩니다.",
+      message: "현재 이메일만 받는 상태입니다. 다음 10시 자동 알림은 verified 이메일로 발송되고, 앱푸시는 보내지 않습니다.",
     };
   })();
 
@@ -83,14 +83,14 @@ export default async function AdminRecipientsPage({
         <section className={styles.hero}>
           <div className={styles.heroBody}>
             <p className="page-eyebrow">Admin Recipients</p>
-            <h1 className="page-title">발송 이메일을 등록하고 수정하고 삭제합니다.</h1>
+            <h1 className="page-title">10시 자동 알림 수신 채널을 관리합니다.</h1>
             <p className="page-copy">
-              10시 분석 메일과 마감 리마인더가 실제로 전달될 주소 목록을 관리자 전용 화면에서
-              관리합니다.
+              이메일과 앱푸시 중 어떤 채널로 다음 10시 분석 알림을 받을지 관리자 전용 화면에서
+              확인하고 변경합니다.
             </p>
             <div className={styles.metaRow}>
               <span className="status-pill">관리자 로그인 필요</span>
-              <span className="status-pill status-pill-soft">verified 이메일만 발송</span>
+              <span className="status-pill status-pill-soft">이메일 / 앱푸시 채널별 발송</span>
             </div>
           </div>
 
@@ -99,7 +99,7 @@ export default async function AdminRecipientsPage({
               <span className={styles.metricLabel}>등록된 발송 이메일</span>
               <strong className={styles.metricValue}>{channels.length}</strong>
               <p className={styles.metricCopy}>
-                이메일 채널이 켜져 있으면 등록한 verified 주소가 다음 발송 잡부터 사용됩니다.
+                이메일이 ON이면 verified 주소가 다음 10시 자동 알림 수신 대상으로 사용됩니다.
               </p>
             </article>
 
@@ -126,7 +126,7 @@ export default async function AdminRecipientsPage({
             <div className={styles.cardHeader}>
               <h2 className="section-title">알림 채널 설정</h2>
               <p className="section-copy">
-                10시 분석 알림을 어떤 채널로 보낼지 선택합니다.
+                아래 상태 문구가 실제 다음 10시 자동 알림의 수신 채널입니다.
               </p>
             </div>
 

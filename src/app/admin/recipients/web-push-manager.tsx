@@ -85,21 +85,21 @@ export function WebPushManager({
 
   const disabledReason = useMemo(() => {
     if (supportStatus === "checking") {
-      return "브라우저 Web Push 지원 여부를 확인하고 있습니다.";
+      return "이 기기에서 앱푸시를 받을 수 있는지 확인하고 있습니다.";
     }
 
     if (!isSupported) {
       return isIosBrowserTab()
-        ? "iPhone/iPad Safari 탭에서는 Web Push를 받을 수 없습니다. 공유 버튼에서 홈 화면에 추가한 뒤, 홈 화면 앱으로 열어 주세요."
-        : "이 브라우저는 Web Push를 지원하지 않습니다.";
+        ? "iPhone/iPad는 Safari 탭이 아니라 홈 화면에 추가한 앱에서만 앱푸시를 받을 수 있습니다. 공유 버튼에서 홈 화면에 추가한 뒤 앱으로 다시 열어 주세요."
+        : "이 브라우저는 앱푸시 수신을 지원하지 않습니다.";
     }
 
     if (!isConfigured || !publicKey) {
-      return "VAPID 환경변수 설정이 없어 앱푸시 구독을 저장할 수 없습니다.";
+      return "서버의 앱푸시 발송 키가 설정되지 않아 이 기기를 수신 대상으로 저장할 수 없습니다.";
     }
 
     if (isSubscribed) {
-      return "현재 브라우저의 Web Push 구독이 저장되어 있습니다.";
+      return "이 기기는 앱푸시 수신 대상으로 저장되어 있습니다. 앱푸시 채널이 ON이면 다음 10시 자동 알림을 이 기기로 받습니다.";
     }
 
     return null;
@@ -113,8 +113,8 @@ export function WebPushManager({
       setFeedback({
         tone: "info",
         message: isIosBrowserTab()
-          ? "iPhone/iPad Safari 탭에서는 Web Push를 받을 수 없습니다. 홈 화면에 추가한 PWA에서 다시 열어 주세요."
-          : "이 브라우저는 Web Push를 지원하지 않습니다.",
+          ? "iPhone/iPad는 홈 화면에 추가한 앱에서만 앱푸시를 받을 수 있습니다. Safari 공유 버튼에서 홈 화면에 추가한 뒤 앱으로 다시 열어 주세요."
+          : "이 브라우저는 앱푸시 수신을 지원하지 않습니다.",
       });
       return;
     }
@@ -159,12 +159,15 @@ export function WebPushManager({
       });
 
       setIsSubscribed(true);
-      setFeedback({ tone: "success", message: "앱푸시 구독을 저장했습니다." });
+      setFeedback({
+        tone: "success",
+        message: "이 기기를 앱푸시 수신 대상으로 저장했습니다. 앱푸시 채널이 ON이면 다음 10시 자동 알림을 이 기기로 받습니다.",
+      });
       router.refresh();
     } catch (error) {
       setFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : "앱푸시 구독에 실패했습니다.",
+        message: error instanceof Error ? error.message : "이 기기를 앱푸시 수신 대상으로 저장하지 못했습니다.",
       });
     } finally {
       setIsWorking(false);
@@ -194,12 +197,15 @@ export function WebPushManager({
       }
 
       setIsSubscribed(false);
-      setFeedback({ tone: "success", message: "앱푸시 구독을 해제했습니다." });
+      setFeedback({
+        tone: "success",
+        message: "이 기기의 앱푸시 수신을 해제했습니다. 앱푸시 채널이 ON이어도 이 기기로는 알림이 오지 않습니다.",
+      });
       router.refresh();
     } catch (error) {
       setFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : "앱푸시 구독 해제에 실패했습니다.",
+        message: error instanceof Error ? error.message : "이 기기의 앱푸시 수신 해제에 실패했습니다.",
       });
     } finally {
       setIsWorking(false);
@@ -216,11 +222,14 @@ export function WebPushManager({
 
     try {
       await requestJson("/api/admin/web-push/send-test", { method: "POST", body: "{}" });
-      setFeedback({ tone: "success", message: "테스트 앱푸시를 요청했습니다." });
+      setFeedback({
+        tone: "success",
+        message: "테스트 앱푸시를 발송했습니다. 이 기기에 알림이 도착하면 10시 자동 알림도 같은 경로로 받을 수 있습니다.",
+      });
     } catch (error) {
       setFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : "테스트 앱푸시 발송에 실패했습니다.",
+        message: error instanceof Error ? error.message : "테스트 앱푸시를 이 기기로 보내지 못했습니다.",
       });
     } finally {
       setIsWorking(false);
@@ -230,11 +239,11 @@ export function WebPushManager({
   return (
     <div className={styles.webPushPanel}>
       <div>
-        <strong>이 브라우저 앱푸시</strong>
+        <strong>이 기기 앱푸시 수신</strong>
         <p>
           {isSubscribed
-            ? "현재 브라우저의 Web Push 구독이 저장되어 있습니다."
-            : "현재 브라우저에서 앱푸시 구독을 저장할 수 있습니다."}
+            ? "이 기기는 앱푸시 수신 대상으로 저장되어 있습니다."
+            : "이 기기에서 10시 자동 알림을 앱푸시로 받으려면 먼저 수신 대상으로 저장하세요."}
         </p>
       </div>
       <div className={styles.webPushActions}>
@@ -244,7 +253,7 @@ export function WebPushManager({
           onClick={subscribe}
           type="button"
         >
-          구독 저장
+          이 기기 저장
         </button>
         <button
           className="button-secondary"
@@ -252,7 +261,7 @@ export function WebPushManager({
           onClick={sendTest}
           type="button"
         >
-          테스트 발송
+          이 기기로 테스트
         </button>
         <button
           className={styles.deleteButton}
@@ -260,7 +269,7 @@ export function WebPushManager({
           onClick={unsubscribe}
           type="button"
         >
-          해제
+          이 기기 해제
         </button>
       </div>
       {disabledReason ? (
