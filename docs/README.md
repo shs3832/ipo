@@ -7,6 +7,7 @@ AI 작업자가 코드 변경 전 맥락을 복원할 때는 [docs/context/READM
 
 - 작업자/AI 시작점: [AGENTS.md](/Users/shs/Desktop/Study/ipo/AGENTS.md)
 - 사용자/운영자 quick start: [README.md](/Users/shs/Desktop/Study/ipo/README.md)
+- 구현 후보 backlog: [TODO.md](/Users/shs/Desktop/Study/ipo/TODO.md)
 - 현재 스레드 변경 로그: [issue.md](/Users/shs/Desktop/Study/ipo/issue.md)
 
 ## Context Docs

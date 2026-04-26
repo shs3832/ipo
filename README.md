@@ -220,6 +220,7 @@ npm run mail:sample
 
 - 작업자/AI 진입점: [`AGENTS.md`](/Users/shs/Desktop/Study/ipo/AGENTS.md)
 - 사람용 문서 지도: [`docs/README.md`](/Users/shs/Desktop/Study/ipo/docs/README.md)
+- 구현 후보 backlog: [`TODO.md`](/Users/shs/Desktop/Study/ipo/TODO.md)
 - AI 작업자용 읽기 순서: [`docs/context/README.md`](/Users/shs/Desktop/Study/ipo/docs/context/README.md)
 - 프로젝트 개요: [`docs/context/project-overview.md`](/Users/shs/Desktop/Study/ipo/docs/context/project-overview.md)
 - 런타임/운영: [`docs/context/runtime-and-ops.md`](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)

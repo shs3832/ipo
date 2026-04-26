@@ -2,6 +2,10 @@
 
 ## 2026-04-26
 
+### Follow-up: Implementation TODO Split
+
+이번 후속에서는 코드 변경 없이 앞으로 구현할 후보를 `issue.md` 변경 로그에서 분리해 루트 `TODO.md`로 정리했다. `issue.md`는 최근 스레드 기록으로 유지하고, `TODO.md`는 active / parked / done enough 상태를 기준으로 점수 재오픈, 캘린더 주말 열 복구, closing-soon 알림, major dependency upgrade, DB migration, README/포트폴리오 설명 보강 항목의 현재 판단과 재오픈 조건을 관리한다.
+
 ### Follow-up: Documentation Role Cleanup
 
 이번 후속에서는 코드 변경 없이 나눠진 md 문서의 역할을 정리했다. README는 포트폴리오/첫 진입 문서로, `docs/README.md`는 사람용 문서 지도, `docs/context/README.md`는 AI 작업자용 읽기 순서로 역할을 명확히 하고, 길어진 과거 스레드 로그는 아카이브 문서로 분리해 현재 `issue.md`를 최근 맥락 중심으로 가볍게 유지한다.
