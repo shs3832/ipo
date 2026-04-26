@@ -5,7 +5,10 @@ import { prisma } from "@/lib/db";
 import { env, isWebPushConfigured } from "@/lib/env";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 import { ADMIN_RECIPIENT_ID } from "@/lib/server/job-shared";
-import { ensureAdminRecipient } from "@/lib/server/recipient-service";
+import {
+  ensureAdminRecipient,
+  type AdminRecipientRef,
+} from "@/lib/server/recipient-service";
 import type { NotificationJobRecord } from "@/lib/types";
 
 type WebPushSubscriptionPayload = {
@@ -92,8 +95,8 @@ const getSubscriptionFromMetadata = (metadata: unknown) => {
   return isWebPushSubscriptionPayload(metadata) ? metadata : null;
 };
 
-export const getAdminWebPushState = async () => {
-  const recipient = await ensureAdminRecipient();
+export const getAdminWebPushState = async (adminRecipient?: AdminRecipientRef) => {
+  const recipient = adminRecipient === undefined ? await ensureAdminRecipient() : adminRecipient;
   if (!recipient) {
     return {
       isConfigured: isWebPushConfigured(),

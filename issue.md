@@ -46,6 +46,7 @@
   - `npm run lint`
   - `npm run build`
   - `npm audit --audit-level=moderate`
+- Production follow-up: Vercel에서 `/admin/recipients` 렌더 중 `prisma.notificationPreference.upsert()`가 interactive transaction 5초 제한을 넘는 문제가 확인됐다. 관리자 recipient bootstrap의 긴 `$transaction`을 제거하고, 페이지 렌더에서는 `ensureAdminRecipient()`를 한 번만 실행한 뒤 이메일 채널, preference, Web Push 상태 조회가 같은 recipient id를 재사용하게 바꿨다.
 
 ### Follow-up: Admin Notification Channel Toggle UI
 

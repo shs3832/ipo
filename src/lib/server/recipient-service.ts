@@ -29,6 +29,7 @@ type RecipientNotificationPreference = {
   channelType: RecipientChannelRecord["type"];
   isActive: boolean;
 };
+export type AdminRecipientRef = { id: string } | null;
 
 const ADMIN_RECIPIENT_EMAIL_LOG_SOURCE = "admin:recipient-email";
 const DEFAULT_ALERT_TYPE = "CLOSING_DAY_ANALYSIS";
@@ -262,60 +263,72 @@ const toNotificationPreferenceRecord = (
   };
 };
 
-export const ensureAdminRecipient = async (): Promise<{ id: string } | null> => {
+export const ensureAdminRecipient = async (): Promise<AdminRecipientRef> => {
   if (!(await canUseDatabase())) {
     return null;
   }
 
-  return prisma.$transaction(async (tx) => {
-    const recipient = await tx.recipient.upsert({
-      where: { id: ADMIN_RECIPIENT_ID },
-      update: {
-        name: "관리자",
-        status: "ACTIVE",
-        inviteState: "INTERNAL",
-        consentedAt: new Date(),
-        unsubscribedAt: null,
-      },
-      create: {
-        id: ADMIN_RECIPIENT_ID,
-        name: "관리자",
-        status: "ACTIVE",
-        inviteState: "INTERNAL",
-        consentedAt: new Date(),
-      },
-    });
+  const recipient = await prisma.recipient.upsert({
+    where: { id: ADMIN_RECIPIENT_ID },
+    update: {
+      name: "관리자",
+      status: "ACTIVE",
+      inviteState: "INTERNAL",
+      consentedAt: new Date(),
+      unsubscribedAt: null,
+    },
+    create: {
+      id: ADMIN_RECIPIENT_ID,
+      name: "관리자",
+      status: "ACTIVE",
+      inviteState: "INTERNAL",
+      consentedAt: new Date(),
+    },
+  });
 
-    const seedEmail = normalizeEmailAddress(env.adminEmail);
-    let emailChannels = await listRecipientEmailChannelsWithClient(tx, recipient.id);
+  const seedEmail = normalizeEmailAddress(env.adminEmail);
+  let emailChannels = await listRecipientEmailChannels(recipient.id);
 
-    if (emailChannels.length === 0 && seedEmail) {
-      await tx.recipientChannel.create({
-        data: {
+  if (emailChannels.length === 0 && seedEmail) {
+    await prisma.recipientChannel.upsert({
+      where: {
+        recipientId_type_address: {
           recipientId: recipient.id,
           type: "EMAIL",
           address: seedEmail,
-          isPrimary: true,
-          isVerified: true,
         },
-      });
+      },
+      update: {
+        isVerified: true,
+      },
+      create: {
+        recipientId: recipient.id,
+        type: "EMAIL",
+        address: seedEmail,
+        isPrimary: true,
+        isVerified: true,
+      },
+    });
 
-      emailChannels = await listRecipientEmailChannelsWithClient(tx, recipient.id);
-    }
+    emailChannels = await listRecipientEmailChannels(recipient.id);
+  }
 
-    await ensurePrimaryRecipientEmailChannel(tx, emailChannels);
-    await ensureAdminRecipientTelegramPlaceholder(tx, recipient.id);
-    await ensureAdminRecipientSubscription(tx, recipient.id);
-    await ensureAdminRecipientNotificationPreferences(tx, recipient.id);
+  await ensurePrimaryRecipientEmailChannel(prisma, emailChannels);
+  await Promise.all([
+    ensureAdminRecipientTelegramPlaceholder(prisma, recipient.id),
+    ensureAdminRecipientSubscription(prisma, recipient.id),
+    ensureAdminRecipientNotificationPreferences(prisma, recipient.id),
+  ]);
 
-    return {
-      id: recipient.id,
-    };
-  });
+  return {
+    id: recipient.id,
+  };
 };
 
-export const getAdminRecipientEmailChannels = async (): Promise<RecipientChannelRecord[]> => {
-  const recipient = await ensureAdminRecipient();
+export const getAdminRecipientEmailChannels = async (
+  adminRecipient?: AdminRecipientRef,
+): Promise<RecipientChannelRecord[]> => {
+  const recipient = adminRecipient === undefined ? await ensureAdminRecipient() : adminRecipient;
   if (!recipient) {
     return [];
   }
@@ -324,8 +337,10 @@ export const getAdminRecipientEmailChannels = async (): Promise<RecipientChannel
   return channels.map(toRecipientChannelRecord);
 };
 
-export const getAdminNotificationPreferences = async (): Promise<NotificationPreferenceRecord[]> => {
-  const recipient = await ensureAdminRecipient();
+export const getAdminNotificationPreferences = async (
+  adminRecipient?: AdminRecipientRef,
+): Promise<NotificationPreferenceRecord[]> => {
+  const recipient = adminRecipient === undefined ? await ensureAdminRecipient() : adminRecipient;
   if (!recipient) {
     return DEFAULT_CHANNEL_PREFERENCES.map((preference) =>
       toNotificationPreferenceRecord({

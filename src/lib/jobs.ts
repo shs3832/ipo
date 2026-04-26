@@ -1,6 +1,7 @@
 export {
   addAdminRecipientEmail,
   deleteAdminRecipientEmail,
+  ensureAdminRecipient,
   getAdminNotificationPreferences,
   getAdminRecipientEmailChannels,
   updateAdminNotificationPreference,

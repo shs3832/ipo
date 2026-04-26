@@ -7,7 +7,11 @@ import {
   updateAdminRecipientEmailAction,
 } from "@/app/admin/recipients/actions";
 import { WebPushManager } from "@/app/admin/recipients/web-push-manager";
-import { getAdminNotificationPreferences, getAdminRecipientEmailChannels } from "@/lib/jobs";
+import {
+  ensureAdminRecipient,
+  getAdminNotificationPreferences,
+  getAdminRecipientEmailChannels,
+} from "@/lib/jobs";
 import { ADMIN_HOME_PATH, ADMIN_RECIPIENTS_PATH } from "@/lib/admin-navigation";
 import { ensureAdminAuthenticated } from "@/lib/server/admin-surface";
 import { getAdminWebPushState } from "@/lib/server/web-push-service";
@@ -24,11 +28,14 @@ export default async function AdminRecipientsPage({
 }) {
   await ensureAdminAuthenticated(ADMIN_RECIPIENTS_PATH);
 
-  const [params, channels, preferences, webPushState] = await Promise.all([
+  const [params, adminRecipient] = await Promise.all([
     searchParams,
-    getAdminRecipientEmailChannels(),
-    getAdminNotificationPreferences(),
-    getAdminWebPushState(),
+    ensureAdminRecipient(),
+  ]);
+  const [channels, preferences, webPushState] = await Promise.all([
+    getAdminRecipientEmailChannels(adminRecipient),
+    getAdminNotificationPreferences(adminRecipient),
+    getAdminWebPushState(adminRecipient),
   ]);
   const status = params.status && feedbackStatus.has(params.status) ? params.status : null;
   const message = typeof params.message === "string" ? params.message : null;
