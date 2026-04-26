@@ -50,6 +50,7 @@
 - UX follow-up: 관리자 알림 채널 안내가 현재 발송 가능한 상태를 정확히 말하도록 바꿨다. 이메일 OFF + 앱푸시 ON + 구독 있음이면 앱푸시로 10시 자동 알림이 발송된다고 표시하고, 실제 발송 가능한 채널이 없을 때만 경고를 표시한다.
 - Message follow-up: 관리자 수신 채널 화면, 앱푸시 버튼/피드백, 테스트 푸시 본문, 발송 selection 로그의 문구를 “이 기기에서 다음 10시 자동 알림을 받을 수 있는지” 중심으로 정리했다. 메일 전용 표현은 채널 공통 알림 표현으로 바꿨다.
 - README follow-up: 루트 README의 프로젝트 요약, stack, admin 기능, notification pipeline, portfolio notes, command, runtime note를 현재 이메일/앱푸시 채널 구조와 관리자 앱푸시 운영 상태에 맞게 갱신했다.
+- Pending UX follow-up: `/admin/recipients`의 서버 액션 버튼과 앱푸시 API 버튼에 처리 중 문구와 스피너를 추가하고, 수신자 관리 페이지 이동/초기 렌더 중 전용 loading 화면을 보여 주도록 했다.
 
 ### Follow-up: Admin Notification Channel Toggle UI
 

@@ -17,6 +17,7 @@ type Feedback = {
 };
 
 type SupportStatus = "checking" | "supported" | "unsupported";
+type WorkingAction = "subscribe" | "test" | "unsubscribe" | null;
 
 const isIosBrowserTab = () => {
   const userAgent = window.navigator.userAgent;
@@ -74,9 +75,10 @@ export function WebPushManager({
   const router = useRouter();
   const [supportStatus, setSupportStatus] = useState<SupportStatus>("checking");
   const [isSubscribed, setIsSubscribed] = useState(initialSubscriptionCount > 0);
-  const [isWorking, setIsWorking] = useState(false);
+  const [workingAction, setWorkingAction] = useState<WorkingAction>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const isSupported = supportStatus === "supported";
+  const isWorking = workingAction !== null;
 
   const canSubscribe = useMemo(
     () => isSupported && isConfigured && Boolean(publicKey) && !isWorking,
@@ -138,7 +140,7 @@ export function WebPushManager({
       return;
     }
 
-    setIsWorking(true);
+    setWorkingAction("subscribe");
     setFeedback(null);
 
     try {
@@ -170,7 +172,7 @@ export function WebPushManager({
         message: error instanceof Error ? error.message : "이 기기를 앱푸시 수신 대상으로 저장하지 못했습니다.",
       });
     } finally {
-      setIsWorking(false);
+      setWorkingAction(null);
     }
   };
 
@@ -179,7 +181,7 @@ export function WebPushManager({
       return;
     }
 
-    setIsWorking(true);
+    setWorkingAction("unsubscribe");
     setFeedback(null);
 
     try {
@@ -208,7 +210,7 @@ export function WebPushManager({
         message: error instanceof Error ? error.message : "이 기기의 앱푸시 수신 해제에 실패했습니다.",
       });
     } finally {
-      setIsWorking(false);
+      setWorkingAction(null);
     }
   };
 
@@ -217,7 +219,7 @@ export function WebPushManager({
       return;
     }
 
-    setIsWorking(true);
+    setWorkingAction("test");
     setFeedback(null);
 
     try {
@@ -232,9 +234,16 @@ export function WebPushManager({
         message: error instanceof Error ? error.message : "테스트 앱푸시를 이 기기로 보내지 못했습니다.",
       });
     } finally {
-      setIsWorking(false);
+      setWorkingAction(null);
     }
   };
+
+  const renderButtonContent = (label: string, pendingLabel: string, action: WorkingAction) => (
+    <span className={styles.buttonInlineLoading}>
+      {workingAction === action ? <span aria-hidden="true" className={styles.buttonSpinner} /> : null}
+      <span>{workingAction === action ? pendingLabel : label}</span>
+    </span>
+  );
 
   return (
     <div className={styles.webPushPanel}>
@@ -253,7 +262,7 @@ export function WebPushManager({
           onClick={subscribe}
           type="button"
         >
-          이 기기 저장
+          {renderButtonContent("이 기기 저장", "저장 중...", "subscribe")}
         </button>
         <button
           className="button-secondary"
@@ -261,7 +270,7 @@ export function WebPushManager({
           onClick={sendTest}
           type="button"
         >
-          이 기기로 테스트
+          {renderButtonContent("이 기기로 테스트", "테스트 발송 중...", "test")}
         </button>
         <button
           className={styles.deleteButton}
@@ -269,9 +278,22 @@ export function WebPushManager({
           onClick={unsubscribe}
           type="button"
         >
-          이 기기 해제
+          {renderButtonContent("이 기기 해제", "해제 중...", "unsubscribe")}
         </button>
       </div>
+      {workingAction ? (
+        <p aria-live="polite" className={styles.pendingHint}>
+          {workingAction === "subscribe"
+            ? "브라우저 권한과 앱푸시 구독 정보를 확인해 이 기기를 수신 대상으로 저장하고 있습니다."
+            : null}
+          {workingAction === "test"
+            ? "저장된 앱푸시 구독으로 테스트 알림을 보내고 있습니다. 잠시만 기다려 주세요."
+            : null}
+          {workingAction === "unsubscribe"
+            ? "이 기기의 앱푸시 구독을 해제하고 서버의 수신 대상에서 제거하고 있습니다."
+            : null}
+        </p>
+      ) : null}
       {disabledReason ? (
         <p
           className={

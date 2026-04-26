@@ -6,6 +6,7 @@ import {
   updateAdminNotificationPreferenceAction,
   updateAdminRecipientEmailAction,
 } from "@/app/admin/recipients/actions";
+import { PendingSubmitButton } from "@/app/admin/recipients/pending-submit-button";
 import { WebPushManager } from "@/app/admin/recipients/web-push-manager";
 import {
   ensureAdminRecipient,
@@ -158,13 +159,11 @@ export default async function AdminRecipientsPage({
                       </div>
                       <p>{preference.description}</p>
                     </div>
-                    <button
-                      className="button-secondary"
+                    <PendingSubmitButton
                       disabled={!canToggle}
-                      type="submit"
-                    >
-                      {preference.isActive ? "끄기" : "켜기"}
-                    </button>
+                      label={preference.isActive ? "끄기" : "켜기"}
+                      pendingLabel={preference.isActive ? "끄는 중..." : "켜는 중..."}
+                    />
                   </form>
                 );
               })}
@@ -211,9 +210,12 @@ export default async function AdminRecipientsPage({
               <p className={styles.helper}>
                 중복 주소는 등록되지 않으며, 저장 후 다음 `dispatch-alerts` 실행부터 반영됩니다.
               </p>
-              <button className="button-primary" type="submit">
-                이메일 등록
-              </button>
+              <PendingSubmitButton
+                className="button-primary"
+                label="이메일 등록"
+                pendingHint="이메일을 발송 대상에 등록하고 있습니다. 완료되면 화면이 자동으로 갱신됩니다."
+                pendingLabel="등록 중..."
+              />
             </form>
           </article>
 
@@ -255,21 +257,21 @@ export default async function AdminRecipientsPage({
                           required
                           type="email"
                         />
-                        <button className="button-secondary" type="submit">
-                          수정
-                        </button>
+                        <PendingSubmitButton
+                          label="수정"
+                          pendingLabel="수정 중..."
+                        />
                       </div>
                     </form>
 
                     <form action={deleteAdminRecipientEmailAction} className={styles.deleteForm}>
                       <input name="channelId" type="hidden" value={channel.id} />
-                      <button
+                      <PendingSubmitButton
                         className={styles.deleteButton}
                         disabled={!canDelete}
-                        type="submit"
-                      >
-                        삭제
-                      </button>
+                        label="삭제"
+                        pendingLabel="삭제 중..."
+                      />
                       {!canDelete ? (
                         <p className={styles.deleteHint}>
                           마지막 발송 이메일은 삭제할 수 없습니다. 다른 주소를 먼저 추가하거나 수정해
