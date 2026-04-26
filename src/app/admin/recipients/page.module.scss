@@ -241,6 +241,14 @@
   color: #8f2c2c;
 }
 
+.preferenceInfo {
+  padding: 12px 14px;
+  border: 1px solid rgba(51, 179, 120, 0.22);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, rgba(51, 179, 120, 0.1) 56%, white);
+  color: #0f6b43;
+}
+
 .webPushPanel {
   display: flex;
   flex-direction: column;

@@ -41,7 +41,41 @@ export default async function AdminRecipientsPage({
   const message = typeof params.message === "string" ? params.message : null;
   const canDelete = channels.length > 1;
   const emailPreference = preferences.find((preference) => preference.channelType === "EMAIL");
-  const activePreferenceCount = preferences.filter((preference) => preference.isActive).length;
+  const webPushPreference = preferences.find((preference) => preference.channelType === "WEB_PUSH");
+  const isEmailDeliveryActive = Boolean(emailPreference?.isActive);
+  const isWebPushDeliveryActive = Boolean(
+    webPushPreference?.isActive
+      && webPushState.isConfigured
+      && webPushState.subscriptionCount > 0,
+  );
+  const notificationStatus = (() => {
+    if (!isEmailDeliveryActive && !isWebPushDeliveryActive) {
+      return {
+        tone: "warning" as const,
+        message:
+          "켜진 발송 채널이 없습니다. 이메일을 켜거나 앱푸시 구독 저장 후 앱푸시를 켜야 다음 10시 자동 알림이 발송됩니다.",
+      };
+    }
+
+    if (!isEmailDeliveryActive && isWebPushDeliveryActive) {
+      return {
+        tone: "info" as const,
+        message: `이메일 채널은 꺼져 있고, 다음 10시 자동 알림은 앱푸시 구독 ${webPushState.subscriptionCount}개로 발송됩니다.`,
+      };
+    }
+
+    if (isEmailDeliveryActive && isWebPushDeliveryActive) {
+      return {
+        tone: "info" as const,
+        message: `이메일과 앱푸시가 모두 켜져 있어 다음 10시 자동 알림은 이메일과 앱푸시 구독 ${webPushState.subscriptionCount}개로 함께 발송됩니다.`,
+      };
+    }
+
+    return {
+      tone: "info" as const,
+      message: "앱푸시 채널은 꺼져 있고, 다음 10시 자동 알림은 이메일로 발송됩니다.",
+    };
+  })();
 
   return (
     <main className="page-shell">
@@ -136,17 +170,15 @@ export default async function AdminRecipientsPage({
               })}
             </div>
 
-            {!emailPreference?.isActive ? (
-              <p className={styles.preferenceWarning}>
-                이메일 채널이 꺼져 있습니다. 앱푸시 발송이 연결되기 전까지는 실제 자동 알림이
-                발송되지 않습니다.
-              </p>
-            ) : null}
-            {activePreferenceCount === 0 ? (
-              <p className={styles.preferenceWarning}>
-                켜진 알림 채널이 없어 다음 dispatch 실행에서 발송 대상이 없습니다.
-              </p>
-            ) : null}
+            <p
+              className={
+                notificationStatus.tone === "warning"
+                  ? styles.preferenceWarning
+                  : styles.preferenceInfo
+              }
+            >
+              {notificationStatus.message}
+            </p>
 
             <WebPushManager
               initialSubscriptionCount={webPushState.subscriptionCount}

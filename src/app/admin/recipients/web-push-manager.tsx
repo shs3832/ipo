@@ -16,6 +16,18 @@ type Feedback = {
   message: string;
 };
 
+type SupportStatus = "checking" | "supported" | "unsupported";
+
+const isIosBrowserTab = () => {
+  const userAgent = window.navigator.userAgent;
+  const isIosDevice = /iPad|iPhone|iPod/.test(userAgent)
+    || (userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+    || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+
+  return isIosDevice && !isStandalone;
+};
+
 const urlBase64ToUint8Array = (base64String: string) => {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
@@ -60,22 +72,50 @@ export function WebPushManager({
   initialSubscriptionCount,
 }: WebPushManagerProps) {
   const router = useRouter();
-  const [isSupported, setIsSupported] = useState(false);
+  const [supportStatus, setSupportStatus] = useState<SupportStatus>("checking");
   const [isSubscribed, setIsSubscribed] = useState(initialSubscriptionCount > 0);
   const [isWorking, setIsWorking] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const isSupported = supportStatus === "supported";
 
   const canSubscribe = useMemo(
     () => isSupported && isConfigured && Boolean(publicKey) && !isWorking,
     [isConfigured, isSupported, isWorking, publicKey],
   );
 
+  const disabledReason = useMemo(() => {
+    if (supportStatus === "checking") {
+      return "브라우저 Web Push 지원 여부를 확인하고 있습니다.";
+    }
+
+    if (!isSupported) {
+      return isIosBrowserTab()
+        ? "iPhone/iPad Safari 탭에서는 Web Push를 받을 수 없습니다. 공유 버튼에서 홈 화면에 추가한 뒤, 홈 화면 앱으로 열어 주세요."
+        : "이 브라우저는 Web Push를 지원하지 않습니다.";
+    }
+
+    if (!isConfigured || !publicKey) {
+      return "VAPID 환경변수 설정이 없어 앱푸시 구독을 저장할 수 없습니다.";
+    }
+
+    if (isSubscribed) {
+      return "현재 브라우저의 Web Push 구독이 저장되어 있습니다.";
+    }
+
+    return null;
+  }, [isConfigured, isSubscribed, isSupported, publicKey, supportStatus]);
+
   useEffect(() => {
     const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-    setIsSupported(supported);
+    setSupportStatus(supported ? "supported" : "unsupported");
 
     if (!supported) {
-      setFeedback({ tone: "info", message: "이 브라우저는 Web Push를 지원하지 않습니다." });
+      setFeedback({
+        tone: "info",
+        message: isIosBrowserTab()
+          ? "iPhone/iPad Safari 탭에서는 Web Push를 받을 수 없습니다. 홈 화면에 추가한 PWA에서 다시 열어 주세요."
+          : "이 브라우저는 Web Push를 지원하지 않습니다.",
+      });
       return;
     }
 
@@ -92,6 +132,9 @@ export function WebPushManager({
 
   const subscribe = async () => {
     if (!canSubscribe) {
+      if (disabledReason) {
+        setFeedback({ tone: "info", message: disabledReason });
+      }
       return;
     }
 
@@ -201,28 +244,34 @@ export function WebPushManager({
           onClick={subscribe}
           type="button"
         >
-          구독
+          구독 저장
         </button>
         <button
           className="button-secondary"
-          disabled={!isSupported || !isSubscribed || isWorking}
+          disabled={supportStatus === "checking" || !isSupported || !isSubscribed || isWorking}
           onClick={sendTest}
           type="button"
         >
-          테스트
+          테스트 발송
         </button>
         <button
           className={styles.deleteButton}
-          disabled={!isSupported || !isSubscribed || isWorking}
+          disabled={supportStatus === "checking" || !isSupported || !isSubscribed || isWorking}
           onClick={unsubscribe}
           type="button"
         >
           해제
         </button>
       </div>
-      {!isConfigured ? (
-        <p className={styles.preferenceWarning}>
-          VAPID 환경변수 설정이 없어 앱푸시 구독을 저장할 수 없습니다.
+      {disabledReason ? (
+        <p
+          className={
+            !isSupported || !isConfigured || !publicKey
+              ? styles.preferenceWarning
+              : styles.webPushFeedback
+          }
+        >
+          {disabledReason}
         </p>
       ) : null}
       {feedback ? (
