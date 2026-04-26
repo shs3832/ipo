@@ -41,9 +41,12 @@
 - 기존 recipient에 `NotificationPreference` row가 아직 없어도 `EMAIL`은 on으로 해석해 기존 메일 발송을 유지한다.
 - `WEB_PUSH` 채널 타입, PWA manifest/service worker, 관리자 구독 저장 API, 테스트 푸시 API가 연결됐다.
 - 현재 dispatch는 verified `EMAIL` / `WEB_PUSH` 채널 중 preference가 켜진 채널만 발송 대상으로 본다.
-- `/admin/recipients`에서 이메일 채널 on/off를 조작할 수 있고, 앱푸시는 현재 브라우저 구독 저장/해제/테스트 발송을 할 수 있다.
+- `/admin/recipients`에서 이메일 채널 on/off를 조작할 수 있고, 앱푸시는 현재 기기 구독 저장/해제/테스트 발송을 할 수 있다.
+- `/admin/recipients`의 채널 변경, 이메일 CRUD, 앱푸시 저장/테스트/해제는 pending 문구와 스피너를 표시한다.
 - Web Push가 `404` / `410`으로 실패하면 만료된 subscription으로 보고 해당 `WEB_PUSH` 채널을 unverified 처리한다.
 - iOS/iPadOS에서는 홈 화면에 추가된 PWA에서만 앱푸시 수신을 기대할 수 있다.
+- 푸시 알림 클릭 시 이미 열린 앱 창이 있으면 `public/sw.js`가 `IPO_NOTIFICATION_NAVIGATE` 메시지를 보내고, 앱 루트의 `NotificationNavigationBridge`가 이동 오버레이를 표시한 뒤 대상 URL로 이동한다.
+- 열린 앱 창이 없으면 `clients.openWindow(targetUrl)`로 열리며, 새 창/콜드 스타트 구간은 전역 `src/app/loading.tsx`가 담당한다.
 
 ## Important Scheduling Notes
 
