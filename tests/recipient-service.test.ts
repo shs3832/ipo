@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getPrimaryRecipientChannelRepairId,
+  isNotificationChannelEnabled,
   toResolvedAlertRecipientRecord,
 } from "@/lib/server/recipient-service";
 
@@ -60,4 +61,52 @@ test("toResolvedAlertRecipientRecord keeps only verified email channels for disp
       isVerified: true,
     },
   ]);
+});
+
+test("toResolvedAlertRecipientRecord respects disabled email notification preference", () => {
+  const recipient = toResolvedAlertRecipientRecord({
+    id: "recipient-1",
+    name: "관리자",
+    status: "ACTIVE",
+    inviteState: "INTERNAL",
+    consentedAt: null,
+    unsubscribedAt: null,
+    notificationPreferences: [
+      {
+        alertType: "CLOSING_DAY_ANALYSIS",
+        channelType: "EMAIL",
+        isActive: false,
+      },
+    ],
+    channels: [
+      {
+        id: "email-1",
+        type: "EMAIL",
+        address: "alerts@example.com",
+        isPrimary: true,
+        isVerified: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(recipient.channels, []);
+});
+
+test("isNotificationChannelEnabled defaults existing email recipients to enabled", () => {
+  assert.equal(
+    isNotificationChannelEnabled({
+      alertType: "CLOSING_DAY_ANALYSIS",
+      channelType: "EMAIL",
+      preferences: [],
+    }),
+    true,
+  );
+  assert.equal(
+    isNotificationChannelEnabled({
+      alertType: "CLOSING_DAY_ANALYSIS",
+      channelType: "WEB_PUSH",
+      preferences: [],
+    }),
+    false,
+  );
 });

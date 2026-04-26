@@ -21,6 +21,7 @@
     "job:prepare-closing-alerts": "tsx scripts/prepare-closing-alerts.ts",
     "job:dispatch-closing-alerts": "tsx scripts/dispatch-closing-alerts.ts",
     "mail:sample": "tsx scripts/send-sample-email.ts",
+    "web-push:generate-keys": "web-push generate-vapid-keys",
     "source:check:opendart": "tsx scripts/check-opendart.ts"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
     "pdfjs-dist": "^5.5.207",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -39,11 +41,15 @@
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "prisma": "6.19.3",
     "sass": "^1.98.0",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
   }
 }

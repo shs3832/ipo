@@ -34,6 +34,17 @@
 5. alert payload preparation
 6. recipient resolve + delivery
 
+## Notification Channel Preferences
+
+- 알림 수신 여부는 `Subscription`이 담당하고, 채널별 on/off는 `NotificationPreference`가 담당한다.
+- 현재 기본값은 `CLOSING_DAY_ANALYSIS` 기준 `EMAIL on`, `WEB_PUSH off`다.
+- 기존 recipient에 `NotificationPreference` row가 아직 없어도 `EMAIL`은 on으로 해석해 기존 메일 발송을 유지한다.
+- `WEB_PUSH` 채널 타입, PWA manifest/service worker, 관리자 구독 저장 API, 테스트 푸시 API가 연결됐다.
+- 현재 dispatch는 verified `EMAIL` / `WEB_PUSH` 채널 중 preference가 켜진 채널만 발송 대상으로 본다.
+- `/admin/recipients`에서 이메일 채널 on/off를 조작할 수 있고, 앱푸시는 현재 브라우저 구독 저장/해제/테스트 발송을 할 수 있다.
+- Web Push가 `404` / `410`으로 실패하면 만료된 subscription으로 보고 해당 `WEB_PUSH` 채널을 unverified 처리한다.
+- iOS/iPadOS에서는 홈 화면에 추가된 PWA에서만 앱푸시 수신을 기대할 수 있다.
+
 ## Important Scheduling Notes
 
 - `daily-sync` 기본 실행: `06:00 KST`
@@ -105,6 +116,7 @@
 - `DATABASE_URL`
 - `APP_BASE_URL`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 - `IPO_SOURCE_URL`
 - `OPENDART_API_KEY`
 - `SEIBRO_SERVICE_KEY`

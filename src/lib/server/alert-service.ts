@@ -39,7 +39,13 @@ import {
   resolveAlertRecipients,
 } from "@/lib/server/recipient-service";
 import { runDailySync } from "@/lib/server/ipo-sync-service";
+import {
+  buildWebPushPayloadFromJob,
+  parseWebPushSubscriptionMetadata,
+  sendWebPushNotification,
+} from "@/lib/server/web-push-service";
 import type {
+  ChannelType,
   DispatchResult,
   IpoRecord,
   NotificationDeliveryRecord,
@@ -57,6 +63,15 @@ const DELIVERY_PENDING_STALE_MS = 15 * 60 * 1000;
 let inFlightAlertSourceRefresh: Promise<void> | null = null;
 
 type DailySyncLogAction = "started" | "completed" | "failed";
+
+const isExpiredWebPushSubscriptionError = (error: unknown) => {
+  if (!error || typeof error !== "object" || !("statusCode" in error)) {
+    return false;
+  }
+
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return statusCode === 404 || statusCode === 410;
+};
 
 type DailySyncLogEvent = {
   action: DailySyncLogAction;
@@ -386,6 +401,11 @@ export const buildDispatchSelectionSummary = ({
       .filter((channel) => channel.type === "EMAIL")
       .map((channel) => channel.address),
   );
+  const recipientWebPushCount = recipients.reduce(
+    (count, recipient) =>
+      count + recipient.channels.filter((channel) => channel.type === "WEB_PUSH").length,
+    0,
+  );
 
   return {
     preparedJobCount: preparedJobs.length,
@@ -396,6 +416,7 @@ export const buildDispatchSelectionSummary = ({
     staleJobCount: staleJobs.length,
     recipientCount: recipients.length,
     recipientEmailCount: recipientEmailAddresses.length,
+    recipientWebPushCount,
     recipientEmailAddresses,
     dueJobs: dueJobs.map(toJobLogPreview),
     dispatchableJobs: dispatchableJobs.map(toJobLogPreview),
@@ -938,12 +959,14 @@ const toNotificationDeliveryRecord = (delivery: {
 const claimNotificationDelivery = async ({
   jobId,
   recipientId,
+  channelType,
   channelAddress,
   idempotencyKey,
   now,
 }: {
   jobId: string;
   recipientId: string;
+  channelType: ChannelType;
   channelAddress: string;
   idempotencyKey: string;
   now: Date;
@@ -953,7 +976,7 @@ const claimNotificationDelivery = async ({
       data: {
         jobId,
         recipientId,
-        channelType: "EMAIL",
+        channelType,
         channelAddress,
         status: "PENDING",
         idempotencyKey,
@@ -1052,7 +1075,7 @@ const claimNotificationDelivery = async ({
 };
 
 const MISSING_VERIFIED_RECIPIENT_ERROR =
-  "발송할 verified 이메일이 없습니다. /admin/recipients에서 최소 1개를 등록해 주세요.";
+  "발송할 verified 알림 채널이 없습니다. /admin/recipients에서 이메일 또는 앱푸시 채널을 설정해 주세요.";
 
 export const buildPreparedJobsForCandidates = (
   candidates: AlertCandidateAssessment[],
@@ -1411,16 +1434,23 @@ const dispatchPreparedAlerts = async ({
 
       for (const recipient of recipients) {
         for (const channel of recipient.channels) {
-          if (channel.type !== "EMAIL") {
+          if (channel.type !== "EMAIL" && channel.type !== "WEB_PUSH") {
             continue;
           }
 
-          const idempotencyKey = createDeliveryIdempotencyKey(job.idempotencyKey, recipient.id, channel.address);
+          const channelType = channel.type;
+          const idempotencyKey = createDeliveryIdempotencyKey(
+            job.idempotencyKey,
+            recipient.id,
+            channel.address,
+            channelType,
+          );
 
           if (useDatabase) {
             const claim = await claimNotificationDelivery({
               jobId: job.id,
               recipientId: recipient.id,
+              channelType,
               channelAddress: channel.address,
               idempotencyKey,
               now,
@@ -1443,7 +1473,19 @@ const dispatchPreparedAlerts = async ({
           }
 
           try {
-            const response = await sendEmail(channel.address, job.payload);
+            const response =
+              channelType === "EMAIL"
+                ? await sendEmail(channel.address, job.payload)
+                : await sendWebPushNotification({
+                    subscription: (() => {
+                      const subscription = parseWebPushSubscriptionMetadata(channel.metadata);
+                      if (!subscription) {
+                        throw new Error("저장된 Web Push 구독 정보가 올바르지 않습니다.");
+                      }
+                      return subscription;
+                    })(),
+                    payload: buildWebPushPayloadFromJob(job),
+                  });
             const sentAt = new Date();
 
             if (useDatabase) {
@@ -1458,7 +1500,7 @@ const dispatchPreparedAlerts = async ({
                 create: {
                   jobId: job.id,
                   recipientId: recipient.id,
-                  channelType: "EMAIL",
+                  channelType,
                   channelAddress: channel.address,
                   status: "SENT",
                   providerMessageId: response.providerMessageId,
@@ -1473,7 +1515,7 @@ const dispatchPreparedAlerts = async ({
                 id: `delivery-${recipient.id}-${job.id}`,
                 jobId: job.id,
                 recipientId: recipient.id,
-                channelType: "EMAIL",
+                channelType,
                 channelAddress: channel.address,
                 status: "SENT",
                 providerMessageId: response.providerMessageId,
@@ -1488,14 +1530,25 @@ const dispatchPreparedAlerts = async ({
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown delivery failure";
 
+            if (useDatabase && channelType === "WEB_PUSH" && isExpiredWebPushSubscriptionError(error)) {
+              await prisma.recipientChannel.update({
+                where: { id: channel.id },
+                data: {
+                  isVerified: false,
+                  metadata: Prisma.JsonNull,
+                },
+              });
+            }
+
             await logOperation({
               level: "ERROR",
               source,
               action: "delivery_failed",
-              message: "메일 발송에 실패했습니다.",
+              message: `${channelType === "EMAIL" ? "메일" : "앱푸시"} 발송에 실패했습니다.`,
               context: toErrorContext(error, {
                 jobId: job.id,
                 recipientId: recipient.id,
+                channelType,
                 channelAddress: channel.address,
               }),
             });
@@ -1510,7 +1563,7 @@ const dispatchPreparedAlerts = async ({
                 create: {
                   jobId: job.id,
                   recipientId: recipient.id,
-                  channelType: "EMAIL",
+                  channelType,
                   channelAddress: channel.address,
                   status: "FAILED",
                   errorMessage: message,
@@ -1524,7 +1577,7 @@ const dispatchPreparedAlerts = async ({
                 id: `delivery-failed-${recipient.id}-${job.id}`,
                 jobId: job.id,
                 recipientId: recipient.id,
-                channelType: "EMAIL",
+                channelType,
                 channelAddress: channel.address,
                 status: "FAILED",
                 providerMessageId: null,
@@ -1601,13 +1654,13 @@ const dispatchPreparedAlerts = async ({
 export const dispatchAlerts = async (): Promise<DispatchResult> =>
   dispatchPreparedAlerts({
     source: "job:dispatch-alerts",
-    selectionLabel: "10시 분석 메일",
-    startedMessage: "10시 분석 메일 발송을 시작했습니다.",
+    selectionLabel: "10시 분석 알림",
+    startedMessage: "10시 분석 알림 발송을 시작했습니다.",
     completionMessage: ({ attempted, sentCount, failedCount, skippedCount }) =>
       attempted === 0
-        ? "10시 분석 메일 발송 대상이 없어 실제 메일은 보내지 않았습니다."
-        : `10시 분석 메일 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
-    failureMessage: "10시 분석 메일 발송 작업이 실패했습니다.",
+        ? "10시 분석 알림 발송 대상이 없어 실제 알림은 보내지 않았습니다."
+        : `10시 분석 알림 발송을 마쳤습니다. 신규 발송 ${sentCount}건, 실패 ${failedCount}건, 중복 건너뜀 ${skippedCount}건입니다.`,
+    failureMessage: "10시 분석 알림 발송 작업이 실패했습니다.",
     prepare: prepareDailyAlerts,
     loadPersistedJobs: async (now) =>
       getPersistedJobsByIdempotencySuffix(":closing-day-analysis", {

@@ -3,11 +3,14 @@ import Link from "next/link";
 import {
   addAdminRecipientEmailAction,
   deleteAdminRecipientEmailAction,
+  updateAdminNotificationPreferenceAction,
   updateAdminRecipientEmailAction,
 } from "@/app/admin/recipients/actions";
-import { getAdminRecipientEmailChannels } from "@/lib/jobs";
+import { WebPushManager } from "@/app/admin/recipients/web-push-manager";
+import { getAdminNotificationPreferences, getAdminRecipientEmailChannels } from "@/lib/jobs";
 import { ADMIN_HOME_PATH, ADMIN_RECIPIENTS_PATH } from "@/lib/admin-navigation";
 import { ensureAdminAuthenticated } from "@/lib/server/admin-surface";
+import { getAdminWebPushState } from "@/lib/server/web-push-service";
 import styles from "@/app/admin/recipients/page.module.scss";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +24,17 @@ export default async function AdminRecipientsPage({
 }) {
   await ensureAdminAuthenticated(ADMIN_RECIPIENTS_PATH);
 
-  const [params, channels] = await Promise.all([searchParams, getAdminRecipientEmailChannels()]);
+  const [params, channels, preferences, webPushState] = await Promise.all([
+    searchParams,
+    getAdminRecipientEmailChannels(),
+    getAdminNotificationPreferences(),
+    getAdminWebPushState(),
+  ]);
   const status = params.status && feedbackStatus.has(params.status) ? params.status : null;
   const message = typeof params.message === "string" ? params.message : null;
   const canDelete = channels.length > 1;
+  const emailPreference = preferences.find((preference) => preference.channelType === "EMAIL");
+  const activePreferenceCount = preferences.filter((preference) => preference.isActive).length;
 
   return (
     <main className="page-shell">
@@ -48,7 +58,7 @@ export default async function AdminRecipientsPage({
               <span className={styles.metricLabel}>등록된 발송 이메일</span>
               <strong className={styles.metricValue}>{channels.length}</strong>
               <p className={styles.metricCopy}>
-                최소 1개의 발송 이메일은 유지되며, 등록한 주소는 다음 발송 잡부터 바로 사용됩니다.
+                이메일 채널이 켜져 있으면 등록한 verified 주소가 다음 발송 잡부터 사용됩니다.
               </p>
             </article>
 
@@ -71,6 +81,73 @@ export default async function AdminRecipientsPage({
         ) : null}
 
         <section className={styles.grid}>
+          <article className={`${styles.card} ${styles.preferenceCard}`}>
+            <div className={styles.cardHeader}>
+              <h2 className="section-title">알림 채널 설정</h2>
+              <p className="section-copy">
+                10시 분석 알림을 어떤 채널로 보낼지 선택합니다.
+              </p>
+            </div>
+
+            <div className={styles.preferenceList}>
+              {preferences.map((preference) => {
+                const canToggle = preference.isAvailable;
+                const nextValue = !preference.isActive;
+
+                return (
+                  <form
+                    action={updateAdminNotificationPreferenceAction}
+                    className={`${styles.preferenceRow} ${
+                      preference.isActive ? styles.preferenceRowActive : ""
+                    }`}
+                    key={preference.channelType}
+                  >
+                    <input name="channelType" type="hidden" value={preference.channelType} />
+                    <input name="isActive" type="hidden" value={String(nextValue)} />
+                    <div>
+                      <div className={styles.preferenceTitleRow}>
+                        <strong>{preference.label}</strong>
+                        <span
+                          className={`${styles.preferenceBadge} ${
+                            preference.isActive ? styles.preferenceBadgeOn : ""
+                          }`}
+                        >
+                          {preference.isActive ? "ON" : "OFF"}
+                        </span>
+                      </div>
+                      <p>{preference.description}</p>
+                    </div>
+                    <button
+                      className="button-secondary"
+                      disabled={!canToggle}
+                      type="submit"
+                    >
+                      {preference.isActive ? "끄기" : "켜기"}
+                    </button>
+                  </form>
+                );
+              })}
+            </div>
+
+            {!emailPreference?.isActive ? (
+              <p className={styles.preferenceWarning}>
+                이메일 채널이 꺼져 있습니다. 앱푸시 발송이 연결되기 전까지는 실제 자동 알림이
+                발송되지 않습니다.
+              </p>
+            ) : null}
+            {activePreferenceCount === 0 ? (
+              <p className={styles.preferenceWarning}>
+                켜진 알림 채널이 없어 다음 dispatch 실행에서 발송 대상이 없습니다.
+              </p>
+            ) : null}
+
+            <WebPushManager
+              initialSubscriptionCount={webPushState.subscriptionCount}
+              isConfigured={webPushState.isConfigured}
+              publicKey={webPushState.publicKey}
+            />
+          </article>
+
           <article className={styles.card}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">새 이메일 등록</h2>

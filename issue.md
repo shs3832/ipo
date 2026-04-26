@@ -2,6 +2,88 @@
 
 ## 2026-04-26
 
+### Follow-up: PWA Web Push End-To-End
+
+이번 후속에서는 기존 이메일 알림을 유지하면서 앱푸시를 실제로 받을 수 있도록 PWA/Web Push 경로를 end-to-end로 연결했다. 관리자 수신자 기준으로 시작하며, public 로그인/개인화 페이지 없이도 `/admin/recipients`에서 현재 브라우저 앱푸시 구독 저장, 해제, 테스트 발송을 할 수 있다.
+
+### What Changed In This Web Push Follow-up
+
+1. `web-push`와 타입 패키지를 추가하고 VAPID env(`NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`)를 `env`와 `.env.example`에 반영했다.
+2. `app/manifest.ts`, `public/sw.js`, PWA icon/badge asset을 추가해 설치형 웹앱과 push notification click handling 기반을 만들었다.
+3. 관리자 전용 Web Push API를 추가했다.
+   - `/api/admin/web-push/subscribe`
+   - `/api/admin/web-push/unsubscribe`
+   - `/api/admin/web-push/send-test`
+4. `RecipientChannel(type=WEB_PUSH)`에 브라우저 push endpoint와 keys를 저장하고, 구독 저장 시 `WEB_PUSH` preference를 active로 바꾼다.
+5. `/admin/recipients`에 클라이언트 Web Push manager를 추가해 service worker 등록, 브라우저 권한 요청, 구독 저장/해제, 테스트 발송을 처리한다.
+6. 실제 `dispatch-alerts`는 이제 preference가 켜진 verified `EMAIL` / `WEB_PUSH` 채널을 모두 발송 대상으로 본다.
+7. Web Push 발송 실패 중 `404` / `410`은 만료된 구독으로 보고 해당 push 채널을 unverified 처리한다.
+
+### Operational Notes In This Web Push Follow-up
+
+- Web Push는 HTTPS 또는 localhost 보안 컨텍스트, 브라우저 알림 권한, VAPID env가 필요하다.
+- iOS/iPadOS는 홈 화면에 추가된 PWA에서만 앱푸시 수신을 기대할 수 있다.
+- 기존 이메일 채널은 preference가 꺼지지 않는 한 기존처럼 발송된다.
+- 이번 migration은 현재 `DATABASE_URL` 대상 DB에 `npx prisma migrate deploy`로 적용했다.
+
+### Verification In This Web Push Follow-up
+
+- `npx prisma validate`
+- `npm test`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `npm audit --audit-level=moderate`
+  - `postcss@8.5.10` override 후 취약점 `0건`
+- Playwright smoke
+  - `/admin/recipients` 미인증 접근 시 `/login?next=%2Fadmin%2Frecipients` 리다이렉트 확인
+  - migration 적용 전 `NotificationPreference` 테이블 누락을 확인하고 `npx prisma migrate deploy`로 해결
+- `node --test`가 API 경로의 `/test/route.ts`를 테스트 파일처럼 발견하지 않도록 테스트 발송 API 경로를 `/send-test`로 조정
+- Code review 후속으로 `/api/admin/web-push/send-test`가 모든 구독 발송 실패 시 HTTP 500과 `ok: false`를 반환하게 했고, 관리자 클라이언트도 응답 body의 `ok: false`를 실패로 처리하게 했다.
+- Review fix verification
+  - `npm test -- tests/recipient-service.test.ts tests/alert-service.test.ts`
+  - `npx tsc --noEmit`
+  - `npm run lint`
+  - `npm run build`
+  - `npm audit --audit-level=moderate`
+
+### Follow-up: Admin Notification Channel Toggle UI
+
+이번 후속에서는 앞서 추가한 채널 preference 기반을 관리자 수신자 화면에서 실제로 확인하고 조작할 수 있게 했다. 기존 이메일 발송은 유지하되, `/admin/recipients`에서 10시 분석 알림의 이메일 채널을 on/off 할 수 있게 했다. 이후 Web Push 후속에서 앱푸시 구독/테스트/발송까지 연결했다.
+
+### What Changed In This Admin Toggle Follow-up
+
+1. 관리자 수신자 화면에 `알림 채널 설정` 카드를 추가했다.
+2. 이메일 채널은 현재 상태를 보여 주고 `켜기` / `끄기` 버튼으로 `NotificationPreference`를 갱신할 수 있게 했다.
+3. 앱푸시 채널은 future preference 항목으로 먼저 표시했고, 이후 Web Push 후속에서 구독 저장 후 활성화할 수 있게 했다.
+4. 이메일 채널을 끈 경우 앱푸시 발송 연결 전에는 실제 자동 알림이 없다는 경고 문구를 표시한다.
+5. 채널 preference 변경 server action과 운영 로그 기록을 추가했다.
+
+### Verification In This Admin Toggle Follow-up
+
+- `npm test -- tests/recipient-service.test.ts`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+
+### Follow-up: Notification Channel Preference Foundation
+
+이번 후속에서는 기존 10시 분석 메일 발송을 유지하면서, 이후 앱푸시를 같은 알림 구조에 붙일 수 있도록 채널별 알림 preference 기반을 먼저 추가했다. 실제 Web Push 구독/발송은 아직 연결하지 않고, 1차 범위는 데이터 모델과 dispatch 대상 산정 조건에 한정했다.
+
+### What Changed In This Notification Follow-up
+
+1. Prisma `ChannelType`에 `WEB_PUSH`를 추가했다.
+2. `NotificationPreference` 모델과 migration을 추가해 `recipientId + alertType + channelType` 단위의 on/off 상태를 저장할 수 있게 했다.
+3. 관리자 기본 recipient 생성 시 `CLOSING_DAY_ANALYSIS` 기준 `EMAIL on`, `WEB_PUSH off` preference를 보장하도록 했다.
+4. 기존 이메일 발송 대상 산정은 verified `EMAIL` 채널이면서 이메일 preference가 켜진 경우만 통과하도록 바꿨다.
+5. 기존 recipient에 preference row가 아직 없더라도 이메일은 기본 on으로 해석해 기존 메일 발송 동작이 유지되게 했다.
+
+### Verification In This Notification Follow-up
+
+- `npx prisma validate`
+- `npm test -- tests/recipient-service.test.ts`
+- `npx tsc --noEmit`
+
 ### Follow-up: Implementation TODO Split
 
 이번 후속에서는 코드 변경 없이 앞으로 구현할 후보를 `issue.md` 변경 로그에서 분리해 루트 `TODO.md`로 정리했다. `issue.md`는 최근 스레드 기록으로 유지하고, `TODO.md`는 active / parked / done enough 상태를 기준으로 점수 재오픈, 캘린더 주말 열 복구, closing-soon 알림, major dependency upgrade, DB migration, README/포트폴리오 설명 보강 항목의 현재 판단과 재오픈 조건을 관리한다.

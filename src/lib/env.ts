@@ -41,6 +41,9 @@ export const env = {
   smtpUser: process.env.SMTP_USER ?? "",
   smtpPass: process.env.SMTP_PASS ?? "",
   smtpFrom: process.env.SMTP_FROM ?? "IPO Calendar <alerts@example.com>",
+  vapidPublicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+  vapidSubject: process.env.VAPID_SUBJECT ?? `mailto:${process.env.ADMIN_EMAIL ?? "admin@example.com"}`,
   ipoSourceUrl: parseIpoSourceUrl(process.env.IPO_SOURCE_URL),
   opendartApiKey: process.env.OPENDART_API_KEY ?? "",
   opendartBaseUrl: process.env.OPENDART_BASE_URL ?? "https://opendart.fss.or.kr",
@@ -51,3 +54,5 @@ export const env = {
 export const isDatabaseEnabled = () => Boolean(env.databaseUrl);
 export const isEmailConfigured = () =>
   Boolean(env.smtpHost && env.smtpUser && env.smtpPass && env.smtpFrom);
+export const isWebPushConfigured = () =>
+  Boolean(env.vapidPublicKey && env.vapidPrivateKey && env.vapidSubject);

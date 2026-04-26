@@ -21,6 +21,7 @@
 .form,
 .list,
 .row,
+.preferenceList,
 .inlineForm {
   display: flex;
   flex-direction: column;
@@ -73,7 +74,9 @@
 .metricCopy,
 .helper,
 .row p,
-.deleteHint {
+.deleteHint,
+.preferenceRow p,
+.preferenceWarning {
   color: var(--text-secondary);
   line-height: 1.65;
 }
@@ -105,11 +108,15 @@
 .grid {
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 360px) minmax(280px, 360px) minmax(0, 1fr);
 }
 
 .card {
   gap: 18px;
+}
+
+.preferenceCard {
+  min-width: 0;
 }
 
 .cardHeader {
@@ -143,7 +150,12 @@
   gap: 12px;
 }
 
+.preferenceList {
+  gap: 12px;
+}
+
 .row,
+.preferenceRow,
 .emptyState {
   @include softSurface(14px, var(--radius-lg));
 
@@ -164,6 +176,23 @@
   gap: 12px;
 }
 
+.preferenceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.preferenceRowActive {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
+}
+
+.preferenceTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .rowHead > div {
   min-width: 0;
 }
@@ -176,7 +205,8 @@
   word-break: break-word;
 }
 
-.channelBadge {
+.channelBadge,
+.preferenceBadge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -189,6 +219,65 @@
   font-weight: 800;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.preferenceBadge {
+  min-height: 28px;
+  padding: 0 10px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.preferenceBadgeOn {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.preferenceWarning {
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 90, 90, 0.22);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, rgba(226, 90, 90, 0.1) 56%, white);
+  color: #8f2c2c;
+}
+
+.webPushPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.webPushPanel strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.webPushPanel p,
+.webPushFeedback {
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.webPushActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.webPushFeedback {
+  padding: 12px 14px;
+  border: 1px solid rgba(51, 179, 120, 0.22);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, rgba(51, 179, 120, 0.1) 56%, white);
+  color: #0f6b43;
+}
+
+.webPushFeedbackError {
+  border-color: rgba(226, 90, 90, 0.22);
+  background: color-mix(in srgb, rgba(226, 90, 90, 0.1) 56%, white);
+  color: #8f2c2c;
 }
 
 .inlineActions {
@@ -259,6 +348,10 @@
     grid-template-columns: 1fr;
   }
 
+  .preferenceRow {
+    grid-template-columns: 1fr;
+  }
+
   .input {
     min-height: 50px;
   }
@@ -268,7 +361,8 @@
   }
 
   .deleteForm,
-  .deleteButton {
+  .deleteButton,
+  .webPushActions > * {
     width: 100%;
   }
 
@@ -289,13 +383,15 @@
   }
 
   .row,
+  .preferenceRow,
   .emptyState {
     padding: 12px;
     border-radius: var(--radius-md);
   }
 
   .grid,
-  .list {
+  .list,
+  .preferenceList {
     gap: 12px;
   }
 

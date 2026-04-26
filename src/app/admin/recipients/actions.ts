@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   addAdminRecipientEmail,
   deleteAdminRecipientEmail,
+  updateAdminNotificationPreference,
   updateAdminRecipientEmail,
 } from "@/lib/jobs";
 import { ADMIN_RECIPIENTS_PATH } from "@/lib/admin-navigation";
@@ -20,6 +21,8 @@ const emailSchema = z
   .transform((value) => value.toLowerCase());
 
 const channelIdSchema = z.string().trim().min(1, "대상 이메일을 찾지 못했습니다.");
+const notificationChannelSchema = z.enum(["EMAIL", "WEB_PUSH"]);
+const booleanStringSchema = z.enum(["true", "false"]).transform((value) => value === "true");
 
 const getStringValue = (formData: FormData, key: string) => {
   const value = formData.get(key);
@@ -79,6 +82,20 @@ const parseAdminRecipientDeletePayload = (formData: FormData) => {
   };
 };
 
+const parseAdminNotificationPreferencePayload = (formData: FormData) => {
+  const parsedChannelType = notificationChannelSchema.safeParse(getStringValue(formData, "channelType"));
+  const parsedIsActive = booleanStringSchema.safeParse(getStringValue(formData, "isActive"));
+
+  if (!parsedChannelType.success || !parsedIsActive.success) {
+    redirect(buildRedirectTarget("error", "알림 채널 설정 정보를 다시 확인해 주세요."));
+  }
+
+  return {
+    channelType: parsedChannelType.data,
+    isActive: parsedIsActive.data,
+  };
+};
+
 async function runAdminRecipientMutationAction<T>({
   failureMessage,
   errorAction,
@@ -88,7 +105,7 @@ async function runAdminRecipientMutationAction<T>({
   buildErrorContext,
 }: {
   failureMessage: string;
-  errorAction: "add_failed" | "update_failed" | "delete_failed";
+  errorAction: "add_failed" | "update_failed" | "delete_failed" | "preference_update_failed";
   errorLogMessage: string;
   mutate: () => Promise<T>;
   buildSuccessRedirectTarget: (result: T) => string;
@@ -158,6 +175,27 @@ export async function deleteAdminRecipientEmailAction(formData: FormData) {
       buildRedirectTarget("success", `${deleted.address} 주소를 삭제했습니다.`),
     buildErrorContext: () => ({
       channelId: parsedPayload.channelId,
+    }),
+  });
+}
+
+export async function updateAdminNotificationPreferenceAction(formData: FormData) {
+  await ensureAdminAuthenticated(ADMIN_RECIPIENTS_PATH);
+  const parsedPayload = parseAdminNotificationPreferencePayload(formData);
+
+  await runAdminRecipientMutationAction({
+    failureMessage: "알림 채널 설정 변경에 실패했습니다.",
+    errorAction: "preference_update_failed",
+    errorLogMessage: "관리자 알림 채널 설정 변경 요청 처리에 실패했습니다.",
+    mutate: () => updateAdminNotificationPreference(parsedPayload),
+    buildSuccessRedirectTarget: (preference) =>
+      buildRedirectTarget(
+        "success",
+        `${preference.label} 알림을 ${preference.isActive ? "켰습니다" : "껐습니다"}.`,
+      ),
+    buildErrorContext: () => ({
+      channelType: parsedPayload.channelType,
+      isActive: parsedPayload.isActive,
     }),
   });
 }

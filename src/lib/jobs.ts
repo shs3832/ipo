@@ -1,7 +1,9 @@
 export {
   addAdminRecipientEmail,
   deleteAdminRecipientEmail,
+  getAdminNotificationPreferences,
   getAdminRecipientEmailChannels,
+  updateAdminNotificationPreference,
   updateAdminRecipientEmail,
 } from "@/lib/server/recipient-service";
 export {

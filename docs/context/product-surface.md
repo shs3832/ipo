@@ -71,18 +71,25 @@
   - 발송 상태 확인
 - `/admin/recipients`
   - verified 이메일 채널 관리
+  - 이메일 알림 on/off
+  - 앱푸시 구독 저장/해제/테스트 발송
 
-## Email Surface
+## Notification Surface
 
 - closing-day analysis 메일
 - closing-soon reminder 메일
+- closing-day analysis 앱푸시
 - 종목명 기준 스팩(`기업인수목적`, `스팩`, `SPAC`)은 자동 메일 대상에서 제외
 - 현재는 점수 노출 대신 공시 기반 체크 포인트와 데이터 상태 중심 문구 사용
 - 링크는 `APP_BASE_URL` 기준
+- 채널 preference 기반은 추가됐으며, 운영 기본값은 이메일 on / 앱푸시 off
+- `/admin/recipients`에서 이메일 채널 on/off와 앱푸시 구독 저장/해제/테스트 발송을 조작할 수 있음
+- 앱푸시는 Web Push 기반이며, 클릭 시 알림 payload의 상세 URL 또는 기본 경로로 이동
+- 앱푸시는 VAPID env와 브라우저 권한, 서비스 워커 등록, 브라우저별 PWA 제약의 영향을 받음
 
 ## Known Product Gaps
 
 - 데이터 품질은 아직 종목별 편차가 큼
 - KIND-first ingest는 아직 완전하지 않음
 - Telegram adapter는 데이터 모델만 있고 발송은 미구현
-- public multi-recipient UI는 아직 없음
+- public multi-recipient UI와 일반 사용자 개인화 화면은 아직 없음

@@ -1,14 +1,19 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
-import { env } from "@/lib/env";
+import { env, isWebPushConfigured } from "@/lib/env";
 import { logOperation } from "@/lib/ops-log";
 import {
   ADMIN_RECIPIENT_ID,
   canUseDatabase,
   normalizeEmailAddress,
 } from "@/lib/server/job-shared";
-import type { RecipientChannelRecord, RecipientRecord } from "@/lib/types";
+import type {
+  ChannelType,
+  NotificationPreferenceRecord,
+  RecipientChannelRecord,
+  RecipientRecord,
+} from "@/lib/types";
 
 type RecipientDbClient = Prisma.TransactionClient | typeof prisma;
 type RecipientEmailChannel = {
@@ -17,9 +22,38 @@ type RecipientEmailChannel = {
   address: string;
   isPrimary: boolean;
   isVerified: boolean;
+  metadata?: unknown;
+};
+type RecipientNotificationPreference = {
+  alertType: "CLOSING_DAY_ANALYSIS";
+  channelType: RecipientChannelRecord["type"];
+  isActive: boolean;
 };
 
 const ADMIN_RECIPIENT_EMAIL_LOG_SOURCE = "admin:recipient-email";
+const DEFAULT_ALERT_TYPE = "CLOSING_DAY_ANALYSIS";
+const DEFAULT_CHANNEL_PREFERENCES: Array<{
+  channelType: RecipientChannelRecord["type"];
+  isActive: boolean;
+}> = [
+  { channelType: "EMAIL", isActive: true },
+  { channelType: "WEB_PUSH", isActive: false },
+];
+const CHANNEL_PREFERENCE_COPY: Record<
+  Extract<ChannelType, "EMAIL" | "WEB_PUSH">,
+  Pick<NotificationPreferenceRecord, "label" | "description" | "isAvailable">
+> = {
+  EMAIL: {
+    label: "이메일",
+    description: "검증된 이메일 주소로 10시 분석 메일을 발송합니다.",
+    isAvailable: true,
+  },
+  WEB_PUSH: {
+    label: "앱푸시",
+    description: "PWA 설치와 Web Push 구독 저장을 연결한 뒤 활성화합니다.",
+    isAvailable: true,
+  },
+};
 
 const listRecipientEmailChannelsWithClient = async (
   client: RecipientDbClient,
@@ -51,7 +85,28 @@ const toRecipientChannelRecord = (channel: RecipientEmailChannel): RecipientChan
   address: channel.address,
   isPrimary: channel.isPrimary,
   isVerified: channel.isVerified,
+  ...("metadata" in channel && channel.metadata !== undefined ? { metadata: channel.metadata } : {}),
 });
+
+export const isNotificationChannelEnabled = ({
+  alertType,
+  channelType,
+  preferences,
+}: {
+  alertType: RecipientNotificationPreference["alertType"];
+  channelType: RecipientChannelRecord["type"];
+  preferences: RecipientNotificationPreference[];
+}) => {
+  const preference = preferences.find(
+    (item) => item.alertType === alertType && item.channelType === channelType,
+  );
+
+  if (preference) {
+    return preference.isActive;
+  }
+
+  return channelType === "EMAIL";
+};
 
 export const toResolvedAlertRecipientRecord = (recipient: {
   id: string;
@@ -66,7 +121,9 @@ export const toResolvedAlertRecipientRecord = (recipient: {
     address: string;
     isPrimary: boolean;
     isVerified: boolean;
+    metadata?: unknown;
   }>;
+  notificationPreferences?: RecipientNotificationPreference[];
 }): RecipientRecord => ({
   id: recipient.id,
   name: recipient.name,
@@ -75,13 +132,22 @@ export const toResolvedAlertRecipientRecord = (recipient: {
   consentedAt: recipient.consentedAt,
   unsubscribedAt: recipient.unsubscribedAt,
   channels: recipient.channels
-    .filter((channel) => channel.type === "EMAIL" && channel.isVerified)
+    .filter((channel) =>
+      (channel.type === "EMAIL" || channel.type === "WEB_PUSH")
+      && channel.isVerified
+      && isNotificationChannelEnabled({
+        alertType: DEFAULT_ALERT_TYPE,
+        channelType: channel.type,
+        preferences: recipient.notificationPreferences ?? [],
+      }),
+    )
     .map((channel) => ({
       id: channel.id,
       type: channel.type,
       address: channel.address,
       isPrimary: channel.isPrimary,
       isVerified: channel.isVerified,
+      ...(channel.metadata !== undefined ? { metadata: channel.metadata } : {}),
     })),
 });
 
@@ -152,6 +218,50 @@ const ensureAdminRecipientSubscription = async (
   });
 };
 
+const ensureAdminRecipientNotificationPreferences = async (
+  client: RecipientDbClient,
+  recipientId: string,
+) => {
+  await Promise.all(DEFAULT_CHANNEL_PREFERENCES.map((preference) =>
+    client.notificationPreference.upsert({
+      where: {
+        recipientId_alertType_channelType: {
+          recipientId,
+          alertType: DEFAULT_ALERT_TYPE,
+          channelType: preference.channelType,
+        },
+      },
+      update: {},
+      create: {
+        recipientId,
+        alertType: DEFAULT_ALERT_TYPE,
+        channelType: preference.channelType,
+        isActive: preference.isActive,
+      },
+    }),
+  ));
+};
+
+const toNotificationPreferenceRecord = (
+  preference: RecipientNotificationPreference,
+  overrides: Partial<Pick<NotificationPreferenceRecord, "description" | "isAvailable">> = {},
+): NotificationPreferenceRecord => {
+  const copy = CHANNEL_PREFERENCE_COPY[preference.channelType as "EMAIL" | "WEB_PUSH"] ?? {
+    label: preference.channelType,
+    description: "아직 관리자 화면에서 관리하지 않는 알림 채널입니다.",
+    isAvailable: false,
+  };
+
+  return {
+    alertType: preference.alertType,
+    channelType: preference.channelType,
+    isActive: preference.isActive,
+    isAvailable: overrides.isAvailable ?? copy.isAvailable,
+    label: copy.label,
+    description: overrides.description ?? copy.description,
+  };
+};
+
 export const ensureAdminRecipient = async (): Promise<{ id: string } | null> => {
   if (!(await canUseDatabase())) {
     return null;
@@ -196,6 +306,7 @@ export const ensureAdminRecipient = async (): Promise<{ id: string } | null> => 
     await ensurePrimaryRecipientEmailChannel(tx, emailChannels);
     await ensureAdminRecipientTelegramPlaceholder(tx, recipient.id);
     await ensureAdminRecipientSubscription(tx, recipient.id);
+    await ensureAdminRecipientNotificationPreferences(tx, recipient.id);
 
     return {
       id: recipient.id,
@@ -211,6 +322,134 @@ export const getAdminRecipientEmailChannels = async (): Promise<RecipientChannel
 
   const channels = await listRecipientEmailChannels(recipient.id);
   return channels.map(toRecipientChannelRecord);
+};
+
+export const getAdminNotificationPreferences = async (): Promise<NotificationPreferenceRecord[]> => {
+  const recipient = await ensureAdminRecipient();
+  if (!recipient) {
+    return DEFAULT_CHANNEL_PREFERENCES.map((preference) =>
+      toNotificationPreferenceRecord({
+        alertType: DEFAULT_ALERT_TYPE,
+        channelType: preference.channelType,
+        isActive: preference.isActive,
+      }),
+    );
+  }
+
+  const [preferences, webPushSubscriptionCount] = await Promise.all([
+    prisma.notificationPreference.findMany({
+      where: {
+        recipientId: recipient.id,
+        alertType: DEFAULT_ALERT_TYPE,
+        channelType: {
+          in: DEFAULT_CHANNEL_PREFERENCES.map((preference) => preference.channelType),
+        },
+      },
+      orderBy: [{ channelType: "asc" }],
+    }),
+    prisma.recipientChannel.count({
+      where: {
+        recipientId: recipient.id,
+        type: "WEB_PUSH",
+        isVerified: true,
+      },
+    }),
+  ]);
+
+  return DEFAULT_CHANNEL_PREFERENCES.map((fallbackPreference) => {
+    const preference = preferences.find(
+      (item) => item.channelType === fallbackPreference.channelType,
+    );
+    const webPushUnavailable =
+      fallbackPreference.channelType === "WEB_PUSH"
+      && (!isWebPushConfigured() || webPushSubscriptionCount === 0);
+
+    return toNotificationPreferenceRecord(
+      {
+        alertType: DEFAULT_ALERT_TYPE,
+        channelType: fallbackPreference.channelType,
+        isActive: preference?.isActive ?? fallbackPreference.isActive,
+      },
+      webPushUnavailable
+        ? {
+            isAvailable: false,
+            description: !isWebPushConfigured()
+              ? "VAPID 환경변수를 설정한 뒤 앱푸시를 구독할 수 있습니다."
+              : "이 브라우저의 앱푸시 구독을 먼저 저장해야 활성화할 수 있습니다.",
+          }
+        : undefined,
+    );
+  });
+};
+
+const assertWebPushPreferenceCanBeEnabled = async (recipientId: string) => {
+  if (!isWebPushConfigured()) {
+    throw new Error("Web Push VAPID 설정이 없습니다.");
+  }
+
+  const subscriptionCount = await prisma.recipientChannel.count({
+    where: {
+      recipientId,
+      type: "WEB_PUSH",
+      isVerified: true,
+    },
+  });
+
+  if (subscriptionCount === 0) {
+    throw new Error("저장된 Web Push 구독이 없습니다.");
+  }
+};
+
+export const updateAdminNotificationPreference = async ({
+  channelType,
+  isActive,
+}: {
+  channelType: Extract<ChannelType, "EMAIL" | "WEB_PUSH">;
+  isActive: boolean;
+}): Promise<NotificationPreferenceRecord> => {
+  const recipient = await ensureAdminRecipient();
+  if (!recipient) {
+    throw new Error("DB 연결이 없어 알림 채널 설정을 수정할 수 없습니다.");
+  }
+
+  const channelCopy = CHANNEL_PREFERENCE_COPY[channelType];
+  if (isActive && channelType === "WEB_PUSH") {
+    await assertWebPushPreferenceCanBeEnabled(recipient.id);
+  }
+
+  const preference = await prisma.notificationPreference.upsert({
+    where: {
+      recipientId_alertType_channelType: {
+        recipientId: recipient.id,
+        alertType: DEFAULT_ALERT_TYPE,
+        channelType,
+      },
+    },
+    update: {
+      isActive,
+    },
+    create: {
+      recipientId: recipient.id,
+      alertType: DEFAULT_ALERT_TYPE,
+      channelType,
+      isActive,
+    },
+  });
+
+  await logOperation({
+    level: "INFO",
+    source: ADMIN_RECIPIENT_EMAIL_LOG_SOURCE,
+    action: "preference_updated",
+    message: `${channelCopy.label} 알림 채널을 ${isActive ? "켰습니다" : "껐습니다"}.`,
+    context: {
+      recipientId: recipient.id,
+      alertType: DEFAULT_ALERT_TYPE,
+      channelType,
+      isActive,
+    },
+  });
+
+  return toNotificationPreferenceRecord(preference);
 };
 
 export const addAdminRecipientEmail = async (address: string): Promise<RecipientChannelRecord> => {
@@ -409,6 +648,7 @@ export const resolveAlertRecipients = async (): Promise<RecipientRecord[]> => {
     },
     include: {
       channels: true,
+      notificationPreferences: true,
     },
   });
 

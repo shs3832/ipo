@@ -36,6 +36,7 @@ enum InviteState {
 enum ChannelType {
   EMAIL
   TELEGRAM
+  WEB_PUSH
 }
 
 enum AlertType {
@@ -422,6 +423,7 @@ model Recipient {
   updatedAt     DateTime           @updatedAt
   channels      RecipientChannel[]
   subscriptions Subscription[]
+  notificationPreferences NotificationPreference[]
   deliveries    NotificationDelivery[]
 }
 
@@ -448,6 +450,20 @@ model Subscription {
   createdAt  DateTime  @default(now())
   recipient  Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
+  @@index([recipientId, alertType])
+}
+
+model NotificationPreference {
+  id          String      @id @default(cuid())
+  recipientId String
+  alertType   AlertType
+  channelType ChannelType
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  recipient   Recipient   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientId, alertType, channelType])
   @@index([recipientId, alertType])
 }
 

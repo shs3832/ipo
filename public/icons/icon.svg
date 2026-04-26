@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="IPO Calendar Alerts">
+  <rect width="192" height="192" rx="32" fill="#111827"/>
+  <rect x="38" y="46" width="116" height="110" rx="16" fill="#ffffff"/>
+  <path d="M60 34v28M132 34v28" stroke="#2563eb" stroke-width="12" stroke-linecap="round"/>
+  <path d="M56 88h80M56 116h56" stroke="#111827" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="134" cy="130" r="18" fill="#2563eb"/>
+</svg>

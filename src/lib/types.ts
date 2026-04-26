@@ -2,7 +2,7 @@ export const TIME_ZONE = "Asia/Seoul";
 
 export type IpoStatus = "UPCOMING" | "OPEN" | "CLOSED" | "LISTED" | "WITHDRAWN";
 export type IpoEventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
-export type ChannelType = "EMAIL" | "TELEGRAM";
+export type ChannelType = "EMAIL" | "TELEGRAM" | "WEB_PUSH";
 export type AlertType = "CLOSING_DAY_ANALYSIS";
 export type DeliveryStatus = "PENDING" | "SENT" | "FAILED" | "SKIPPED";
 export type JobStatus = "READY" | "SENT" | "PARTIAL_FAILURE";
@@ -185,6 +185,16 @@ export type RecipientChannelRecord = {
   address: string;
   isPrimary: boolean;
   isVerified: boolean;
+  metadata?: unknown;
+};
+
+export type NotificationPreferenceRecord = {
+  alertType: AlertType;
+  channelType: ChannelType;
+  isActive: boolean;
+  isAvailable: boolean;
+  label: string;
+  description: string;
 };
 
 export type RecipientRecord = {
