@@ -29,7 +29,7 @@ export const buildPersistedSourceIpoRecord = (
   record: SourceIpoRecord,
   latestSnapshot: LatestIpoSnapshotState,
 ): SourceIpoRecord => {
-  const effectiveOfferPrice = record.offerPrice ?? latestSnapshot?.offerPrice ?? null;
+  const effectiveOfferPrice = record.offerPrice ?? null;
   const listingOpenPrice = record.listingOpenPrice ?? latestSnapshot?.listingOpenPrice ?? null;
 
   return {
