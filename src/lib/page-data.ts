@@ -2,9 +2,7 @@ import { unstable_cache } from "next/cache";
 
 import { getPublicHomeSnapshot, getPublicIpoBySlug } from "@/lib/jobs";
 import { revivePublicHomeSnapshot, revivePublicIpoDetailRecord } from "@/lib/page-data-revival";
-
-export const PUBLIC_HOME_SNAPSHOT_TAG = "public-home-snapshot";
-export const PUBLIC_IPO_DETAIL_TAG = "public-ipo-detail";
+import { PUBLIC_HOME_SNAPSHOT_TAG, PUBLIC_IPO_DETAIL_TAG } from "@/lib/public-cache-tags";
 
 const getCachedPublicHomeSnapshot = unstable_cache(
   async () => getPublicHomeSnapshot(),

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { runDailySync } from "@/lib/jobs";
 import { ADMIN_HOME_PATH } from "@/lib/admin-navigation";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
-import { PUBLIC_HOME_SNAPSHOT_TAG, PUBLIC_IPO_DETAIL_TAG } from "@/lib/page-data";
+import { PUBLIC_HOME_SNAPSHOT_TAG, PUBLIC_IPO_DETAIL_TAG } from "@/lib/public-cache-tags";
 import { ensureAdminAuthenticated, revalidateAdminPaths } from "@/lib/server/admin-surface";
 
 export async function triggerManualSyncAction() {

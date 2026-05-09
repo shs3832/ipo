@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { getJobAuthorization } from "@/lib/job-auth";
 import { runDailySync } from "@/lib/jobs";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
+import { PUBLIC_HOME_SNAPSHOT_TAG, PUBLIC_IPO_DETAIL_TAG } from "@/lib/public-cache-tags";
 
 export async function GET(request: NextRequest) {
   const auth = getJobAuthorization(request);
@@ -36,6 +38,8 @@ export async function GET(request: NextRequest) {
     const forceRefresh = request.nextUrl.searchParams.get("refresh") === "force"
       || request.nextUrl.searchParams.get("bypassCache") === "1";
     const result = await runDailySync({ forceRefresh });
+    revalidateTag(PUBLIC_HOME_SNAPSHOT_TAG, { expire: 0 });
+    revalidateTag(PUBLIC_IPO_DETAIL_TAG, { expire: 0 });
     await logOperation({
       level: "INFO",
       source: "api:daily-sync",
