@@ -171,5 +171,7 @@
 - `src/lib/jobs.ts`는 facade만 남았고, 점수 sync / 재계산 no-op helper는 현재 `src/lib/server/ipo-sync-service.ts`에 있다
 - admin score summary data는 남겨 두지만, 현재 UI는 숨겨져 있고 재오픈 전까지 최신성 보장을 전제로 두지 않는다
 - `daily-sync`는 transaction start 실패를 줄이기 위해 종목별 DB 반영을 순차 처리한다
+- `daily-sync`의 source checksum 동일 경로는 heartbeat성 `fetchedAt` 갱신과 analysis 변경분만 transaction 밖에서 처리한다
+- 신규/변경 source record 반영은 atomic write가 필요하므로 interactive transaction을 유지하되, `maxWait=10s`, `timeout=15s`로 운영 DB 지연을 흡수한다
 - 현재 알림 보정은 Vercel Cron의 분 단위 호출 지연을 흡수하도록 설계돼 있지만, 플랫폼이 목표 시각보다 많이 늦게 호출하면 늦은 메일보다는 skip/stale 처리 쪽을 우선한다
 - `마감 30분 전 메일`은 현재 Hobby 운영 단순화를 위해 pause 상태이며, 필요 시 `CLOSING_SOON_ALERTS_ENABLED`와 `vercel.json` cron을 함께 되돌려야 한다

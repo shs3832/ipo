@@ -29,7 +29,7 @@ const createSourceRecord = (overrides: Partial<SourceIpoRecord> = {}): SourceIpo
   status: "status" in overrides ? overrides.status ?? undefined : "OPEN",
 });
 
-test("buildPersistedSourceIpoRecord preserves latest persisted fields when source values are missing", () => {
+test("buildPersistedSourceIpoRecord preserves non-price latest fields when source values are missing", () => {
   const persisted = buildPersistedSourceIpoRecord(
     createSourceRecord({
       offerPrice: null,
@@ -50,12 +50,12 @@ test("buildPersistedSourceIpoRecord preserves latest persisted fields when sourc
   );
 
   assert.equal(persisted.kindIssueCode, "12345");
-  assert.equal(persisted.offerPrice, 11_000);
+  assert.equal(persisted.offerPrice, null);
   assert.equal(persisted.listingOpenPrice, 15_000);
   assert.equal(persisted.listingOpenReturnRate, 36.4);
 });
 
-test("buildPersistedSourceIpoRecord recomputes opening return rate from latest offer and opening prices", () => {
+test("buildPersistedSourceIpoRecord does not recompute opening return from stale offer price", () => {
   const persisted = buildPersistedSourceIpoRecord(
     createSourceRecord({
       offerPrice: null,
@@ -74,9 +74,9 @@ test("buildPersistedSourceIpoRecord recomputes opening return rate from latest o
     },
   );
 
-  assert.equal(persisted.offerPrice, 11_000);
+  assert.equal(persisted.offerPrice, null);
   assert.equal(persisted.listingOpenPrice, 16_500);
-  assert.equal(persisted.listingOpenReturnRate, 50);
+  assert.equal(persisted.listingOpenReturnRate, null);
 });
 
 test("buildIpoWriteData converts date strings to dates and keeps current status fallback", () => {

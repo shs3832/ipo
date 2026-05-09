@@ -1,5 +1,44 @@
 # Issue Log
 
+## 2026-05-09
+
+### Follow-up: Daily Sync Transaction Stability
+
+이번 후속에서는 4월 이후 `OperationLog`의 `error` 로그를 다시 확인하고, `daily-sync`가 Prisma interactive transaction 5초 제한에 걸리던 경로를 줄였다. 핵심 원인은 종목별 반영 과정에서 이미 조회한 최신 snapshot을 transaction 안에서 다시 읽고, source checksum이 바뀌지 않은 heartbeat성 갱신까지 interactive transaction으로 묶어 처리하던 구조였다.
+
+### What Happened
+
+1. 2026-05-09 09:00 KST 기준 May error는 10건이었다.
+2. 이 중 6건은 `Transaction API error: Transaction already closed... timeout: 5000 ms` 계열이었다.
+3. 나머지 4건은 직전 `daily-sync` 실패 직후 alert freshness check가 같은 강제 refresh를 반복하지 않도록 막은 cooldown 로그였다.
+4. 2026-04-13 이후 error 18건 기준으로도 주요 실패는 오래 걸린 Prisma transaction / 닫힌 transaction 재사용 계열이었다.
+
+### Main Code Changes In This Follow-up
+
+- `src/lib/server/ipo-sync-service.ts`
+  - `upsertDatabaseIpo()`에서 이미 조회한 최신 snapshot을 `persistIpoRecord()`에 넘겨 transaction 내부 중복 `findUnique()`를 제거했다.
+  - source checksum이 동일한 경우에는 status, source snapshot `fetchedAt`, analysis 변경분만 필요한 만큼 개별 write로 처리해 interactive transaction을 쓰지 않게 했다.
+  - 신규/변경 record 반영처럼 atomicity가 필요한 경로만 transaction으로 유지하고, `maxWait=10s`, `timeout=15s`를 명시했다.
+- `tests/ipo-sync-service.test.ts`
+  - 소스에서 확정 공모가가 없으면 낡은 DB `offerPrice`를 보존하지 않는 정책을 테스트에 반영했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/ipo-sync-service.test.ts tests/alert-service.test.ts`
+- `npm run lint -- src/lib/server/ipo-sync-service.ts src/lib/server/ipo-sync-persistence.ts tests/ipo-sync-service.test.ts`
+- `npm test`
+  - 99 tests passed
+- `npm run build`
+- `npm run job:daily-sync -- --force-refresh`
+  - `synced=10`, `sourceRecords=10`, `markedWithdrawn=0`
+  - Prisma transaction timeout 재현 없음
+
+### Current Decisions To Remember In This Follow-up
+
+- `daily-sync`는 종목별 순차 처리를 유지한다.
+- checksum이 변하지 않은 source heartbeat는 가능하면 interactive transaction 밖에서 처리한다.
+- 확정 공모가가 새 소스에서 확인되지 않으면 낡은 DB `offerPrice`를 자동 보존하지 않는다.
+
 ## 2026-04-26
 
 ### Follow-up: PWA Web Push End-To-End
@@ -293,6 +332,44 @@
 - 관리자 로그인 제한은 DB-backed 공유 저장소 우선, 장애 시 memory fallback이다.
 - source record validation은 운영 안정성을 위해 skip-mode이며, invalid record가 있어도 전체 동기화를 바로 실패시키지 않는다.
 - pause 상태인 closing-soon job API도 인증 없는 호출에는 disabled no-op을 반환하지 않는다.
+
+### Follow-up: Confirmed Offer Price Accuracy
+
+2026-05-09 09:05 KST 기준으로, 확정공모가가 정확하지 않게 표시되는 원인을 확인하고 수정했다. 수정 커밋은 `51c6405 Fix confirmed IPO offer price handling`이며 `origin/main`에 푸시 완료했다.
+
+### What Happened
+
+1. 활성 IPO와 최신 source snapshot을 비교해 예정 종목의 `offerPrice`가 희망밴드 하단과 동일하게 저장되는 현상을 확인했다.
+2. OpenDART `estkRs`의 `증권의종류.slprc` 값이 확정 공모가가 아니라 희망밴드 범위 값으로 내려오는 경우가 있고, 기존 코드가 이를 곧바로 `offerPrice`로 저장하고 있었다.
+3. KIND 상세의 `공모가격`이 확인된 종목은 확정 공모가가 신뢰 가능하게 들어오지만, 아직 KIND 확정 가격이 없는 예정 종목은 OpenDART 값만으로 확정 공모가를 표시하면 안 된다고 판단했다.
+4. 기존 DB 값 보존 로직 때문에 새 소스에서 확정 공모가가 `null`이어도 과거의 잘못된 `offerPrice`가 계속 남을 수 있어 함께 수정했다.
+
+### Main Code Changes In This Follow-up
+
+- OpenDART 가격 해석
+  - `src/lib/sources/opendart-ipo.ts`
+- sync persistence의 기존 공모가 보존 정책
+  - `src/lib/server/ipo-sync-persistence.ts`
+
+### Verification In This Follow-up
+
+- `npm run lint`
+- `npm run build`
+- `fetchOpendartCurrentMonthIpos({ forceRefresh: true })`
+  - 희망밴드 범위 안의 OpenDART `slprc`는 `offerPrice=null`로 처리됨 확인
+  - 노트에 `OpenDART 발행가액은 희망밴드 범위 값이라 확정 공모가로 사용하지 않음` 추가 확인
+- `runDailySync({ forceRefresh: true })`
+  - `synced=10`, `sourceRecords=10`, `markedWithdrawn=0`
+  - 마키나락스, 레몬헬스케어, 매드업, 피스피스스튜디오, 져스텍 등 예정 종목의 `offerPrice`가 `null`로 정리됨 확인
+  - SPAC처럼 밴드가 없고 고정가 성격인 종목은 `2,000원` 유지 확인
+- `getPublicHomeSnapshot()`
+  - 공개 홈 데이터에서도 위 예정 종목들의 확정공모가가 비워진 상태로 조회됨 확인
+
+### Current Decisions To Remember In This Follow-up
+
+- 확정공모가는 KIND 상세의 `공모가격`처럼 실제 확정 가격으로 확인되는 경우에만 채운다.
+- OpenDART `slprc`가 희망밴드 범위 안에 있으면 확정 공모가로 쓰지 않는다.
+- 소스에서 확정 공모가가 없으면 기존 DB의 낡은 `offerPrice`를 자동 보존하지 않는다.
 
 ## Archived Logs
 

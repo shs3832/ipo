@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { Prisma } from "@prisma/client";
-
 import { buildAnalysis } from "@/lib/analysis";
 import {
   getKstMinutesOfDay,
@@ -36,6 +34,7 @@ import {
   buildIpoEventCreateManyData,
   buildIpoWriteData,
   buildPersistedSourceIpoRecord,
+  type LatestIpoSnapshotState,
 } from "@/lib/server/ipo-sync-persistence";
 import { enrichBrokerSubscriptionMetadata } from "@/lib/sources/broker-subscription";
 import { fetchKindListingDates } from "@/lib/sources/kind-listings";
@@ -54,6 +53,9 @@ import type {
   SourceIpoRecord,
   SyncResult,
 } from "@/lib/types";
+
+const IPO_PERSIST_TRANSACTION_MAX_WAIT_MS = 10_000;
+const IPO_PERSIST_TRANSACTION_TIMEOUT_MS = 15_000;
 
 const isSameAnalysis = (
   left: {
@@ -108,36 +110,21 @@ const buildIpoSourceSnapshotCreateData = (
   payload: toPrismaJsonValue(persistedRecord),
 });
 
-const persistIpoRecord = async (
-  tx: Prisma.TransactionClient,
-  {
-    slug,
-    seenAt,
-    checksum,
-    persistedRecord,
-    analysis,
-  }: {
-    slug: string;
-    seenAt: Date;
-    checksum: string;
-    persistedRecord: SourceIpoRecord;
-    analysis: ReturnType<typeof buildAnalysis>;
-  },
-) => {
-  const latestSnapshot = await tx.ipo.findUnique({
-    where: { slug },
-    include: {
-      analyses: {
-        orderBy: { generatedAt: "desc" },
-        take: 1,
-      },
-      sourceSnapshots: {
-        orderBy: { fetchedAt: "desc" },
-        take: 1,
-      },
-    },
-  });
-
+const persistIpoRecord = async ({
+  slug,
+  seenAt,
+  checksum,
+  persistedRecord,
+  analysis,
+  latestSnapshot,
+}: {
+  slug: string;
+  seenAt: Date;
+  checksum: string;
+  persistedRecord: SourceIpoRecord;
+  analysis: ReturnType<typeof buildAnalysis>;
+  latestSnapshot: LatestIpoSnapshotState;
+}) => {
   const targetStatus = persistedRecord.status ?? "UPCOMING";
 
   if (
@@ -147,7 +134,7 @@ const persistIpoRecord = async (
     const latestSourceSnapshotId = latestSnapshot.sourceSnapshots[0]?.id;
 
     if (latestSnapshot.status !== targetStatus) {
-      await tx.ipo.update({
+      await prisma.ipo.update({
         where: { id: latestSnapshot.id },
         data: {
           status: targetStatus,
@@ -156,7 +143,7 @@ const persistIpoRecord = async (
     }
 
     if (latestSourceSnapshotId) {
-      await tx.ipoSourceSnapshot.update({
+      await prisma.ipoSourceSnapshot.update({
         where: { id: latestSourceSnapshotId },
         data: {
           fetchedAt: seenAt,
@@ -178,7 +165,7 @@ const persistIpoRecord = async (
       );
 
     if (analysisChanged) {
-      await tx.ipoAnalysis.create({
+      await prisma.ipoAnalysis.create({
         data: buildIpoAnalysisCreateData(latestSnapshot.id, analysis),
       });
     }
@@ -186,32 +173,37 @@ const persistIpoRecord = async (
     return latestSnapshot.id;
   }
 
-  const ipo = await tx.ipo.upsert({
-    where: { slug },
-    update: buildIpoWriteData(persistedRecord),
-    create: {
-      slug,
-      ...buildIpoWriteData(persistedRecord),
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const ipo = await tx.ipo.upsert({
+      where: { slug },
+      update: buildIpoWriteData(persistedRecord),
+      create: {
+        slug,
+        ...buildIpoWriteData(persistedRecord),
+      },
+    });
 
-  await tx.ipoEvent.deleteMany({
-    where: { ipoId: ipo.id },
-  });
+    await tx.ipoEvent.deleteMany({
+      where: { ipoId: ipo.id },
+    });
 
-  await tx.ipoEvent.createMany({
-    data: buildIpoEventCreateManyData(ipo.id, persistedRecord),
-  });
+    await tx.ipoEvent.createMany({
+      data: buildIpoEventCreateManyData(ipo.id, persistedRecord),
+    });
 
-  await tx.ipoSourceSnapshot.create({
-    data: buildIpoSourceSnapshotCreateData(ipo.id, persistedRecord.sourceKey, checksum, persistedRecord),
-  });
+    await tx.ipoSourceSnapshot.create({
+      data: buildIpoSourceSnapshotCreateData(ipo.id, persistedRecord.sourceKey, checksum, persistedRecord),
+    });
 
-  await tx.ipoAnalysis.create({
-    data: buildIpoAnalysisCreateData(ipo.id, analysis),
-  });
+    await tx.ipoAnalysis.create({
+      data: buildIpoAnalysisCreateData(ipo.id, analysis),
+    });
 
-  return ipo.id;
+    return ipo.id;
+  }, {
+    maxWait: IPO_PERSIST_TRANSACTION_MAX_WAIT_MS,
+    timeout: IPO_PERSIST_TRANSACTION_TIMEOUT_MS,
+  });
 };
 
 const mergeKindListingMetadata = async (
@@ -925,13 +917,14 @@ const upsertDatabaseIpo = async (record: SourceIpoRecord) => {
   const seenAt = new Date();
   const checksum = toChecksum(persistedRecord);
   const analysis = buildAnalysis(persistedRecord);
-  const legacyIpoId = await prisma.$transaction((tx) => persistIpoRecord(tx, {
+  const legacyIpoId = await persistIpoRecord({
     slug,
     seenAt,
     checksum,
     persistedRecord,
     analysis,
-  }));
+    latestSnapshot,
+  });
 
   await syncScoringArtifactsSafely({
     legacyIpoId,
