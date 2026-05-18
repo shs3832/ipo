@@ -6,6 +6,7 @@ import {
   buildOpendartIpoRanges,
   fetchCandidateDisclosuresForRange,
   isLikelyNewListingGeneralRow,
+  resolveOpendartOfferPrice,
 } from "@/lib/sources/opendart-ipo";
 
 test("buildOpendartIpoRanges keeps a wider disclosure lookback for upcoming IPO coverage", () => {
@@ -101,6 +102,27 @@ test("isLikelyNewListingGeneralRow excludes allotment-based rights/public offeri
     }),
     false,
   );
+});
+
+test("resolveOpendartOfferPrice accepts band values only when the prospectus body has a confirmed price", () => {
+  const prospectus = {
+    receiptNo: "20260508000911",
+    confirmedOfferPrice: null,
+    priceBandLow: 12_500,
+    priceBandHigh: 15_000,
+    minimumSubscriptionShares: 10,
+    depositRate: 0.5,
+    demandCompetitionRate: null,
+    lockupRate: null,
+    financialSnapshot: null,
+  };
+
+  assert.equal(resolveOpendartOfferPrice(15_000, prospectus), null);
+  assert.equal(resolveOpendartOfferPrice(16_000, prospectus), 16_000);
+  assert.equal(resolveOpendartOfferPrice(12_500, {
+    ...prospectus,
+    confirmedOfferPrice: 15_000,
+  }), 15_000);
 });
 
 test("isOnOrAfterKstDayOffset protects recently seen records across KST day boundaries", () => {

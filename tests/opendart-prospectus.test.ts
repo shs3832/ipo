@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { extractLockupRateFromXmlTables } from "@/lib/sources/opendart-prospectus";
+import {
+  extractConfirmedOfferPrice,
+  extractLockupRateFromXmlTables,
+} from "@/lib/sources/opendart-prospectus";
+
+test("extractConfirmedOfferPrice parses explicit confirmed offer price copy", () => {
+  assert.equal(
+    extractConfirmedOfferPrice("확정 공모가액은 15,000원으로 결정되었습니다."),
+    15_000,
+  );
+  assert.equal(
+    extractConfirmedOfferPrice("공모가격을 13,500원으로 확정하였습니다."),
+    13_500,
+  );
+  assert.equal(
+    extractConfirmedOfferPrice("희망공모가격은 12,500 ~ 15,000 원입니다."),
+    null,
+  );
+});
 
 test("extractLockupRateFromXmlTables calculates issuer lockup rate from demand forecast quantity table", () => {
   const xml = `

@@ -5,6 +5,7 @@ import { inflateRawSync } from "node:zlib";
 
 export type OpendartProspectusDetails = {
   receiptNo: string;
+  confirmedOfferPrice: number | null;
   priceBandLow: number | null;
   priceBandHigh: number | null;
   minimumSubscriptionShares: number | null;
@@ -109,6 +110,26 @@ const extractPriceBand = (text: string) => {
   }
 
   return { priceBandLow: null, priceBandHigh: null };
+};
+
+export const extractConfirmedOfferPrice = (text: string) => {
+  const patterns = [
+    /확정\s*공모가(?:액|격)?[^\d]{0,40}(\d[\d,]*)\s*원/g,
+    /최종\s*공모가(?:액|격)?[^\d]{0,40}(\d[\d,]*)\s*원/g,
+    /공모가(?:액|격)?(?:은|는|가|를)?[^\d]{0,40}(\d[\d,]*)\s*원(?:으로)?\s*확정/g,
+    /(\d[\d,]*)\s*원(?:으로)?\s*공모가(?:액|격)?(?:을|를)?\s*확정/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const value = parseInteger(match[1]);
+      if (value != null) {
+        return value;
+      }
+    }
+  }
+
+  return null;
 };
 
 const extractDemandCompetitionRate = (texts: string[]) => {
@@ -502,6 +523,7 @@ const fetchOpendartProspectusDetailsUncached = async (
 
   return {
     receiptNo,
+    confirmedOfferPrice: extractConfirmedOfferPrice(normalizedXmlText),
     priceBandLow,
     priceBandHigh,
     minimumSubscriptionShares: extractMinimumSubscriptionShares(normalizedXmlText),
@@ -519,6 +541,7 @@ export const fetchOpendartProspectusDetails = async (
   if (!env.opendartApiKey) {
     return {
       receiptNo,
+      confirmedOfferPrice: null,
       priceBandLow: null,
       priceBandHigh: null,
       minimumSubscriptionShares: null,

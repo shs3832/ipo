@@ -18,6 +18,7 @@ test("assessIpoDataQuality blocks alerts when critical facts are missing", () =>
     generalSubscriptionCompetitionRate: null,
     refundDate: null,
     listingDate: null,
+    subscriptionEnd: parseKstDate("2026-05-14"),
     floatRatio: null,
   });
 
@@ -40,6 +41,7 @@ test("assessIpoDataQuality allows partial alerts when only the price band is ava
     generalSubscriptionCompetitionRate: null,
     refundDate: parseKstDate("2026-05-15"),
     listingDate: null,
+    subscriptionEnd: parseKstDate("2026-05-14"),
     floatRatio: null,
   });
 
@@ -64,6 +66,7 @@ test("assessIpoDataQuality does not block alerts when listing date is missing", 
     generalSubscriptionCompetitionRate: 1671.46,
     refundDate: parseKstDate("2026-03-19"),
     listingDate: null,
+    subscriptionEnd: parseKstDate("2026-03-18"),
     floatRatio: 25.2,
   });
 
@@ -87,6 +90,7 @@ test("assessIpoDataQuality marks fully verified IPOs as verified", () => {
     generalSubscriptionCompetitionRate: 1805.8,
     refundDate: parseKstDate("2026-03-16"),
     listingDate: parseKstDate("2026-03-20"),
+    subscriptionEnd: parseKstDate("2026-03-14"),
     floatRatio: 14,
   });
 
@@ -94,4 +98,28 @@ test("assessIpoDataQuality marks fully verified IPOs as verified", () => {
   assert.equal(summary.shouldSendAlert, true);
   assert.equal(summary.label, "검증 완료");
   assert.deepEqual(summary.optionalMissing, []);
+});
+
+test("assessIpoDataQuality marks listing dates before subscription close as review-needed optional data", () => {
+  const summary = assessIpoDataQuality({
+    market: "KOSDAQ",
+    leadManager: "한국투자증권",
+    kindIssueCode: "49328",
+    kindBizProcessNo: "20250324000286",
+    priceBandLow: 23_000,
+    priceBandHigh: 26_000,
+    offerPrice: 26000,
+    minimumSubscriptionShares: 20,
+    depositRate: 0.5,
+    generalSubscriptionCompetitionRate: 1805.8,
+    refundDate: parseKstDate("2026-06-15"),
+    listingDate: parseKstDate("2026-06-11"),
+    subscriptionEnd: parseKstDate("2026-06-12"),
+    floatRatio: 14,
+  });
+
+  assert.equal(summary.status, "PARTIAL");
+  assert.equal(summary.shouldSendAlert, true);
+  assert.equal(summary.optionalMissing.includes("상장 예정일 검증"), true);
+  assert.equal(summary.sourceChecks.includes("상장 예정일 확인 필요"), true);
 });

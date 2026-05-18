@@ -121,10 +121,14 @@ const parseNumber = (value: string | undefined) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const resolveOpendartOfferPrice = (
+export const resolveOpendartOfferPrice = (
   securityPrice: number | null,
   prospectus: OpendartProspectusDetails | null,
 ) => {
+  if (prospectus?.confirmedOfferPrice != null) {
+    return prospectus.confirmedOfferPrice;
+  }
+
   if (securityPrice == null) {
     return null;
   }
@@ -341,6 +345,7 @@ const mergeProspectusDetails = (
 
   return {
     receiptNo: primary?.receiptNo ?? fallback?.receiptNo ?? "",
+    confirmedOfferPrice: primary?.confirmedOfferPrice ?? fallback?.confirmedOfferPrice ?? null,
     priceBandLow: primary?.priceBandLow ?? fallback?.priceBandLow ?? null,
     priceBandHigh: primary?.priceBandHigh ?? fallback?.priceBandHigh ?? null,
     minimumSubscriptionShares: primary?.minimumSubscriptionShares ?? fallback?.minimumSubscriptionShares ?? null,
@@ -432,7 +437,8 @@ const fetchOpendartCurrentMonthIposUncached = async (
       const representative = underwriterRows.find((row) => row.actsen?.includes("대표"))?.actnmn ?? underwriters[0] ?? disclosure.flr_nm ?? disclosure.corp_name;
       const coManagers = underwriters.filter((name) => name !== representative);
       const totalOfferedShares = parseNumber(security.stkcnt);
-      const opendartOfferPrice = resolveOpendartOfferPrice(parseNumber(security.slprc), prospectus);
+      const securityPrice = parseNumber(security.slprc);
+      const opendartOfferPrice = resolveOpendartOfferPrice(securityPrice, prospectus);
       const insiderSalesShares = sellerRows.reduce((sum, row) => sum + (parseNumber(row.slstk) ?? 0), 0);
       const insiderSalesRatio =
         totalOfferedShares && insiderSalesShares ? Number(((insiderSalesShares / totalOfferedShares) * 100).toFixed(1)) : null;
@@ -448,7 +454,10 @@ const fetchOpendartCurrentMonthIposUncached = async (
         financials?.reportLabel ? `재무지표 기준 ${financials.reportLabel}` : null,
         prospectus?.demandCompetitionRate != null ? `증권신고서 기준 기관 수요예측 경쟁률 ${prospectus.demandCompetitionRate}:1` : null,
         prospectus?.lockupRate != null ? `증권신고서 기준 의무보유확약 비율 ${prospectus.lockupRate}%` : null,
-        opendartOfferPrice == null && parseNumber(security.slprc) != null && prospectus?.priceBandLow != null && prospectus.priceBandHigh != null
+        opendartOfferPrice != null && prospectus?.confirmedOfferPrice != null
+          ? `OpenDART 증권신고서 본문 기준 확정 공모가 ${opendartOfferPrice.toLocaleString("ko-KR")}원`
+          : null,
+        opendartOfferPrice == null && securityPrice != null && prospectus?.priceBandLow != null && prospectus.priceBandHigh != null
           ? "OpenDART 발행가액은 희망밴드 범위 값이라 확정 공모가로 사용하지 않음"
           : null,
       ].filter((value): value is string => Boolean(value));

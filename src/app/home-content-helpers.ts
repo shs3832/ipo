@@ -1,5 +1,6 @@
 import { getKstDayOfWeek, getKstTodayKey, kstDateKey, parseKstDate, shiftKstDateKey } from "@/lib/date";
 import { isSpacIpo } from "@/lib/ipo-classification";
+import { getUsableListingDate } from "@/lib/ipo-schedule";
 import {
   getIpoPriceDisplay,
   getMinimumDepositAmount,
@@ -119,7 +120,15 @@ const nameCollator = new Intl.Collator("ko-KR", {
 const normalizeSearchValue = (value: string) => value.trim().toLocaleLowerCase("ko-KR");
 const getSubscriptionStartKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionStart));
 const getSubscriptionEndKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionEnd));
-const getListingDateKey = (ipo: HomeIpoSummary) => (ipo.listingDate ? kstDateKey(new Date(ipo.listingDate)) : null);
+const getListingDate = (ipo: HomeIpoSummary) =>
+  getUsableListingDate({
+    listingDate: ipo.listingDate,
+    subscriptionEnd: ipo.subscriptionEnd,
+  });
+const getListingDateKey = (ipo: HomeIpoSummary) => {
+  const listingDate = getListingDate(ipo);
+  return listingDate ? kstDateKey(listingDate) : null;
+};
 const isCalendarEntrySpac = (entry: CalendarEntry) => isSpacIpo({ name: entry.title });
 
 export const isStoredCalendarFilters = (value: unknown): value is StoredCalendarFilters =>
@@ -253,11 +262,12 @@ export const getOverviewScheduleDisplay = (
   timing = buildOverviewTiming(),
 ): OverviewScheduleDisplay => {
   const subscriptionEndKey = getSubscriptionEndKey(ipo);
+  const listingDate = getListingDate(ipo);
 
-  if (ipo.listingDate && subscriptionEndKey < timing.todayKey) {
+  if (listingDate && subscriptionEndKey < timing.todayKey) {
     return {
       label: "상장",
-      date: new Date(ipo.listingDate),
+      date: listingDate,
     };
   }
 

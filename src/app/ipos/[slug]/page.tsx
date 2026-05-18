@@ -51,7 +51,7 @@ export default async function IpoDetailPage({
 
         <section className={styles.hero}>
           <div className={styles.heroBody}>
-            <p className="page-eyebrow">{ipo.market}</p>
+            <p className="page-eyebrow">{detailView.marketLabel}</p>
             <h1 className="page-title">{ipo.name}</h1>
             <BrokerChipList className={styles.heroBrokerList} names={[ipo.leadManager, ...ipo.coManagers]} />
             <div className={styles.metaRow}>

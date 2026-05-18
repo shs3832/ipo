@@ -23,6 +23,8 @@
   - 청약 일정
   - 공모가
   - 재무 일부
+- `estkRs.slprc`가 희망밴드 안에 있는 값이면 단독으로 확정 공모가로 보지 않는다.
+- 증권신고서 본문에 `확정 공모가액`, `최종 공모가`, `공모가격 ... 확정` 같은 명시 문구가 있을 때만 본문 값을 `offerPrice`로 승격한다.
 - 한계:
   - 확약/경쟁/유통 전부를 단독 완성 못 함
 
@@ -34,6 +36,8 @@
   - offer detail
   - float/tradable shares
   - listing open price
+- 상장일은 청약 마감일보다 뒤인 경우만 유효 일정으로 저장/이벤트화한다.
+- `listingDate <= subscriptionEnd`처럼 시간 순서가 맞지 않는 값은 source snapshot note에 제외 사유를 남기고, 공개 화면에서는 `상장일 확인 필요`로 표시한다.
 
 ### SEIBro
 
@@ -54,6 +58,13 @@
 2. normalize + checksum
 3. legacy `Ipo` upsert
 4. public/admin/mail read
+
+## Public Display Policy For Incomplete Data
+
+- `offerPrice`는 확정 공모가로만 사용하고, 확정 전에는 희망밴드가 있으면 `희망 공모가` / `예상 최소청약금액`으로 표시한다.
+- 확정 공모가는 KIND 상세 `공모가격` 또는 OpenDART 증권신고서 본문의 명시적 확정 문구처럼 직접 확인되는 값만 저장한다.
+- 시장구분 `기타법인`, 주관사 `-`, 비어 있는 일정/수량/금액은 원본 placeholder를 그대로 노출하지 않고 `미확인`, `미확보`, `확인 필요`, `해당 없음` 상태로 바꿔 표시한다.
+- 상장일은 일정 분류, 캘린더 이벤트, 상장 시초가 보강의 기준이 되므로 청약 마감일보다 뒤인지 먼저 검증한다.
 
 점수 시스템 구현 코드는 별도로 유지하고 있지만, 현재 공개 rollout은 pause 상태다.
 자세한 상태와 재오픈 메모는 [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)를 기준으로 본다.

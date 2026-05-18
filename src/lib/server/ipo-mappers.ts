@@ -1,5 +1,6 @@
 import { buildAnalysis, buildAnalysisScoreDisplay } from "@/lib/analysis";
 import { parseKstDate } from "@/lib/date";
+import { getUsableListingDateKey } from "@/lib/ipo-schedule";
 import {
   type AdminOverrideRecord,
   type IpoRecord,
@@ -97,6 +98,14 @@ export const buildEvents = (record: SourceIpoRecord, ipoName: string) => [
 
 export const normalizeSourceIpoRecord = (record: SourceIpoRecord): IpoRecord => {
   const analysis = buildAnalysis(record);
+  const listingDate = getUsableListingDateKey({
+    listingDate: record.listingDate,
+    subscriptionEnd: record.subscriptionEnd,
+  });
+  const normalizedRecord = {
+    ...record,
+    listingDate,
+  };
 
   return {
     id: slugify(record.name),
@@ -124,9 +133,9 @@ export const normalizeSourceIpoRecord = (record: SourceIpoRecord): IpoRecord => 
     subscriptionStart: parseKstDate(record.subscriptionStart),
     subscriptionEnd: parseKstDate(record.subscriptionEnd),
     refundDate: record.refundDate ? parseKstDate(record.refundDate) : null,
-    listingDate: record.listingDate ? parseKstDate(record.listingDate) : null,
+    listingDate: listingDate ? parseKstDate(listingDate) : null,
     status: record.status ?? "UPCOMING",
-    events: buildEvents(record, record.name).map((event) => ({
+    events: buildEvents(normalizedRecord, record.name).map((event) => ({
       id: `${slugify(record.name)}-${event.type.toLowerCase()}`,
       ...event,
     })),

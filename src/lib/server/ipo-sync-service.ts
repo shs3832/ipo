@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { getCachedExternalData } from "@/lib/external-cache";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { getUsableListingDateKey } from "@/lib/ipo-schedule";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 import { validateSourceIpoRecords } from "@/lib/source-record-validation";
 import {
@@ -629,14 +630,18 @@ const enrichListingOpenMetrics = async (
 
   const enrichedRecords = await Promise.all(
     records.map(async (record) => {
-      const isListingToday = record.listingDate === todayKey;
+      const listingDate = getUsableListingDateKey({
+        listingDate: record.listingDate,
+        subscriptionEnd: record.subscriptionEnd,
+      });
+      const isListingToday = listingDate === todayKey;
 
       if (
         !record.kindIssueCode
-        || !record.listingDate
-        || record.listingDate > todayKey
+        || !listingDate
+        || listingDate > todayKey
         || (isListingToday && currentKstMinutes < 10 * 60)
-        || record.listingDate < captureWindowStartKey
+        || listingDate < captureWindowStartKey
       ) {
         return record;
       }
@@ -644,13 +649,13 @@ const enrichListingOpenMetrics = async (
       const snapshot = await fetchKindStockPriceSnapshot(record.kindIssueCode, {
         forceRefresh: forceRefresh || isListingToday,
       });
-      if (snapshot.priceDate !== record.listingDate || snapshot.openingPrice == null) {
+      if (snapshot.priceDate !== listingDate || snapshot.openingPrice == null) {
         return record;
       }
 
       const listingOpenReturnRate = toListingOpenReturnRate(record.offerPrice, snapshot.openingPrice);
       const notes = record.notes ?? [];
-      const asOfLabel = snapshot.priceAsOf ?? snapshot.priceDate ?? record.listingDate;
+      const asOfLabel = snapshot.priceAsOf ?? snapshot.priceDate ?? listingDate;
       const kindNote = `KIND 시세 기준(${asOfLabel}) 시초가 ${snapshot.openingPrice.toLocaleString("ko-KR")}원`;
 
       return {

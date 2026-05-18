@@ -120,6 +120,37 @@ test("buildIpoDetailViewModel shows price-band based quick facts before confirme
   ]);
 });
 
+test("buildIpoDetailViewModel marks listing dates before subscription close as review-needed", () => {
+  const view = buildIpoDetailViewModel(createIpo({
+    subscriptionEnd: new Date("2026-06-12T00:00:00.000Z"),
+    listingDate: new Date("2026-06-11T00:00:00.000Z"),
+  }), "2026-06-13");
+
+  assert.equal(view.isListedYet, false);
+  assert.deepEqual(view.quickFacts.slice(2, 4), [
+    { label: "환불일", value: "2026.03.23" },
+    { label: "상장 예정일", value: "상장일 확인 필요" },
+  ]);
+  assert.equal(
+    view.scheduleFacts.find((fact) => fact.label === "상장 예정일")?.value,
+    "상장일 확인 필요",
+  );
+});
+
+test("buildIpoDetailViewModel uses explicit unavailable labels for unclear market and broker data", () => {
+  const view = buildIpoDetailViewModel(createIpo({
+    market: "기타법인",
+    leadManager: "-",
+    coManagers: [],
+  }));
+
+  assert.equal(view.marketLabel, "시장 미확인");
+  assert.equal(
+    view.quickFacts.find((fact) => fact.label === "주관사")?.value,
+    "주관사 미확인",
+  );
+});
+
 test("buildIpoDetailViewModel keeps fallback copy when public score or analysis details are missing", () => {
   const view = buildIpoDetailViewModel(createIpo({
     latestAnalysis: {

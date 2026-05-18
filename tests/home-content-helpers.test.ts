@@ -237,6 +237,26 @@ test("overview sections keep active listing schedules until the listing date pas
   });
 });
 
+test("overview ignores listing dates that are before or on the subscription close date", () => {
+  const timing = buildOverviewTiming("2026-06-01");
+  const ipo = createIpo({
+    id: "needs-review-listing",
+    slug: "needs-review-listing",
+    name: "상장일확인필요",
+    subscriptionStart: "2026-06-10T00:00:00.000Z",
+    subscriptionEnd: "2026-06-12T00:00:00.000Z",
+    listingDate: "2026-06-11T00:00:00.000Z",
+  });
+
+  assert.deepEqual(getOverviewScheduleDisplay(ipo, timing), {
+    label: "청약",
+    date: new Date("2026-06-12T00:00:00.000Z"),
+  });
+  assert.equal(matchesOverviewFilter(ipo, "THIS_MONTH", timing), true);
+  assert.equal(matchesOverviewFilter(ipo, "PAST", buildOverviewTiming("2026-06-12")), false);
+  assert.equal(matchesOverviewFilter(ipo, "PAST", buildOverviewTiming("2026-06-13")), true);
+});
+
 test("overview deposit sort places the lowest minimum deposit first and null values last", () => {
   const timing = buildOverviewTiming("2026-03-25");
   const sections = buildOverviewSections([

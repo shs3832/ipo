@@ -9,13 +9,21 @@ import {
 } from "@/lib/date";
 import { assessIpoDataQuality } from "@/lib/ipo-data-quality";
 import {
+  getLeadManagerDisplay,
+  getListingDateDisplay,
+  getMarketDisplay,
+  getRefundDateDisplay,
+  getUsableListingDate,
+  ipoUnavailableLabel,
+} from "@/lib/ipo-schedule";
+import {
   getIpoPriceDisplay,
   getMinimumDepositAmount as getConfirmedMinimumDepositAmount,
   getMinimumDepositDisplay,
 } from "@/lib/ipo-price";
 import type { PublicIpoDetailRecord, PublicIpoScoreRecord } from "@/lib/types";
 
-export const unavailableLabel = "데이터 미확보";
+export const unavailableLabel = ipoUnavailableLabel;
 
 export type IpoDetailFact = {
   label: string;
@@ -24,6 +32,7 @@ export type IpoDetailFact = {
 };
 
 export type IpoDetailViewModel = {
+  marketLabel: string;
   dataQualityLabel: string;
   isListedYet: boolean;
   analysisSummary: string;
@@ -120,9 +129,27 @@ export const buildIpoDetailViewModel = (
   ipo: PublicIpoDetailRecord,
   todayKey = getKstTodayKey(),
 ): IpoDetailViewModel => {
-  const isListedYet = ipo.listingDate ? kstDateKey(ipo.listingDate) < todayKey : false;
+  const listingDate = getUsableListingDate({
+    listingDate: ipo.listingDate,
+    subscriptionEnd: ipo.subscriptionEnd,
+  });
+  const isListedYet = listingDate ? kstDateKey(listingDate) < todayKey : false;
   const priceDisplay = getIpoPriceDisplay(ipo);
   const minimumDepositDisplay = getMinimumDepositDisplay(ipo);
+  const refundDateDisplay = getRefundDateDisplay({
+    refundDate: ipo.refundDate,
+    status: ipo.status,
+  });
+  const listingDateDisplay = getListingDateDisplay({
+    listingDate: ipo.listingDate,
+    subscriptionEnd: ipo.subscriptionEnd,
+    status: ipo.status,
+  });
+  const marketDisplay = getMarketDisplay(ipo.market);
+  const leadManagerDisplay = getLeadManagerDisplay({
+    leadManager: ipo.leadManager,
+    coManagers: ipo.coManagers,
+  });
   const dataQuality = assessIpoDataQuality(ipo);
   const publicScore = ipo.publicScore;
   const analysisSummary = ipo.latestAnalysis.keyPoints[0]
@@ -170,6 +197,7 @@ export const buildIpoDetailViewModel = (
     : "정량 점수 비공개";
 
   return {
+    marketLabel: marketDisplay.value,
     dataQualityLabel: dataQuality.label,
     isListedYet,
     analysisSummary,
@@ -194,11 +222,11 @@ export const buildIpoDetailViewModel = (
       },
       {
         label: "환불일",
-        value: ipo.refundDate ? formatDate(ipo.refundDate) : null,
+        value: refundDateDisplay.value,
       },
       {
         label: "상장 예정일",
-        value: ipo.listingDate ? formatDate(ipo.listingDate) : null,
+        value: listingDateDisplay.value,
       },
       {
         label: "데이터 상태",
@@ -210,7 +238,7 @@ export const buildIpoDetailViewModel = (
       },
       {
         label: "주관사",
-        value: ipo.coManagers.length ? `${ipo.leadManager} / ${ipo.coManagers.join(", ")}` : ipo.leadManager,
+        value: leadManagerDisplay.value,
       },
     ],
     scheduleFacts: [
@@ -224,11 +252,11 @@ export const buildIpoDetailViewModel = (
       },
       {
         label: "환불일",
-        value: ipo.refundDate ? formatDate(ipo.refundDate) : null,
+        value: refundDateDisplay.value,
       },
       {
         label: "상장 예정일",
-        value: ipo.listingDate ? formatDate(ipo.listingDate) : null,
+        value: listingDateDisplay.value,
       },
       {
         label: "수요예측 일정",

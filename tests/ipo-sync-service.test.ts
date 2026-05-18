@@ -27,6 +27,7 @@ const createSourceRecord = (overrides: Partial<SourceIpoRecord> = {}): SourceIpo
   refundDate: "refundDate" in overrides ? overrides.refundDate ?? null : "2026-03-27",
   listingDate: "listingDate" in overrides ? overrides.listingDate ?? null : "2026-03-30",
   status: "status" in overrides ? overrides.status ?? undefined : "OPEN",
+  notes: overrides.notes,
 });
 
 test("buildPersistedSourceIpoRecord preserves non-price latest fields when source values are missing", () => {
@@ -91,6 +92,35 @@ test("buildIpoWriteData converts date strings to dates and keeps current status 
   assert.equal(writeData.refundDate, null);
   assert.equal(writeData.listingDate, null);
   assert.equal(writeData.status, "UPCOMING");
+});
+
+test("buildPersistedSourceIpoRecord excludes listing dates before subscription close", () => {
+  const persisted = buildPersistedSourceIpoRecord(
+    createSourceRecord({
+      subscriptionEnd: "2026-06-12",
+      listingDate: "2026-06-11",
+      notes: ["원본 메모"],
+    }),
+    null,
+  );
+
+  assert.equal(persisted.listingDate, null);
+  assert.deepEqual(persisted.notes, [
+    "원본 메모",
+    "상장예정일 2026-06-11은 청약 마감일 2026-06-12 이전 또는 당일이라 확인 필요로 제외",
+  ]);
+});
+
+test("buildIpoWriteData and event rows skip invalid listing dates", () => {
+  const record = createSourceRecord({
+    subscriptionEnd: "2026-06-12",
+    listingDate: "2026-06-11",
+  });
+  const writeData = buildIpoWriteData(record);
+  const events = buildIpoEventCreateManyData("ipo-1", record);
+
+  assert.equal(writeData.listingDate, null);
+  assert.deepEqual(events.map((event) => event.type), ["SUBSCRIPTION", "REFUND"]);
 });
 
 test("buildIpoEventCreateManyData derives the expected event rows for persistence", () => {

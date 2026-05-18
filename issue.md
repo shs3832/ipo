@@ -2,6 +2,70 @@
 
 ## 2026-05-18
 
+### Follow-up: Confirmed Offer Price From Prospectus Body
+
+마키나락스처럼 실제 확정 공모가가 나온 종목이 계속 `희망 공모가`로 표시되는 문제를 수정했다. 화면 표시 로직은 이미 `offerPrice`가 있으면 `확정 공모가`를 보여 주는 구조였고, 원인은 OpenDART/KIND 수집 경로에서 확정 공모가가 `offerPrice`까지 들어오지 못한 데 있었다.
+
+### What Changed In This Follow-up
+
+1. OpenDART `estkRs.slprc`는 `[발행조건확정]` 보고서에서도 마키나락스 기준 12,500원으로 내려오는 반례가 있어, 보고서명만으로 확정 공모가로 승격하지 않도록 유지했다.
+2. 대신 증권신고서 본문에서 `확정 공모가액`, `최종 공모가`, `공모가격 ... 확정` 같은 명시 문구를 직접 파싱해 `confirmedOfferPrice`로 추출한다.
+3. `confirmedOfferPrice`가 있으면 `offerPrice`에 우선 반영하고, source snapshot note에 `OpenDART 증권신고서 본문 기준 확정 공모가 ...원`을 남긴다.
+4. 희망밴드 안의 `slprc`는 여전히 본문 확정가가 없으면 확정 공모가로 쓰지 않는다.
+5. 강제 daily-sync를 실행해 마키나락스가 `offerPrice=15000`으로 DB에 반영되는 것을 확인했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/opendart-ipo.test.ts tests/opendart-prospectus.test.ts tests/ipo-data-quality.test.ts tests/home-content-helpers.test.ts tests/ipo-detail-page-helpers.test.ts tests/alert-service.test.ts`
+- `npm test`
+  - 111 tests passed
+- `npx tsc --noEmit`
+- `npm run lint`
+- 실수집 확인
+  - `fetchOpendartCurrentMonthIpos({ forceRefresh: true })`에서 `마키나락스 offerPrice=15000`, `priceBandLow=12500`, `priceBandHigh=15000` 확인
+- `npm run job:daily-sync -- --force-refresh`
+  - `synced=11`, `markedWithdrawn=0`
+  - 결과 payload에서 `마키나락스 offerPrice=15000`, summary `공모가 ₩15,000` 확인
+  - 시작 시 remote DB 연결 일시 실패로 operation log persist 경고가 한 번 있었지만, sync 자체는 database mode로 완료
+- `npm run build`
+  - 이번 sandbox 실행에서도 `Creating an optimized production build ...` 단계에서 3분 이상 추가 로그 없이 정체되어 프로세스를 중단했고, 완료 확인은 하지 못했다.
+
+### Current Decisions To Remember In This Follow-up
+
+- OpenDART `estkRs.slprc`가 희망밴드 범위 안에 있으면 단독으로 확정 공모가로 쓰지 않는다.
+- 확정 공모가는 KIND 상세 `공모가격` 또는 OpenDART 증권신고서 본문의 명시적 확정 문구처럼 직접 확인되는 값만 `offerPrice`로 저장한다.
+- local script로 DB를 갱신한 경우 Vercel public cache tag는 직접 revalidate되지 않으므로 공개 화면은 ISR/cache TTL 또는 다음 job route 실행 후 갱신될 수 있다.
+
+### Follow-up: Unclear IPO Data Display And Listing-Date Guard
+
+공모주 정보가 불분명하거나 비어 있는 항목을 화면에서 더 명확히 구분하고, `져스텍`처럼 상장예정일이 청약 마감일보다 빠르게 들어온 비정상 일정값은 그대로 신뢰하지 않도록 1차/2차 개선을 이어서 적용했다.
+
+### What Changed In This Follow-up
+
+1. 공통 일정/표시 helper를 추가해 `시장 미확인`, `주관사 미확인`, `환불일 미확보`, `상장일 미확보`, `상장일 확인 필요`, `해당 없음` 같은 사용자-facing fallback을 한곳에서 관리한다.
+2. 홈 종목 개요는 `기타법인` 또는 `-` 같은 원본 placeholder를 그대로 보여 주지 않고, 공모가/최소청약주수/최소청약금액 미확보 상태도 `데이터 미확보`로 표시한다.
+3. 상세 페이지 quick facts와 일정 영역은 철회 종목은 `해당 없음`, 상장일이 청약 마감일 이전/당일이면 `상장일 확인 필요`로 표시한다.
+4. 종목 개요의 `상장` 일정/지난 종목 판단과 캘린더 상장 이벤트는 청약 마감일보다 뒤인 유효 상장일만 사용한다.
+5. daily-sync persistence와 fallback normalization에서도 비정상 상장일은 저장/이벤트 생성에서 제외하고 source snapshot note에 검증 제외 사유를 남긴다.
+6. 상장 시초가 보강 로직도 유효 상장일만 기준으로 실행해 잘못된 상장일로 KIND 시세를 조회하지 않게 했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/home-content-helpers.test.ts tests/ipo-detail-page-helpers.test.ts tests/ipo-sync-service.test.ts tests/ipo-data-quality.test.ts`
+- `npm test`
+  - 109 tests passed
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+  - 이번 sandbox 실행에서는 `Creating an optimized production build ...` 단계에서 5분 이상 추가 로그 없이 정체되어 프로세스를 중단했고, 완료 확인은 하지 못했다.
+  - 대상 테스트/타입체크/린트는 통과했으므로, 배포 전 네트워크/빌드 환경에서 build만 재확인 필요.
+
+### Current Decisions To Remember In This Follow-up
+
+- `listingDate <= subscriptionEnd`는 유효한 상장일로 보지 않는다.
+- 상장일이 없거나 검증 실패한 종목은 화면에서 날짜를 꾸며내지 않고 `상장일 미확보` 또는 `상장일 확인 필요`로 표시한다.
+- 미확보/확인 필요 표시는 public-safe 정보이며, admin source metadata는 계속 공개 화면에 노출하지 않는다.
+
 ### Follow-up: Overview Past Classification Uses Listing Date
 
 홈 종목 개요에서 청약 마감일이 지난 종목이 바로 `지난 종목`으로 접히던 동작을 조정했다. 상장일이 확인된 종목은 상장일이 지나야 `지난 종목`으로 이동하고, 청약이 끝났지만 상장일이 남은 종목은 `이번 주 일정` 또는 `그다음 일정`에 남아 카드의 주요 날짜를 `상장`으로 표시한다.

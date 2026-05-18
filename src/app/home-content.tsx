@@ -24,6 +24,7 @@ import {
 import { BrokerChipList } from "@/components/broker-chip";
 import styles from "@/app/home-content.module.scss";
 import { formatDate, formatMoney, formatSignedPercentValue, getKstDayOfWeek, kstDateKey } from "@/lib/date";
+import { getLeadManagerDisplay, getMarketDisplay, ipoUnavailableLabel } from "@/lib/ipo-schedule";
 
 type LegacyMediaQueryList = MediaQueryList & {
   addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
@@ -486,14 +487,20 @@ export function HomeContent({
                       const priceDisplay = getIpoPriceDisplay(ipo);
                       const minimumDepositDisplay = getMinimumDepositDisplay(ipo);
                       const scheduleDisplay = getOverviewScheduleDisplay(ipo, overviewTiming);
+                      const marketDisplay = getMarketDisplay(ipo.market);
+                      const leadManagerDisplay = getLeadManagerDisplay({ leadManager: ipo.leadManager });
 
                       return (
                         <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
                           <div className={styles.ipoCardHead}>
                             <div>
                               <h3>{ipo.name}</h3>
-                              <p>{ipo.market}</p>
-                              <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
+                              <p>{marketDisplay.value}</p>
+                              {leadManagerDisplay.status === "MISSING" ? (
+                                <p className={styles.ipoBrokerList}>{leadManagerDisplay.value}</p>
+                              ) : (
+                                <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
+                              )}
                             </div>
                             <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)} ${styles.scoreHidden}`}>
                               {getScoreStatusLabel(ipo.publicScore)}
@@ -506,15 +513,15 @@ export function HomeContent({
                             </div>
                             <div>
                               <dt>{priceDisplay.label}</dt>
-                              <dd>{priceDisplay.value ?? "-"}</dd>
+                              <dd>{priceDisplay.value ?? ipoUnavailableLabel}</dd>
                             </div>
                             <div>
                               <dt>최소청약주수</dt>
-                              <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : "-"}</dd>
+                              <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : ipoUnavailableLabel}</dd>
                             </div>
                             <div>
                               <dt>{minimumDepositDisplay.label}</dt>
-                              <dd>{minimumDepositDisplay.value ?? "-"}</dd>
+                              <dd>{minimumDepositDisplay.value ?? ipoUnavailableLabel}</dd>
                             </div>
                             <div className={styles.scoreHidden}>
                               <dt>종합점수</dt>

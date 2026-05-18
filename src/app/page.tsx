@@ -3,6 +3,7 @@ import Link from "next/link";
 import { formatDate, formatDateTime, getMonthDays, kstDateKey } from "@/lib/date";
 import { HomeContent } from "@/app/home-content";
 import { getCachedHomeSnapshot } from "@/lib/page-data";
+import { getUsableListingDate } from "@/lib/ipo-schedule";
 import styles from "@/app/page.module.scss";
 
 export const revalidate = 300;
@@ -13,11 +14,21 @@ export default async function Home() {
   const snapshot = await getCachedHomeSnapshot();
   const monthDays = getMonthDays(snapshot.calendarMonth);
   const currentMonthKey = formatDate(snapshot.calendarMonth, "yyyy-MM");
-  const eventCount = snapshot.ipos.reduce((count, ipo) => count + ipo.events.length, 0);
   const eventsByDate = new Map<string, { title: string; slug: string; type: EventType }[]>();
+  let eventCount = 0;
 
   snapshot.ipos.forEach((ipo) => {
     ipo.events.forEach((event) => {
+      if (
+        event.type === "LISTING"
+        && !getUsableListingDate({
+          listingDate: event.eventDate,
+          subscriptionEnd: ipo.subscriptionEnd,
+        })
+      ) {
+        return;
+      }
+
       const key = kstDateKey(event.eventDate);
       const list = eventsByDate.get(key) ?? [];
       list.push({
@@ -26,6 +37,7 @@ export default async function Home() {
         type: event.type,
       });
       eventsByDate.set(key, list);
+      eventCount += 1;
     });
   });
 

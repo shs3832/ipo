@@ -1,5 +1,6 @@
 import type { IpoRecord } from "@/lib/types";
 import { hasPriceBandReference } from "@/lib/ipo-price";
+import { isChronologicallyValidListingDate, isKnownLeadManager, isKnownMarket } from "@/lib/ipo-schedule";
 
 type QualityStatus = "VERIFIED" | "PARTIAL" | "BLOCKED";
 
@@ -17,6 +18,7 @@ type QualityInput = Pick<
   | "generalSubscriptionCompetitionRate"
   | "refundDate"
   | "listingDate"
+  | "subscriptionEnd"
   | "floatRatio"
 >;
 
@@ -32,12 +34,6 @@ export type IpoDataQualitySummary = {
   marketLabel: string;
   leadManagerLabel: string;
 };
-
-const isKnownLeadManager = (value: string | null | undefined) =>
-  Boolean(value && value.trim() && value.trim() !== "-");
-
-const isKnownMarket = (value: string | null | undefined) =>
-  Boolean(value && value.trim() && value.trim() !== "기타법인");
 
 const formatMissingPreview = (values: string[]) =>
   values.length <= 3 ? values.join(", ") : `${values.slice(0, 3).join(", ")} 외 ${values.length - 3}개`;
@@ -64,7 +60,13 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
     sourceChecks.push("환불일 확인");
   }
 
-  if (!ipo.listingDate) {
+  if (ipo.listingDate && !isChronologicallyValidListingDate({
+    listingDate: ipo.listingDate,
+    subscriptionEnd: ipo.subscriptionEnd,
+  })) {
+    optionalMissing.push("상장 예정일 검증");
+    sourceChecks.push("상장 예정일 확인 필요");
+  } else if (!ipo.listingDate) {
     optionalMissing.push("상장 예정일");
   } else {
     confirmedFacts.push("상장 예정일");
