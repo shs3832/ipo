@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { formatDate, formatDateTime, getMonthDays, kstDateKey } from "@/lib/date";
 import { HomeContent } from "@/app/home-content";
+import { PullToRefresh } from "@/app/pull-to-refresh";
 import { getCachedHomeSnapshot } from "@/lib/page-data";
 import { getUsableListingDate } from "@/lib/ipo-schedule";
 import styles from "@/app/page.module.scss";
@@ -43,6 +44,7 @@ export default async function Home() {
 
   return (
     <main className="page-shell">
+      <PullToRefresh />
       <div className={styles.page}>
         <section className={styles.hero}>
           <div className={styles.heroBody}>

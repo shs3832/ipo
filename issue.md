@@ -1,5 +1,24 @@
 # Issue Log
 
+## 2026-05-19
+
+### Follow-up: Simple Pull-To-Refresh Reload
+
+모바일/PWA 사용자가 홈 화면 최상단에서 아래로 당겼을 때 복잡한 데이터 동기화가 아니라 브라우저 페이지 새로고침만 수행하도록 최소 기능을 추가했다. 공개 사용자의 제스처가 `daily-sync`, 원천 데이터 강제 수집, cache tag revalidation으로 이어지지 않도록 범위를 명확히 제한했다.
+
+### What Changed In This Follow-up
+
+1. 홈 페이지에 `PullToRefresh` 클라이언트 컴포넌트를 추가했다.
+2. 최상단에서 한 손가락으로 일정 거리 이상 아래로 당긴 뒤 놓으면 `window.location.reload()`를 호출한다.
+3. 당기는 동안 `아래로 당겨 새로고침`, `놓으면 새로고침`, `새로고침 중...` 상태 indicator만 표시한다.
+4. DB write, public cache invalidation, admin manual sync, job route 호출은 추가하지 않았다.
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm run lint`
+- `git diff --check`
+
 ## 2026-05-18
 
 ### Follow-up: Confirmed Offer Price From Prospectus Body
