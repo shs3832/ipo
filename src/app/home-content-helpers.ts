@@ -31,6 +31,7 @@ export type HomeIpoSummary = {
   leadManager: string;
   subscriptionStart: string;
   subscriptionEnd: string;
+  listingDate: string | null;
   priceBandLow: number | null;
   priceBandHigh: number | null;
   offerPrice: number | null;
@@ -48,6 +49,10 @@ export type HomeIpoSummary = {
 export type OverviewFilterKey = "ALL" | "THIS_WEEK" | "THIS_MONTH" | "OPEN_NOW" | "PAST";
 export type OverviewSortKey = "DEADLINE" | "NAME" | "DEPOSIT_LOW";
 export type OverviewSectionId = "THIS_WEEK" | "UPCOMING" | "PAST";
+export type OverviewScheduleDisplay = {
+  label: "청약" | "상장";
+  date: Date;
+};
 
 export type OverviewTiming = {
   todayKey: string;
@@ -85,14 +90,14 @@ export type HomeContentViewModel = {
 
 export const overviewFilterItems: Array<{ key: OverviewFilterKey; label: string }> = [
   { key: "ALL", label: "전체" },
-  { key: "THIS_WEEK", label: "이번주 마감" },
+  { key: "THIS_WEEK", label: "이번주 일정" },
   { key: "THIS_MONTH", label: "이번달" },
   { key: "OPEN_NOW", label: "청약중" },
   { key: "PAST", label: "지난 종목" },
 ];
 
 export const overviewSortItems: Array<{ key: OverviewSortKey; label: string }> = [
-  { key: "DEADLINE", label: "청약 마감순" },
+  { key: "DEADLINE", label: "다음 일정순" },
   { key: "NAME", label: "종목명순" },
   { key: "DEPOSIT_LOW", label: "최소청약금액 낮은순" },
 ];
@@ -114,6 +119,7 @@ const nameCollator = new Intl.Collator("ko-KR", {
 const normalizeSearchValue = (value: string) => value.trim().toLocaleLowerCase("ko-KR");
 const getSubscriptionStartKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionStart));
 const getSubscriptionEndKey = (ipo: HomeIpoSummary) => kstDateKey(new Date(ipo.subscriptionEnd));
+const getListingDateKey = (ipo: HomeIpoSummary) => (ipo.listingDate ? kstDateKey(new Date(ipo.listingDate)) : null);
 const isCalendarEntrySpac = (entry: CalendarEntry) => isSpacIpo({ name: entry.title });
 
 export const isStoredCalendarFilters = (value: unknown): value is StoredCalendarFilters =>
@@ -242,6 +248,38 @@ export const matchesOverviewSearch = (ipo: HomeIpoSummary, query: string) => {
   ].some((value) => normalizeSearchValue(value).includes(normalizedQuery));
 };
 
+export const getOverviewScheduleDisplay = (
+  ipo: HomeIpoSummary,
+  timing = buildOverviewTiming(),
+): OverviewScheduleDisplay => {
+  const subscriptionEndKey = getSubscriptionEndKey(ipo);
+
+  if (ipo.listingDate && subscriptionEndKey < timing.todayKey) {
+    return {
+      label: "상장",
+      date: new Date(ipo.listingDate),
+    };
+  }
+
+  return {
+    label: "청약",
+    date: new Date(ipo.subscriptionEnd),
+  };
+};
+
+const getOverviewScheduleKey = (ipo: HomeIpoSummary, timing = buildOverviewTiming()) =>
+  kstDateKey(getOverviewScheduleDisplay(ipo, timing).date);
+
+const isPastOverviewIpo = (ipo: HomeIpoSummary, timing = buildOverviewTiming()) => {
+  const listingDateKey = getListingDateKey(ipo);
+
+  if (listingDateKey) {
+    return listingDateKey < timing.todayKey;
+  }
+
+  return getSubscriptionEndKey(ipo) < timing.todayKey;
+};
+
 export const matchesOverviewFilter = (
   ipo: HomeIpoSummary,
   filterKey: OverviewFilterKey,
@@ -253,16 +291,17 @@ export const matchesOverviewFilter = (
 
   const subscriptionStartKey = getSubscriptionStartKey(ipo);
   const subscriptionEndKey = getSubscriptionEndKey(ipo);
+  const scheduleKey = getOverviewScheduleKey(ipo, timing);
 
   switch (filterKey) {
     case "THIS_WEEK":
-      return subscriptionEndKey >= timing.todayKey && subscriptionEndKey <= timing.weekEndKey;
+      return !isPastOverviewIpo(ipo, timing) && scheduleKey >= timing.todayKey && scheduleKey <= timing.weekEndKey;
     case "THIS_MONTH":
-      return subscriptionEndKey >= timing.todayKey && subscriptionEndKey.startsWith(timing.monthKey);
+      return !isPastOverviewIpo(ipo, timing) && scheduleKey >= timing.todayKey && scheduleKey.startsWith(timing.monthKey);
     case "OPEN_NOW":
       return subscriptionStartKey <= timing.todayKey && subscriptionEndKey >= timing.todayKey;
     case "PAST":
-      return subscriptionEndKey < timing.todayKey;
+      return isPastOverviewIpo(ipo, timing);
     default:
       return true;
   }
@@ -311,6 +350,7 @@ const sortOverviewSectionItems = (
   items: HomeIpoSummary[],
   sortKey: OverviewSortKey,
   sectionId: OverviewSectionId,
+  timing = buildOverviewTiming(),
 ) => [...items].sort((left, right) => {
   if (sortKey === "NAME") {
     return compareByName(left, right);
@@ -320,8 +360,8 @@ const sortOverviewSectionItems = (
     return compareByMinimumDeposit(left, right);
   }
 
-  const leftEndDate = new Date(left.subscriptionEnd).getTime();
-  const rightEndDate = new Date(right.subscriptionEnd).getTime();
+  const leftEndDate = getOverviewScheduleDisplay(left, timing).date.getTime();
+  const rightEndDate = getOverviewScheduleDisplay(right, timing).date.getTime();
 
   if (leftEndDate !== rightEndDate) {
     return sectionId === "PAST"
@@ -342,14 +382,14 @@ export const buildOverviewSections = (
   const past: HomeIpoSummary[] = [];
 
   ipos.forEach((ipo) => {
-    const subscriptionEndKey = getSubscriptionEndKey(ipo);
+    const scheduleKey = getOverviewScheduleKey(ipo, timing);
 
-    if (subscriptionEndKey < timing.todayKey) {
+    if (isPastOverviewIpo(ipo, timing)) {
       past.push(ipo);
       return;
     }
 
-    if (subscriptionEndKey <= timing.weekEndKey) {
+    if (scheduleKey <= timing.weekEndKey) {
       thisWeek.push(ipo);
       return;
     }
@@ -360,21 +400,21 @@ export const buildOverviewSections = (
   return [
     {
       id: "THIS_WEEK" as const,
-      title: "이번 주 마감",
-      description: "오늘부터 이번 주 안에 청약이 끝나는 종목입니다.",
-      items: sortOverviewSectionItems(thisWeek, sortKey, "THIS_WEEK"),
+      title: "이번 주 일정",
+      description: "오늘부터 이번 주 안에 청약 마감 또는 상장이 이어지는 종목입니다.",
+      items: sortOverviewSectionItems(thisWeek, sortKey, "THIS_WEEK", timing),
     },
     {
       id: "UPCOMING" as const,
       title: "그다음 일정",
-      description: "이번 주 이후에 이어지는 종목입니다.",
-      items: sortOverviewSectionItems(upcoming, sortKey, "UPCOMING"),
+      description: "이번 주 이후에 청약 마감 또는 상장이 이어지는 종목입니다.",
+      items: sortOverviewSectionItems(upcoming, sortKey, "UPCOMING", timing),
     },
     {
       id: "PAST" as const,
       title: "지난 종목",
-      description: "청약 마감이 지난 종목입니다.",
-      items: sortOverviewSectionItems(past, sortKey, "PAST"),
+      description: "상장일이 지난 종목입니다.",
+      items: sortOverviewSectionItems(past, sortKey, "PAST", timing),
     },
   ].filter((section) => section.items.length > 0);
 };

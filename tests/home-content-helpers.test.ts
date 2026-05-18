@@ -16,6 +16,7 @@ import {
   getIpoPriceDisplay,
   getMinimumDepositAmount,
   getMinimumDepositDisplay,
+  getOverviewScheduleDisplay,
   getOverviewFilterCounts,
   isSpacIpo,
   isStoredCalendarFilters,
@@ -33,6 +34,7 @@ const createIpo = (overrides: Partial<HomeIpoSummary>): HomeIpoSummary => ({
   leadManager: overrides.leadManager ?? "한국투자증권",
   subscriptionStart: overrides.subscriptionStart ?? "2026-03-24T00:00:00.000Z",
   subscriptionEnd: overrides.subscriptionEnd ?? "2026-03-27T00:00:00.000Z",
+  listingDate: "listingDate" in overrides ? overrides.listingDate ?? null : null,
   priceBandLow: "priceBandLow" in overrides ? overrides.priceBandLow ?? null : 9_000,
   priceBandHigh: "priceBandHigh" in overrides ? overrides.priceBandHigh ?? null : 11_000,
   offerPrice: "offerPrice" in overrides ? overrides.offerPrice ?? null : 10_000,
@@ -182,7 +184,7 @@ test("overview filter counts reflect current-week, current-month, open-now, and 
   assert.equal(matchesOverviewFilter(ipos[4], "PAST", timing), true);
 });
 
-test("overview sections keep upcoming soon first and sort past items by most recent deadline", () => {
+test("overview sections keep active listing schedules until the listing date passes", () => {
   const timing = buildOverviewTiming("2026-03-25");
   const sections = buildOverviewSections([
     createIpo({
@@ -193,11 +195,20 @@ test("overview sections keep upcoming soon first and sort past items by most rec
       subscriptionEnd: "2026-04-03T00:00:00.000Z",
     }),
     createIpo({
+      id: "listed-soon",
+      slug: "listed-soon",
+      name: "상장예정",
+      subscriptionStart: "2026-03-20T00:00:00.000Z",
+      subscriptionEnd: "2026-03-21T00:00:00.000Z",
+      listingDate: "2026-03-27T00:00:00.000Z",
+    }),
+    createIpo({
       id: "past-older",
       slug: "past-older",
       name: "지난오래전",
       subscriptionStart: "2026-03-15T00:00:00.000Z",
       subscriptionEnd: "2026-03-20T00:00:00.000Z",
+      listingDate: "2026-03-22T00:00:00.000Z",
     }),
     createIpo({
       id: "this-week",
@@ -212,13 +223,18 @@ test("overview sections keep upcoming soon first and sort past items by most rec
       name: "지난최근",
       subscriptionStart: "2026-03-21T00:00:00.000Z",
       subscriptionEnd: "2026-03-24T00:00:00.000Z",
+      listingDate: "2026-03-24T00:00:00.000Z",
     }),
   ], "DEADLINE", timing);
 
   assert.deepEqual(sections.map((section) => section.id), ["THIS_WEEK", "UPCOMING", "PAST"]);
-  assert.deepEqual(sections[0].items.map((ipo) => ipo.id), ["this-week"]);
+  assert.deepEqual(sections[0].items.map((ipo) => ipo.id), ["listed-soon", "this-week"]);
   assert.deepEqual(sections[1].items.map((ipo) => ipo.id), ["upcoming"]);
   assert.deepEqual(sections[2].items.map((ipo) => ipo.id), ["past-recent", "past-older"]);
+  assert.deepEqual(getOverviewScheduleDisplay(sections[0].items[0], timing), {
+    label: "상장",
+    date: new Date("2026-03-27T00:00:00.000Z"),
+  });
 });
 
 test("overview deposit sort places the lowest minimum deposit first and null values last", () => {

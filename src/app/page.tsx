@@ -42,7 +42,7 @@ export default async function Home() {
             </p>
             <div className={styles.heroMetaRow}>
               <span className="status-pill">기준 시간대 Asia/Seoul</span>
-              <span className="status-pill status-pill-soft">일정 표시는 청약 마감일 중심</span>
+              <span className="status-pill status-pill-soft">일정 표시는 청약·상장 흐름 중심</span>
             </div>
           </div>
 
@@ -103,6 +103,7 @@ export default async function Home() {
             leadManager: ipo.leadManager,
             subscriptionStart: ipo.subscriptionStart.toISOString(),
             subscriptionEnd: ipo.subscriptionEnd.toISOString(),
+            listingDate: ipo.listingDate?.toISOString() ?? null,
             priceBandLow: ipo.priceBandLow,
             priceBandHigh: ipo.priceBandHigh,
             offerPrice: ipo.offerPrice,

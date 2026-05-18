@@ -5,10 +5,12 @@ import { useDeferredValue, useEffect, useState } from "react";
 
 import {
   buildHomeContentViewModel,
+  buildOverviewTiming,
   defaultCalendarFilters,
   filterCalendarEntries,
   getIpoPriceDisplay,
   getMinimumDepositDisplay,
+  getOverviewScheduleDisplay,
   isStoredCalendarFilters,
   type HomeIpoSummary,
   type CalendarEntry,
@@ -196,6 +198,7 @@ export function HomeContent({
       [type]: !current[type],
     }));
   };
+  const overviewTiming = buildOverviewTiming(todayKey ?? undefined);
   const {
     visibleWeekdayLabels,
     visibleMonthDays,
@@ -369,7 +372,7 @@ export function HomeContent({
           <div>
             <p className="page-eyebrow">Tracked IPOs</p>
             <h2 className="section-title">종목 개요</h2>
-            <p className="section-copy">청약 마감일 기준으로 일정, 공모가, 주관사 같은 공시 기반 핵심 정보만 빠르게 훑는 영역입니다.</p>
+            <p className="section-copy">청약 마감과 상장 흐름을 기준으로 일정, 공모가, 주관사 같은 공시 기반 핵심 정보만 빠르게 훑는 영역입니다.</p>
           </div>
           <span className="status-pill status-pill-soft">{filteredOverviewLabel}</span>
         </div>
@@ -482,6 +485,7 @@ export function HomeContent({
                     {section.visibleItems.map((ipo) => {
                       const priceDisplay = getIpoPriceDisplay(ipo);
                       const minimumDepositDisplay = getMinimumDepositDisplay(ipo);
+                      const scheduleDisplay = getOverviewScheduleDisplay(ipo, overviewTiming);
 
                       return (
                         <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
@@ -497,8 +501,8 @@ export function HomeContent({
                           </div>
                           <dl className={styles.ipoStats}>
                             <div>
-                              <dt>청약</dt>
-                              <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>
+                              <dt>{scheduleDisplay.label}</dt>
+                              <dd>{formatDate(scheduleDisplay.date)}</dd>
                             </div>
                             <div>
                               <dt>{priceDisplay.label}</dt>

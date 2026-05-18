@@ -2,6 +2,28 @@
 
 ## 2026-05-18
 
+### Follow-up: Overview Past Classification Uses Listing Date
+
+홈 종목 개요에서 청약 마감일이 지난 종목이 바로 `지난 종목`으로 접히던 동작을 조정했다. 상장일이 확인된 종목은 상장일이 지나야 `지난 종목`으로 이동하고, 청약이 끝났지만 상장일이 남은 종목은 `이번 주 일정` 또는 `그다음 일정`에 남아 카드의 주요 날짜를 `상장`으로 표시한다.
+
+### What Changed In This Follow-up
+
+1. public home summary에 `listingDate`를 포함해 클라이언트 종목 개요에서 상장일 기준 분류가 가능하게 했다.
+2. 종목 개요 filter/section 분류는 상장일이 있으면 상장일 기준으로 `PAST`를 판단한다.
+3. 청약 마감 후 상장일이 남은 종목은 카드 첫 날짜 label을 `상장`으로 바꾼다.
+4. `이번주 마감` UI label은 `이번주 일정`, 정렬 label은 `다음 일정순`으로 바꿔 청약/상장을 함께 담는 의미에 맞췄다.
+5. 기존 public home cache가 `listingDate` 없는 summary를 계속 들고 있을 수 있어 cache key를 `public-home-snapshot-v3`로 올렸다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/home-content-helpers.test.ts tests/public-home-snapshot.test.ts tests/page-data-revival.test.ts`
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- Browser smoke: 홈 종목 개요에서 `마키나락스`가 `이번 주 일정` 섹션에 `상장 2026.05.20`으로 표시되는 것을 확인했다.
+
+## 2026-05-18
+
 ### Follow-up: Price Band Fallback For Alerts And Public Display
 
 수정 이후 10시 IPO 알림이 오지 않고 공모가가 비어 보이는 증상을 운영 로그와 DB 기준으로 확인했다. 2026-05-12 KST에는 `마키나락스`가 실제 청약 마감 후보였지만, `확정 공모가`가 없다는 이유로 `blockedCount=1`, `jobs=0`, `NotificationJob=[]`가 되었고 dispatch는 보낼 READY job이 없어 `attempted=0`으로 끝났다.

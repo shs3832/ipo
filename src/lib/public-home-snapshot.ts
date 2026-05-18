@@ -16,6 +16,7 @@ export const toPublicHomeIpoSummary = (ipo: IpoRecord | PublicHomeIpoSummary): P
   leadManager: ipo.leadManager,
   subscriptionStart: ipo.subscriptionStart,
   subscriptionEnd: ipo.subscriptionEnd,
+  listingDate: "listingDate" in ipo ? ipo.listingDate ?? null : null,
   priceBandLow: "priceBandLow" in ipo ? ipo.priceBandLow ?? null : null,
   priceBandHigh: "priceBandHigh" in ipo ? ipo.priceBandHigh ?? null : null,
   offerPrice: ipo.offerPrice,
