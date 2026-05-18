@@ -29,9 +29,9 @@ const createIpo = (overrides: Partial<IpoRecord> = {}): IpoRecord => ({
   coManagers: overrides.coManagers ?? ["미래에셋증권"],
   kindIssueCode: overrides.kindIssueCode ?? "12345",
   kindBizProcessNo: overrides.kindBizProcessNo ?? "BP-1",
-  priceBandLow: overrides.priceBandLow ?? 10_000,
-  priceBandHigh: overrides.priceBandHigh ?? 12_000,
-  offerPrice: overrides.offerPrice ?? 11_000,
+  priceBandLow: "priceBandLow" in overrides ? overrides.priceBandLow ?? null : 10_000,
+  priceBandHigh: "priceBandHigh" in overrides ? overrides.priceBandHigh ?? null : 12_000,
+  offerPrice: "offerPrice" in overrides ? overrides.offerPrice ?? null : 11_000,
   listingOpenPrice: overrides.listingOpenPrice ?? null,
   listingOpenReturnRate: overrides.listingOpenReturnRate ?? null,
   minimumSubscriptionShares: overrides.minimumSubscriptionShares ?? 10,
@@ -162,6 +162,22 @@ test("buildClosingDayAnalysisMessage keeps score-hidden copy and renderMessageHt
   assert.equal(html.includes("<script>alert(1)</script>"), false);
   assert.equal(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"), true);
   assert.equal(html.includes("&lt;테스트 종목&gt;"), true);
+});
+
+test("buildClosingDayAnalysisMessage marks price-band based values as unconfirmed estimates", () => {
+  const ipo = createIpo({
+    offerPrice: null,
+    priceBandLow: 12_500,
+    priceBandHigh: 15_000,
+    minimumSubscriptionShares: 10,
+    depositRate: 0.5,
+  });
+  const message = buildClosingDayAnalysisMessage(ipo, partialQuality);
+
+  assert.equal(message.tags.includes("#증거금예상"), true);
+  assert.equal(message.intro.includes("확정 전 항목은 희망밴드와 검증 상태를 함께 표시합니다."), true);
+  assert.equal(message.sections[0]?.lines.includes("예상 최소청약금액 ₩62,500 ~ ₩75,000 (희망밴드 기준)"), true);
+  assert.equal(message.sections[2]?.lines.includes("희망 공모가 ₩12,500 ~ ₩15,000 (확정 전)"), true);
 });
 
 test("buildAlertPreparationSummary and log entry explain why no alerts were prepared", () => {

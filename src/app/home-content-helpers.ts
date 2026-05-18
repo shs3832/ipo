@@ -1,7 +1,13 @@
 import { getKstDayOfWeek, getKstTodayKey, kstDateKey, parseKstDate, shiftKstDateKey } from "@/lib/date";
 import { isSpacIpo } from "@/lib/ipo-classification";
+import {
+  getIpoPriceDisplay,
+  getMinimumDepositAmount,
+  getMinimumDepositDisplay,
+} from "@/lib/ipo-price";
 
 export { isSpacIpo };
+export { getIpoPriceDisplay, getMinimumDepositAmount, getMinimumDepositDisplay };
 
 export type CalendarEventType = "SUBSCRIPTION" | "REFUND" | "LISTING";
 
@@ -25,6 +31,8 @@ export type HomeIpoSummary = {
   leadManager: string;
   subscriptionStart: string;
   subscriptionEnd: string;
+  priceBandLow: number | null;
+  priceBandHigh: number | null;
   offerPrice: number | null;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
@@ -218,18 +226,6 @@ export const buildOverviewTiming = (todayKey = getKstTodayKey()): OverviewTiming
     weekEndKey: shiftKstDateKey(todayKey, 6 - currentDayOfWeek),
     monthKey: todayKey.slice(0, 7),
   };
-};
-
-export const getMinimumDepositAmount = ({
-  offerPrice,
-  minimumSubscriptionShares,
-  depositRate,
-}: Pick<HomeIpoSummary, "offerPrice" | "minimumSubscriptionShares" | "depositRate">) => {
-  if (offerPrice == null || minimumSubscriptionShares == null || depositRate == null) {
-    return null;
-  }
-
-  return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
 };
 
 export const matchesOverviewSearch = (ipo: HomeIpoSummary, query: string) => {

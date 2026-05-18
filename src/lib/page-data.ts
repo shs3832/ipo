@@ -6,7 +6,7 @@ import { PUBLIC_HOME_SNAPSHOT_TAG, PUBLIC_IPO_DETAIL_TAG } from "@/lib/public-ca
 
 const getCachedPublicHomeSnapshot = unstable_cache(
   async () => getPublicHomeSnapshot(),
-  ["public-home-snapshot"],
+  ["public-home-snapshot-v2"],
   {
     revalidate: 300,
     tags: [PUBLIC_HOME_SNAPSHOT_TAG],

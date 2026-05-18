@@ -72,6 +72,8 @@ export const revivePublicHomeIpoSummary = (ipo: PublicHomeIpoSummary): PublicHom
   leadManager: ipo.leadManager,
   subscriptionStart: toDate(ipo.subscriptionStart) ?? new Date(),
   subscriptionEnd: toDate(ipo.subscriptionEnd) ?? new Date(),
+  priceBandLow: ipo.priceBandLow ?? null,
+  priceBandHigh: ipo.priceBandHigh ?? null,
   offerPrice: ipo.offerPrice,
   minimumSubscriptionShares: ipo.minimumSubscriptionShares,
   depositRate: ipo.depositRate,

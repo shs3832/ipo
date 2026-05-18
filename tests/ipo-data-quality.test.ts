@@ -10,6 +10,8 @@ test("assessIpoDataQuality blocks alerts when critical facts are missing", () =>
     leadManager: "-",
     kindIssueCode: null,
     kindBizProcessNo: null,
+    priceBandLow: null,
+    priceBandHigh: null,
     offerPrice: null,
     minimumSubscriptionShares: null,
     depositRate: null,
@@ -21,7 +23,31 @@ test("assessIpoDataQuality blocks alerts when critical facts are missing", () =>
 
   assert.equal(summary.status, "BLOCKED");
   assert.equal(summary.shouldSendAlert, false);
-  assert.deepEqual(summary.criticalMissing, ["확정 공모가", "환불일", "주관사"]);
+  assert.deepEqual(summary.criticalMissing, ["공모가 또는 희망밴드", "환불일", "주관사"]);
+});
+
+test("assessIpoDataQuality allows partial alerts when only the price band is available", () => {
+  const summary = assessIpoDataQuality({
+    market: "KOSDAQ",
+    leadManager: "한국투자증권",
+    kindIssueCode: "40847",
+    kindBizProcessNo: "20250527000093",
+    priceBandLow: 12_500,
+    priceBandHigh: 15_000,
+    offerPrice: null,
+    minimumSubscriptionShares: 10,
+    depositRate: 0.5,
+    generalSubscriptionCompetitionRate: null,
+    refundDate: parseKstDate("2026-05-15"),
+    listingDate: null,
+    floatRatio: null,
+  });
+
+  assert.equal(summary.status, "PARTIAL");
+  assert.equal(summary.shouldSendAlert, true);
+  assert.deepEqual(summary.criticalMissing, []);
+  assert.equal(summary.optionalMissing.includes("확정 공모가"), true);
+  assert.equal(summary.confirmedFacts.includes("희망 공모가"), true);
 });
 
 test("assessIpoDataQuality does not block alerts when listing date is missing", () => {
@@ -30,6 +56,8 @@ test("assessIpoDataQuality does not block alerts when listing date is missing", 
     leadManager: "한국투자증권",
     kindIssueCode: "40847",
     kindBizProcessNo: "20250527000093",
+    priceBandLow: 18_000,
+    priceBandHigh: 20_000,
     offerPrice: 19000,
     minimumSubscriptionShares: null,
     depositRate: null,
@@ -51,6 +79,8 @@ test("assessIpoDataQuality marks fully verified IPOs as verified", () => {
     leadManager: "한국투자증권",
     kindIssueCode: "49328",
     kindBizProcessNo: "20250324000286",
+    priceBandLow: 23_000,
+    priceBandHigh: 26_000,
     offerPrice: 26000,
     minimumSubscriptionShares: 20,
     depositRate: 0.5,

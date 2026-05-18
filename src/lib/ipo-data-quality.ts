@@ -1,4 +1,5 @@
 import type { IpoRecord } from "@/lib/types";
+import { hasPriceBandReference } from "@/lib/ipo-price";
 
 type QualityStatus = "VERIFIED" | "PARTIAL" | "BLOCKED";
 
@@ -8,6 +9,8 @@ type QualityInput = Pick<
   | "leadManager"
   | "kindIssueCode"
   | "kindBizProcessNo"
+  | "priceBandLow"
+  | "priceBandHigh"
   | "offerPrice"
   | "minimumSubscriptionShares"
   | "depositRate"
@@ -45,8 +48,11 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
   const confirmedFacts: string[] = [];
   const sourceChecks: string[] = [];
 
-  if (ipo.offerPrice == null) {
-    criticalMissing.push("확정 공모가");
+  if (ipo.offerPrice == null && !hasPriceBandReference(ipo)) {
+    criticalMissing.push("공모가 또는 희망밴드");
+  } else if (ipo.offerPrice == null) {
+    optionalMissing.push("확정 공모가");
+    confirmedFacts.push("희망 공모가");
   } else {
     confirmedFacts.push("확정 공모가");
   }
@@ -102,6 +108,8 @@ export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary =
 
   if (ipo.offerPrice != null) {
     sourceChecks.push("공모가 확인");
+  } else if (hasPriceBandReference(ipo)) {
+    sourceChecks.push("희망 공모가 확인");
   }
 
   if (ipo.minimumSubscriptionShares != null && ipo.depositRate != null) {

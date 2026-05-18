@@ -7,7 +7,6 @@ import {
   atKstTime,
   formatDate,
   formatDateTime,
-  formatMoney,
   formatPercent,
   getKstTodayKey,
   isSameKstDate,
@@ -17,6 +16,11 @@ import {
 } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { env, isEmailConfigured } from "@/lib/env";
+import {
+  formatPriceBandRange,
+  getIpoPriceDisplay,
+  getMinimumDepositDisplay,
+} from "@/lib/ipo-price";
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 import { createDeliveryIdempotencyKey } from "@/lib/server/alert-delivery";
 import { getDashboardSnapshot } from "@/lib/server/ipo-read-service";
@@ -89,18 +93,6 @@ type AlertSourceRefreshDecision =
   | "cooldown_after_failure"
   | "start_refresh";
 
-const getMinimumDepositAmount = (ipo: IpoRecord) => {
-  if (
-    ipo.offerPrice == null
-    || ipo.minimumSubscriptionShares == null
-    || ipo.depositRate == null
-  ) {
-    return null;
-  }
-
-  return Math.round(ipo.offerPrice * ipo.minimumSubscriptionShares * ipo.depositRate);
-};
-
 const getDetailUrl = (slug: string) => {
   const baseUrl = env.appBaseUrl.replace(/\/+$/, "");
   return `${baseUrl}/ipos/${encodeURIComponent(slug)}`;
@@ -143,11 +135,11 @@ const buildDataQualityLines = (dataQuality: IpoDataQualitySummary) => {
 };
 
 const buildDecisionTags = (ipo: IpoRecord, dataQuality: IpoDataQualitySummary) => {
-  const minimumDeposit = getMinimumDepositAmount(ipo);
+  const minimumDeposit = getMinimumDepositDisplay(ipo);
   const tags: string[] = ["#공모주", "#청약마감", "#공시확인"];
 
-  if (minimumDeposit != null) {
-    tags.push("#증거금확인");
+  if (minimumDeposit.value != null) {
+    tags.push(minimumDeposit.isEstimated ? "#증거금예상" : "#증거금확인");
   }
 
   if (getAnalysisWarnings(ipo).length > 0) {
@@ -163,6 +155,20 @@ const buildDecisionTags = (ipo: IpoRecord, dataQuality: IpoDataQualitySummary) =
   return [...new Set(tags)];
 };
 
+const buildPriceLine = (ipo: IpoRecord) => {
+  const priceDisplay = getIpoPriceDisplay(ipo);
+  const suffix = priceDisplay.isEstimated && priceDisplay.value ? " (확정 전)" : "";
+
+  return `${priceDisplay.label} ${priceDisplay.value ?? "-"}${suffix}`;
+};
+
+const buildMinimumDepositLine = (ipo: IpoRecord) => {
+  const depositDisplay = getMinimumDepositDisplay(ipo);
+  const suffix = depositDisplay.isEstimated && depositDisplay.value ? " (희망밴드 기준)" : "";
+
+  return `${depositDisplay.label} ${depositDisplay.value ?? "-"}${suffix}`;
+};
+
 export const buildClosingDayAnalysisMessage = (
   ipo: IpoRecord,
   dataQuality: IpoDataQualitySummary,
@@ -171,14 +177,14 @@ export const buildClosingDayAnalysisMessage = (
   tags: buildDecisionTags(ipo, dataQuality),
   intro:
     `${ipo.name}의 청약 마감 당일 10시 기준 공시 기반 체크 포인트입니다. `
-    + `${dataQuality.status === "VERIFIED" ? "핵심 일정과 공모가는 검증된 값만 사용합니다." : "일부 항목은 추가 검증 상태를 함께 표시합니다."}`,
+    + `${dataQuality.status === "VERIFIED" ? "핵심 일정과 공모가는 검증된 값만 사용합니다." : "확정 전 항목은 희망밴드와 검증 상태를 함께 표시합니다."}`,
   webUrl: getDetailUrl(ipo.slug),
   sections: [
     {
       label: "빠른 판단",
       lines: [
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
-        `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
+        buildMinimumDepositLine(ipo),
         ...buildPublicScoreQuickLines(ipo),
       ],
     },
@@ -194,8 +200,8 @@ export const buildClosingDayAnalysisMessage = (
     {
       label: "가격과 일정",
       lines: [
-        `희망 밴드 ${ipo.priceBandLow?.toLocaleString("ko-KR") ?? "-"}원 ~ ${ipo.priceBandHigh?.toLocaleString("ko-KR") ?? "-"}원`,
-        `확정 공모가 ${ipo.offerPrice?.toLocaleString("ko-KR") ?? "-"}원`,
+        `희망 밴드 ${formatPriceBandRange(ipo) ?? "-"}`,
+        buildPriceLine(ipo),
         `증거금률 ${formatPercent(ipo.depositRate)}`,
         `환불일 ${ipo.refundDate ? formatDate(ipo.refundDate) : "-"}`,
         `상장 예정일 ${ipo.listingDate ? formatDate(ipo.listingDate) : "-"}`,
@@ -239,7 +245,7 @@ export const buildClosingSoonReminderMessage = (
       lines: [
         `청약 마감 오늘 16:00`,
         `최소청약주수 ${ipo.minimumSubscriptionShares?.toLocaleString("ko-KR") ?? "-"}주`,
-        `최소청약금액 ${formatMoney(getMinimumDepositAmount(ipo))}`,
+        buildMinimumDepositLine(ipo),
         ...buildPublicScoreQuickLines(ipo),
       ],
     },
@@ -248,7 +254,7 @@ export const buildClosingSoonReminderMessage = (
       lines: [
         `시장 ${dataQuality.marketLabel}`,
         `주관사 ${dataQuality.leadManagerLabel}${ipo.coManagers.length ? ` / 공동주관 ${ipo.coManagers.join(", ")}` : ""}`,
-        `확정 공모가 ${ipo.offerPrice?.toLocaleString("ko-KR") ?? "-"}원`,
+        buildPriceLine(ipo),
         `증거금률 ${formatPercent(ipo.depositRate)}`,
       ],
     },

@@ -105,6 +105,21 @@ test("buildIpoDetailViewModel centralizes score, quick fact, and listing state d
   ]);
 });
 
+test("buildIpoDetailViewModel shows price-band based quick facts before confirmed offer price exists", () => {
+  const view = buildIpoDetailViewModel(createIpo({
+    offerPrice: null,
+    priceBandLow: 12_500,
+    priceBandHigh: 15_000,
+    minimumSubscriptionShares: 10,
+    depositRate: 0.5,
+  }), "2026-03-20");
+
+  assert.deepEqual(view.quickFacts.slice(0, 2), [
+    { label: "희망 공모가", value: "₩12,500 ~ ₩15,000", emphasis: true },
+    { label: "예상 최소청약금액", value: "₩62,500 ~ ₩75,000", emphasis: true },
+  ]);
+});
+
 test("buildIpoDetailViewModel keeps fallback copy when public score or analysis details are missing", () => {
   const view = buildIpoDetailViewModel(createIpo({
     latestAnalysis: {

@@ -83,9 +83,11 @@
     - `스팩`
     - `SPAC`
 - 자동 알림 차단 필수값:
-  - `offerPrice`
+  - `offerPrice` 또는 `priceBandLow` / `priceBandHigh` 중 하나 이상의 공모가 기준
   - `refundDate`
   - `leadManager`
+- `offerPrice`는 확정 공모가로만 사용하며, 확정 공모가가 없더라도 희망밴드가 있으면 `PARTIAL` 상태로 자동 알림을 준비한다
+- 희망밴드 기준 알림은 본문에서 `확정 전`, `희망밴드 기준` 문구로 확정값과 구분한다
 - `listingDate`가 비어도 자동 발송은 유지
   - 대신 `데이터 상태: 일부 미확인`
 

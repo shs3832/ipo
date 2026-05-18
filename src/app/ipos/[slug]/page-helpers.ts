@@ -8,6 +8,11 @@ import {
   kstDateKey,
 } from "@/lib/date";
 import { assessIpoDataQuality } from "@/lib/ipo-data-quality";
+import {
+  getIpoPriceDisplay,
+  getMinimumDepositAmount as getConfirmedMinimumDepositAmount,
+  getMinimumDepositDisplay,
+} from "@/lib/ipo-price";
 import type { PublicIpoDetailRecord, PublicIpoScoreRecord } from "@/lib/types";
 
 export const unavailableLabel = "데이터 미확보";
@@ -44,13 +49,7 @@ export const getMinimumDepositAmount = ({
   offerPrice: number | null;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
-}) => {
-  if (offerPrice == null || minimumSubscriptionShares == null || depositRate == null) {
-    return null;
-  }
-
-  return Math.round(offerPrice * minimumSubscriptionShares * depositRate);
-};
+}) => getConfirmedMinimumDepositAmount({ offerPrice, minimumSubscriptionShares, depositRate });
 
 const formatDateRangeSummary = (start: Date | null, end: Date | null) => {
   if (start && end) {
@@ -122,7 +121,8 @@ export const buildIpoDetailViewModel = (
   todayKey = getKstTodayKey(),
 ): IpoDetailViewModel => {
   const isListedYet = ipo.listingDate ? kstDateKey(ipo.listingDate) < todayKey : false;
-  const minimumDepositAmount = getMinimumDepositAmount(ipo);
+  const priceDisplay = getIpoPriceDisplay(ipo);
+  const minimumDepositDisplay = getMinimumDepositDisplay(ipo);
   const dataQuality = assessIpoDataQuality(ipo);
   const publicScore = ipo.publicScore;
   const analysisSummary = ipo.latestAnalysis.keyPoints[0]
@@ -183,13 +183,13 @@ export const buildIpoDetailViewModel = (
     scoreDisclaimer,
     quickFacts: [
       {
-        label: "확정 공모가",
-        value: ipo.offerPrice != null ? formatMoney(ipo.offerPrice) : null,
+        label: priceDisplay.label,
+        value: priceDisplay.value,
         emphasis: true,
       },
       {
-        label: "최소청약금액",
-        value: minimumDepositAmount != null ? formatMoney(minimumDepositAmount) : null,
+        label: minimumDepositDisplay.label,
+        value: minimumDepositDisplay.value,
         emphasis: true,
       },
       {

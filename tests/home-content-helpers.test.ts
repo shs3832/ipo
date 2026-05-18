@@ -13,7 +13,9 @@ import {
   getVisibleCalendarEventCount,
   getVisibleCalendarEventIpoCounts,
   getVisibleCalendarSpacIpoCount,
+  getIpoPriceDisplay,
   getMinimumDepositAmount,
+  getMinimumDepositDisplay,
   getOverviewFilterCounts,
   isSpacIpo,
   isStoredCalendarFilters,
@@ -31,6 +33,8 @@ const createIpo = (overrides: Partial<HomeIpoSummary>): HomeIpoSummary => ({
   leadManager: overrides.leadManager ?? "한국투자증권",
   subscriptionStart: overrides.subscriptionStart ?? "2026-03-24T00:00:00.000Z",
   subscriptionEnd: overrides.subscriptionEnd ?? "2026-03-27T00:00:00.000Z",
+  priceBandLow: "priceBandLow" in overrides ? overrides.priceBandLow ?? null : 9_000,
+  priceBandHigh: "priceBandHigh" in overrides ? overrides.priceBandHigh ?? null : 11_000,
   offerPrice: "offerPrice" in overrides ? overrides.offerPrice ?? null : 10_000,
   minimumSubscriptionShares: "minimumSubscriptionShares" in overrides ? overrides.minimumSubscriptionShares ?? null : 10,
   depositRate: "depositRate" in overrides ? overrides.depositRate ?? null : 0.5,
@@ -254,6 +258,27 @@ test("overview deposit sort places the lowest minimum deposit first and null val
 
   assert.equal(getMinimumDepositAmount(sections[0].items[0]), 25_000);
   assert.deepEqual(sections[0].items.map((ipo) => ipo.id), ["cheapest", "expensive", "missing-deposit"]);
+});
+
+test("price display falls back to price band when confirmed offer price is missing", () => {
+  const ipo = createIpo({
+    offerPrice: null,
+    priceBandLow: 12_500,
+    priceBandHigh: 15_000,
+    minimumSubscriptionShares: 10,
+    depositRate: 0.5,
+  });
+
+  assert.deepEqual(getIpoPriceDisplay(ipo), {
+    label: "희망 공모가",
+    value: "₩12,500 ~ ₩15,000",
+    isEstimated: true,
+  });
+  assert.deepEqual(getMinimumDepositDisplay(ipo), {
+    label: "예상 최소청약금액",
+    value: "₩62,500 ~ ₩75,000",
+    isEstimated: true,
+  });
 });
 
 test("buildHomeContentViewModel centralizes calendar and overview derived state without changing semantics", () => {

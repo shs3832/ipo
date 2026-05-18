@@ -1,5 +1,31 @@
 # Issue Log
 
+## 2026-05-18
+
+### Follow-up: Price Band Fallback For Alerts And Public Display
+
+수정 이후 10시 IPO 알림이 오지 않고 공모가가 비어 보이는 증상을 운영 로그와 DB 기준으로 확인했다. 2026-05-12 KST에는 `마키나락스`가 실제 청약 마감 후보였지만, `확정 공모가`가 없다는 이유로 `blockedCount=1`, `jobs=0`, `NotificationJob=[]`가 되었고 dispatch는 보낼 READY job이 없어 `attempted=0`으로 끝났다.
+
+### What Changed In This Follow-up
+
+1. `offerPrice`는 계속 확정 공모가로만 유지한다.
+2. 확정 공모가가 없지만 `priceBandLow` / `priceBandHigh`가 있으면 데이터 품질을 `BLOCKED`가 아니라 `PARTIAL`로 판단해 알림을 생성할 수 있게 했다.
+3. 홈/상세 화면은 확정 공모가가 없을 때 `희망 공모가`와 `예상 최소청약금액`을 표시한다.
+4. 알림 본문은 희망밴드 기준 값에 `(확정 전)`, `(희망밴드 기준)` 문구를 붙여 확정값과 추정값을 구분한다.
+5. 공개 홈 snapshot에 희망밴드 필드를 포함해 public projection 경계 안에서만 표시 fallback을 처리한다.
+6. 기존 public home cache가 희망밴드 필드 없는 snapshot을 계속 들고 있을 수 있어 cache key를 `public-home-snapshot-v2`로 올렸다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/ipo-data-quality.test.ts tests/alert-service.test.ts tests/home-content-helpers.test.ts tests/ipo-detail-page-helpers.test.ts tests/public-home-snapshot.test.ts tests/page-data-revival.test.ts`
+- `npx tsc --noEmit`
+- `npm test`
+  - 103 tests passed
+- `npm run lint`
+- `npm run build`
+  - sandbox network 제한 상태에서는 Google Fonts fetch에서 막힐 수 있어 네트워크 허용 상태로 재확인했다.
+  - 빌드 중 DB 연결 실패는 fallback public home snapshot으로 처리됐고, build 자체는 성공했다.
+
 ## 2026-05-09
 
 ### Follow-up: Daily Sync Transaction Stability

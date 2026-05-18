@@ -7,7 +7,8 @@ import {
   buildHomeContentViewModel,
   defaultCalendarFilters,
   filterCalendarEntries,
-  getMinimumDepositAmount,
+  getIpoPriceDisplay,
+  getMinimumDepositDisplay,
   isStoredCalendarFilters,
   type HomeIpoSummary,
   type CalendarEntry,
@@ -479,7 +480,8 @@ export function HomeContent({
                 {section.isCollapsed ? null : (
                   <div className={styles.ipoList}>
                     {section.visibleItems.map((ipo) => {
-                      const minimumDepositAmount = getMinimumDepositAmount(ipo);
+                      const priceDisplay = getIpoPriceDisplay(ipo);
+                      const minimumDepositDisplay = getMinimumDepositDisplay(ipo);
 
                       return (
                         <Link className={styles.ipoCard} href={`/ipos/${ipo.slug}`} key={ipo.id}>
@@ -499,16 +501,16 @@ export function HomeContent({
                               <dd>{formatDate(new Date(ipo.subscriptionEnd))}</dd>
                             </div>
                             <div>
-                              <dt>공모가</dt>
-                              <dd>{formatMoney(ipo.offerPrice)}</dd>
+                              <dt>{priceDisplay.label}</dt>
+                              <dd>{priceDisplay.value ?? "-"}</dd>
                             </div>
                             <div>
                               <dt>최소청약주수</dt>
                               <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : "-"}</dd>
                             </div>
                             <div>
-                              <dt>최소청약금액</dt>
-                              <dd>{formatMoney(minimumDepositAmount)}</dd>
+                              <dt>{minimumDepositDisplay.label}</dt>
+                              <dd>{minimumDepositDisplay.value ?? "-"}</dd>
                             </div>
                             <div className={styles.scoreHidden}>
                               <dt>종합점수</dt>

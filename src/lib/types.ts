@@ -166,6 +166,8 @@ export type PublicHomeIpoSummary = {
   leadManager: string;
   subscriptionStart: Date;
   subscriptionEnd: Date;
+  priceBandLow: number | null;
+  priceBandHigh: number | null;
   offerPrice: number | null;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
