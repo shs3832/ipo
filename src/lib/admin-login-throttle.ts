@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 
 import { prisma } from "@/lib/db";
 import { isDatabaseEnabled } from "@/lib/env";
@@ -120,12 +121,44 @@ export const registerAdminLoginFailureState = (
   };
 };
 
-export const getAdminLoginClientKey = (headersList: Headers) => {
-  const forwardedFor = headersList.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const realIp = headersList.get("x-real-ip")?.trim();
-  const cloudflareIp = headersList.get("cf-connecting-ip")?.trim();
+const normalizeClientAddress = (value: string | null | undefined) => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
 
-  return cloudflareIp || forwardedFor || realIp || "unknown-client";
+  const bracketedIpv6 = trimmed.match(/^\[([^\]]+)](?::\d+)?$/)?.[1];
+  if (bracketedIpv6 && isIP(bracketedIpv6)) {
+    return bracketedIpv6;
+  }
+
+  const ipv4WithPort = trimmed.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/)?.[1];
+  if (ipv4WithPort && isIP(ipv4WithPort)) {
+    return ipv4WithPort;
+  }
+
+  return isIP(trimmed) ? trimmed : null;
+};
+
+const getForwardedClientAddress = (headersList: Headers) => {
+  const forwardedFor = headersList.get("x-forwarded-for");
+  if (!forwardedFor) {
+    return null;
+  }
+
+  return forwardedFor
+    .split(",")
+    .map(normalizeClientAddress)
+    .filter((value): value is string => value !== null)
+    .at(-1) ?? null;
+};
+
+export const getAdminLoginClientKey = (headersList: Headers) => {
+  const realIp = normalizeClientAddress(headersList.get("x-real-ip"));
+  const forwardedFor = getForwardedClientAddress(headersList);
+  const cloudflareIp = normalizeClientAddress(headersList.get("cf-connecting-ip"));
+
+  return realIp || forwardedFor || cloudflareIp || "unknown-client";
 };
 
 export const getAdminLoginAuditKey = (clientKey: string) =>

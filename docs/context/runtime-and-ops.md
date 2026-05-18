@@ -45,6 +45,7 @@
 - `/admin/recipients`의 채널 변경, 이메일 CRUD, 앱푸시 저장/테스트/해제는 pending 문구와 스피너를 표시한다.
 - Web Push가 `404` / `410`으로 실패하면 만료된 subscription으로 보고 해당 `WEB_PUSH` 채널을 unverified 처리한다.
 - iOS/iPadOS에서는 홈 화면에 추가된 PWA에서만 앱푸시 수신을 기대할 수 있다.
+- 푸시 알림 클릭 URL은 same-origin path만 허용하며, 외부 origin 또는 해석 불가 URL은 `/`로 정규화한다.
 - 푸시 알림 클릭 시 이미 열린 앱 창이 있으면 `public/sw.js`가 `IPO_NOTIFICATION_NAVIGATE` 메시지를 보내고, 앱 루트의 `NotificationNavigationBridge`가 이동 오버레이를 표시한 뒤 대상 URL로 이동한다.
 - 열린 앱 창이 없으면 `clients.openWindow(targetUrl)`로 열리며, 새 창/콜드 스타트 구간은 전역 `src/app/loading.tsx`가 담당한다.
 
@@ -103,7 +104,11 @@
 - 관리자 로그인:
   - `next` redirect는 `/admin` 및 하위 경로만 허용
   - `10분 내 5회` 실패 시 `15분` 잠금
-  - 현재 limiter는 프로세스 메모리 기반이므로 다중 인스턴스 전역 공유는 아님
+  - 로그인 rate limit client key는 IP 형식을 검증한 platform real IP 또는 proxy-appended forwarded IP만 사용
+  - DB 기반 throttle storage가 실패하면 프로세스 메모리 fallback으로 degraded 동작
+- 브라우저 응답:
+  - Next 전역 보안 헤더는 `Content-Security-Policy`, `Referrer-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Permissions-Policy`를 설정
+  - `/sw.js`는 전용 `Content-Type`, `Cache-Control`, 서비스워커용 CSP를 설정
 - 잡 API 인증:
   - Vercel Cron: `Authorization: Bearer <CRON_SECRET>`
   - 수동 호출: `x-job-secret: <JOB_SECRET>`
@@ -120,6 +125,7 @@
 
 - `DATABASE_URL`
 - `APP_BASE_URL`
+  - production에서는 `https:` URL만 허용
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 - `IPO_SOURCE_URL`

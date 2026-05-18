@@ -69,6 +69,8 @@ type ParsedDaishinNoticeMetrics = {
 
 const BROKER_REFERENCE_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
 const BROKER_PDF_TEXT_CACHE_TTL_MS = 1000 * 60 * 60 * 24;
+const BROKER_FETCH_TIMEOUT_MS = 20_000;
+export const BROKER_FETCH_MAX_BYTES = 10 * 1024 * 1024;
 const KOREA_INVESTMENT_GUIDE_URL = "https://www.truefriend.com/main/customer/tradetransfer/_static/TF04db020000.shtm";
 const KOREA_INVESTMENT_IPO_URL = "https://www.truefriend.com/main/research/corporate/ipo/Ipo.jsp?cmd=TF09ad020000";
 const SHINHAN_INVESTMENT_GUIDE_URL = "https://open.shinhansec.com/mobilealpha/html/CS/guidePOSS.html";
@@ -78,6 +80,15 @@ const SAMSUNG_SECURITIES_GUIDE_URL = "https://www.samsungpop.com/ux/kor/customer
 const HANA_SECURITIES_GUIDE_URL = "https://www.hanaw.com/main/customer/cm/CS_060200_T1.jsp";
 const DAISHIN_NOTICE_LIST_URL = "https://money2.daishin.com/E5/MBoard/PType_Basic/Mobile_Notice/DM_Basic_List.aspx?boardseq=114&m=3817";
 const DAISHIN_NOTICE_BASE_URL = "https://money2.daishin.com/E5/MBoard/PType_Basic/Mobile_Notice/";
+const ALLOWED_BROKER_FETCH_HOSTS = new Set([
+  "money2.daishin.com",
+  "open.shinhansec.com",
+  "trading.securities.miraeasset.com",
+  "www.hanaw.com",
+  "www.kbsec.com",
+  "www.samsungpop.com",
+  "www.truefriend.com",
+]);
 
 const CHARSET_ALIASES: Record<string, string> = {
   "utf-8": "utf-8",
@@ -236,16 +247,117 @@ const detectCharset = (contentType: string | null, preview: string) => {
   return metaCharset ?? "utf-8";
 };
 
-const fetchBytes = async (url: string) => {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Broker subscription request failed: HTTP ${response.status} for ${url}`);
+export const normalizeBrokerFetchUrl = (value: string, base?: string) => {
+  try {
+    const url = new URL(value, base);
+
+    if (url.protocol === "http:" && url.hostname === "money2.daishin.com") {
+      url.protocol = "https:";
+    }
+
+    if (url.protocol !== "https:" || !ALLOWED_BROKER_FETCH_HOSTS.has(url.hostname)) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+const requireBrokerFetchUrl = (value: string) => {
+  const normalizedUrl = normalizeBrokerFetchUrl(value);
+  if (!normalizedUrl) {
+    throw new Error("Broker subscription request blocked for an unapproved URL.");
   }
 
-  return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    contentType: response.headers.get("content-type"),
-  };
+  return normalizedUrl;
+};
+
+const parseContentLength = (value: string | null) => {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const concatByteChunks = (chunks: Uint8Array[], totalLength: number) => {
+  const bytes = new Uint8Array(totalLength);
+  let offset = 0;
+
+  chunks.forEach((chunk) => {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  });
+
+  return bytes;
+};
+
+export const readBrokerResponseBytes = async (response: Response) => {
+  const declaredLength = parseContentLength(response.headers.get("content-length"));
+  if (declaredLength != null && declaredLength > BROKER_FETCH_MAX_BYTES) {
+    throw new Error(`Broker subscription response is too large: ${declaredLength} bytes.`);
+  }
+
+  if (!response.body) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > BROKER_FETCH_MAX_BYTES) {
+      throw new Error(`Broker subscription response is too large: ${bytes.byteLength} bytes.`);
+    }
+
+    return bytes;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    if (!value) {
+      continue;
+    }
+
+    totalLength += value.byteLength;
+    if (totalLength > BROKER_FETCH_MAX_BYTES) {
+      await reader.cancel();
+      throw new Error(`Broker subscription response is too large: ${totalLength} bytes.`);
+    }
+
+    chunks.push(value);
+  }
+
+  return concatByteChunks(chunks, totalLength);
+};
+
+const fetchBytes = async (url: string) => {
+  const normalizedUrl = requireBrokerFetchUrl(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BROKER_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(normalizedUrl, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Broker subscription request failed: HTTP ${response.status} for ${normalizedUrl}`);
+    }
+
+    return {
+      bytes: await readBrokerResponseBytes(response),
+      contentType: response.headers.get("content-type"),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 const fetchText = async (url: string) => {
@@ -361,8 +473,8 @@ const buildDaishinNotes = (detail: ParsedDaishinNoticeMetrics) => {
 };
 
 const buildDaishinUrl = (value: string) => {
-  const absoluteUrl = new URL(value, DAISHIN_NOTICE_BASE_URL).toString();
-  return absoluteUrl.replace(/^http:\/\//i, "https://");
+  const normalizedUrl = normalizeBrokerFetchUrl(value, DAISHIN_NOTICE_BASE_URL);
+  return normalizedUrl ?? "";
 };
 
 const extractPdfUrls = (html: string) =>
@@ -568,7 +680,7 @@ export const parseDaishinNoticeList = (html: string): DaishinNoticeEntry[] =>
         url: buildDaishinUrl(match[2] ?? ""),
       } satisfies DaishinNoticeEntry;
     })
-    .filter((entry) => Boolean(entry.seq) && Boolean(entry.title));
+    .filter((entry) => Boolean(entry.seq) && Boolean(entry.title) && Boolean(entry.url));
 
 export const parseDaishinNoticeDetail = (html: string) => {
   const title = stripTags(html.match(/<div class="listArticle[\s\S]*?<p>([\s\S]*?)<\/p>/i)?.[1] ?? "");

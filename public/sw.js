@@ -1,3 +1,14 @@
+self.toSameOriginNotificationPath = (value) => {
+  try {
+    const target = new URL(value || "/", self.location.origin);
+    return target.origin === self.location.origin
+      ? `${target.pathname}${target.search}${target.hash}`
+      : "/";
+  } catch {
+    return "/";
+  }
+};
+
 self.addEventListener("push", (event) => {
   if (!event.data) {
     return;
@@ -11,7 +22,7 @@ self.addEventListener("push", (event) => {
     badge: data.badge || "/icons/badge.svg",
     tag: data.tag || "ipo-calendar-alert",
     data: {
-      url: data.url || "/",
+      url: self.toSameOriginNotificationPath(data.url),
       receivedAt: Date.now(),
     },
   };
@@ -22,7 +33,10 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  const targetUrl = new URL(
+    self.toSameOriginNotificationPath(event.notification.data?.url),
+    self.location.origin,
+  ).href;
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {

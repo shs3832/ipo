@@ -28,6 +28,31 @@ export const parseIpoSourceUrl = (
   }
 };
 
+export const parseAppBaseUrl = (
+  value: string | undefined,
+  nodeEnv = process.env.NODE_ENV,
+) => {
+  const baseUrl = value ?? "http://localhost:3000";
+  if (!baseUrl.trim()) {
+    return "";
+  }
+
+  try {
+    const url = new URL(baseUrl);
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return "";
+    }
+
+    if (nodeEnv === "production" && url.protocol !== "https:") {
+      return "";
+    }
+
+    return `${url.origin}${url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return "";
+  }
+};
+
 export const env = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   cronSecret: process.env.CRON_SECRET ?? "",
@@ -35,7 +60,7 @@ export const env = {
   adminAccessPassword: process.env.ADMIN_ACCESS_PASSWORD ?? "",
   adminSessionSecret: process.env.ADMIN_SESSION_SECRET ?? "",
   adminEmail: process.env.ADMIN_EMAIL ?? "",
-  appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
+  appBaseUrl: parseAppBaseUrl(process.env.APP_BASE_URL),
   smtpHost: process.env.SMTP_HOST ?? "",
   smtpPort: parsePort(process.env.SMTP_PORT) ?? 587,
   smtpUser: process.env.SMTP_USER ?? "",

@@ -54,7 +54,7 @@ test("getAdminLoginThrottleSnapshot prunes stale failures after the rolling wind
   assert.equal(snapshot.isLocked, false);
 });
 
-test("getAdminLoginClientKey prefers the first forwarded client address", () => {
+test("getAdminLoginClientKey prefers a normalized platform real IP", () => {
   const clientKey = getAdminLoginClientKey(
     new Headers({
       "x-forwarded-for": "203.0.113.10, 198.51.100.2",
@@ -62,7 +62,28 @@ test("getAdminLoginClientKey prefers the first forwarded client address", () => 
     }),
   );
 
-  assert.equal(clientKey, "203.0.113.10");
+  assert.equal(clientKey, "198.51.100.99");
+});
+
+test("getAdminLoginClientKey uses the proxy-appended forwarded address over spoofed first values", () => {
+  const clientKey = getAdminLoginClientKey(
+    new Headers({
+      "x-forwarded-for": "not-an-ip, 203.0.113.10, 198.51.100.2",
+    }),
+  );
+
+  assert.equal(clientKey, "198.51.100.2");
+});
+
+test("getAdminLoginClientKey falls back to unknown when forwarded headers are invalid", () => {
+  const clientKey = getAdminLoginClientKey(
+    new Headers({
+      "x-forwarded-for": "not-an-ip, also-not-an-ip",
+      "x-real-ip": "still-not-an-ip",
+    }),
+  );
+
+  assert.equal(clientKey, "unknown-client");
 });
 
 test("isAdminLoginThrottleState validates persisted throttle payloads", () => {

@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { normalizeBrokerName } from "@/lib/broker-brand";
 import {
+  BROKER_FETCH_MAX_BYTES,
+  normalizeBrokerFetchUrl,
   parseDaishinNoticeDetail,
   parseDaishinNoticeList,
   parseDaishinPdfText,
@@ -13,6 +15,7 @@ import {
   parseMiraeAssetGuide,
   parseSamsungSecuritiesGuide,
   parseShinhanInvestmentGuide,
+  readBrokerResponseBytes,
 } from "@/lib/sources/broker-subscription";
 
 test("parseKoreaInvestmentGuide extracts the standard online subscription fee", () => {
@@ -301,6 +304,55 @@ test("parseDaishinNoticeDetail extracts body metrics and attachment urls", () =>
   assert.equal(detail.title, "한패스㈜ 배정주식 및 환불 결과 안내");
   assert.match(detail.bodyText, /1,411\.14 : 1/);
   assert.deepEqual(detail.attachmentUrls, ["https://money2.daishin.com/html/Notice/2026/downloads/hanpass0325.pdf"]);
+});
+
+test("parseDaishinNoticeDetail ignores unapproved pdf attachment hosts", () => {
+  const html = `
+    <div class="detail_area">
+      <a href="https://169.254.169.254/latest/meta-data/iam/security-credentials/role.pdf">internal</a>
+      <a href="https://evil.example/downloads/notice.pdf">external</a>
+      <a href="https://money2.daishin.com/html/Notice/2026/downloads/safe.pdf">safe</a>
+    </div>
+  `;
+
+  const detail = parseDaishinNoticeDetail(html);
+
+  assert.deepEqual(detail.attachmentUrls, ["https://money2.daishin.com/html/Notice/2026/downloads/safe.pdf"]);
+});
+
+test("parseDaishinNoticeList drops notices whose resolved url is not an approved broker host", () => {
+  const html = `
+    <li>
+      <a id='_18047' href='https://evil.example/DM_Basic_Read.aspx?seq=18047'>
+        <p>한패스㈜ 배정주식 및 환불 결과 안내</p>
+        <span class="date">2026.03.18</span>
+      </a>
+    </li>
+  `;
+
+  assert.deepEqual(parseDaishinNoticeList(html), []);
+});
+
+test("normalizeBrokerFetchUrl allows approved https broker urls and rejects internal targets", () => {
+  assert.equal(
+    normalizeBrokerFetchUrl("http://money2.daishin.com/html/Notice/2026/downloads/hanpass0325.pdf"),
+    "https://money2.daishin.com/html/Notice/2026/downloads/hanpass0325.pdf",
+  );
+  assert.equal(normalizeBrokerFetchUrl("https://169.254.169.254/latest/meta-data/foo.pdf"), null);
+  assert.equal(normalizeBrokerFetchUrl("https://evil.example/notice.pdf"), null);
+});
+
+test("readBrokerResponseBytes rejects oversized broker responses before reading the body", async () => {
+  const response = new Response("ignored", {
+    headers: {
+      "content-length": String(BROKER_FETCH_MAX_BYTES + 1),
+    },
+  });
+
+  await assert.rejects(
+    () => readBrokerResponseBytes(response),
+    /too large/,
+  );
 });
 
 test("parseDaishinPdfText extracts allocation pool and competition metrics from result pdf text", () => {

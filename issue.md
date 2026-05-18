@@ -2,6 +2,31 @@
 
 ## 2026-05-19
 
+### Follow-up: Security Hardening P1-P3 Closure
+
+프로젝트 전체 보안 점검에서 확인한 P1/P2/P3 항목을 코드와 회귀 테스트로 닫았다. 이번 변경은 관리자 로그인 방어, 외부 증권사 자료 fetch 경계, 알림/브라우저 보안 기본값을 강화하되 공개 read path와 기존 알림 흐름은 유지하는 범위로 제한했다.
+
+### What Changed In This Follow-up
+
+1. 관리자 로그인 rate limit의 client key가 임의 `x-forwarded-for` 선두값에 끌려가지 않도록 IP 형식을 검증하고, 플랫폼 real IP와 proxy-appended forwarded IP만 사용하게 했다.
+2. 증권사 청약 자료 fetch URL은 허용된 증권사 host와 `https:` URL만 통과시키고, 대신증권의 기존 `http:` 공지 URL은 같은 host에서 `https:`로 승격한다.
+3. 외부 PDF/문서 fetch에 timeout과 최대 응답 크기 제한을 추가해 원천 HTML 오염 시 SSRF/DoS blast radius를 줄였다.
+4. `APP_BASE_URL`은 production에서 `https:`만 허용하고 origin/path 기준으로 정규화한다.
+5. 서비스워커 푸시 클릭 URL은 same-origin path로만 저장/이동하도록 제한했다.
+6. Next 전역 보안 헤더와 `/sw.js` 전용 응답 헤더를 추가했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/admin-login-throttle.test.ts tests/broker-subscription.test.ts tests/env.test.ts tests/service-worker-security.test.ts tests/next-config.test.ts`
+  - 28 tests passed
+- `npm test`
+  - 121 tests passed
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+  - `Creating an optimized production build ...` 단계에서 5분 이상 추가 출력 없이 정체되어 종료했고, 완료 확인은 하지 못했다.
+  - 이번 변경의 focused tests, 전체 test, typecheck, lint는 통과했다.
+
 ### Follow-up: Simple Pull-To-Refresh Reload
 
 모바일/PWA 사용자가 홈 화면 최상단에서 아래로 당겼을 때 복잡한 데이터 동기화가 아니라 브라우저 페이지 새로고침만 수행하도록 최소 기능을 추가했다. 공개 사용자의 제스처가 `daily-sync`, 원천 데이터 강제 수집, cache tag revalidation으로 이어지지 않도록 범위를 명확히 제한했다.
