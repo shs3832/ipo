@@ -166,6 +166,7 @@
   - `dispatch_selection_summary`: 실제 발송 직전의 due job 수, dispatchable job 수, stale job 수, 수신자/이메일 채널 수를 기록
   - `no_dispatchable_jobs`: 스케줄은 정상 실행됐지만 실제 전송 가능한 READY 메일이 없어 메일을 보내지 않았음을 의미
   - `await_scheduled_dispatch`: dispatch가 일찍 깨어 목표 시각까지 대기한 뒤 발송하려 했음을 의미
+  - dispatch는 prepare/source refresh 완료 직후 현재 시각을 다시 잡고, 그 시각이 예정시각 전이며 advance wait window 안이면 예정시각까지 대기한다
   - `skip_prepare_existing_jobs`: 같은 날 이미 완료된 job이 있어 prepare를 다시 돌리지 않았음을 의미
   - `disabled`: 마감 30분 전 알림이 pause 상태라 발송을 건너뛰었음을 의미
 - `completed` 메시지는 이제 `0건`일 때도 실제 메일이 없었다는 뜻이 드러나도록 남긴다.

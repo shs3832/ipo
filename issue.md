@@ -527,6 +527,39 @@
 - OpenDART `slprc`가 희망밴드 범위 안에 있으면 확정 공모가로 쓰지 않는다.
 - 소스에서 확정 공모가가 없으면 기존 DB의 낡은 `offerPrice`를 자동 보존하지 않는다.
 
+## Follow-up: Web Push Alert Dispatch Timing
+
+2026-05-29 07:55 KST 기준으로, 공모주 푸시 알림 미수신 원인을 확인하고 dispatch 대기 시각 계산을 수정했다.
+
+### What Happened
+
+1. 배포 DB 기준 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` 설정은 존재했고, 관리자 `WEB_PUSH` 채널도 `verified=true`, preference `active=true`였다.
+2. `2026-05-06 10:05 KST`에는 `web.push.apple.com`으로 `WEB_PUSH SENT` 이력이 있어 push provider/구독 자체는 동작한 적이 있음을 확인했다.
+3. `2026-05-27` 피스피스스튜디오 10시 알림은 job이 준비됐지만, dispatch가 `09:47 KST`에 먼저 깨어난 뒤 prepare/source refresh를 수행했고, prepare 완료 후 현재 시각을 다시 잡지 않아 `10:00`까지의 대기 판단이 오래된 시각으로 계산됐다.
+4. 이후 재시도 dispatch는 `10:08 KST` 이후 실행되어 `ALERT_DISPATCH_LATE_GRACE_MS=5분`을 넘긴 stale job으로 분류됐고, push 발송 시도 없이 `PARTIAL_FAILURE` 처리됐다.
+5. 마감 30분 전 알림은 이번 변경에서도 계속 pause 상태다.
+
+### Main Code Changes In This Follow-up
+
+- `dispatchPreparedAlerts()`에서 prepare 완료 직후 `now = new Date()`로 발송 기준 시각을 갱신하도록 수정했다.
+- 회귀 테스트에 `09:47 dispatch 시작 -> 09:50:12 prepare 완료 -> 10:00까지 대기 가능` 계산 사례를 추가했다.
+- 운영 문서에 dispatch가 prepare/source refresh 완료 직후 현재 시각을 다시 잡고 대기 판단한다는 규칙을 추가했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/alert-service.test.ts`
+- `npx tsc --noEmit`
+- `npm test`
+  - 전체 `121개` 테스트 통과
+- `npm run lint`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 늦게 도착한 dispatch를 무조건 발송하도록 grace를 늘리지는 않았다.
+- prepare/source refresh가 길어져 예정시각 전 advance wait window 안에 들어온 경우에만 예정시각까지 대기한다.
+- Vercel Cron이 목표 시각보다 많이 늦게 호출하면 기존처럼 stale/skip 정책을 유지한다.
+
 ## Archived Logs
 
 - [2026-03-21 to 2026-04-21](/Users/shs/Desktop/Study/ipo/docs/archive/issues-2026-03-to-04.md)

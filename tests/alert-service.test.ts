@@ -379,6 +379,26 @@ test("getDispatchWaitMs waits only when the scheduled time is close enough", () 
     0,
   );
 
+  const incidentScheduledFor = atKstTime("2026-05-27", 10, 0);
+  const dispatchStartedBeforeWindow = atKstTime("2026-05-27", 9, 47);
+  const prepareFinishedInsideWindow = new Date(atKstTime("2026-05-27", 9, 50).getTime() + 12_000);
+
+  assert.equal(
+    getDispatchWaitMs({
+      now: dispatchStartedBeforeWindow,
+      scheduledFor: incidentScheduledFor,
+    }),
+    0,
+  );
+
+  assert.equal(
+    getDispatchWaitMs({
+      now: prepareFinishedInsideWindow,
+      scheduledFor: incidentScheduledFor,
+    }),
+    9 * 60 * 1000 + 48_000,
+  );
+
   assert.equal(
     getDispatchWaitMs({
       now: atKstTime("2026-04-01", 10, 1),

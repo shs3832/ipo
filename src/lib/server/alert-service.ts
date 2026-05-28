@@ -1356,6 +1356,10 @@ const dispatchPreparedAlerts = async ({
         },
       });
     }
+
+    // Prepare can refresh source data and take long enough to move into the dispatch wait window.
+    now = new Date();
+
     const jobsById = new Map<string, NotificationJobRecord>();
 
     for (const job of prepared.jobs) {
