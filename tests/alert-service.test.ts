@@ -14,6 +14,7 @@ import {
   createDeliveryIdempotencyKey,
   decideAlertSourceRefreshAction,
   getDispatchWaitMs,
+  isPreparedJobPersistRaceError,
   isWithinDispatchGraceWindow,
   renderMessageHtml,
   shouldPrepareAlertsBeforeDispatch,
@@ -357,6 +358,25 @@ test("shouldPrepareAlertsBeforeDispatch reuses persisted READY jobs when databas
       persistedJobCount: 5,
     }),
     true,
+  );
+});
+
+test("isPreparedJobPersistRaceError treats unique idempotency collisions as reusable job races", () => {
+  assert.equal(
+    isPreparedJobPersistRaceError({
+      code: "P2002",
+      meta: {
+        target: ["idempotencyKey"],
+      },
+    }),
+    true,
+  );
+
+  assert.equal(
+    isPreparedJobPersistRaceError({
+      code: "P2003",
+    }),
+    false,
   );
 });
 

@@ -161,6 +161,7 @@
   - `alert_candidate_summary`: 당일 마감 종목 수, 스팩 제외 수, 발송 보류 수, 준비 완료 수를 함께 기록
   - `no_alert_candidates`: 당일 기준 발송 대상 종목 자체가 없어서 준비된 알림이 없음을 의미
   - `reuse_prepared_jobs`: 이미 같은 날 `READY` job이 있어 prepare를 재실행하지 않았음을 의미
+  - prepare job 저장 중 같은 `idempotencyKey`가 이미 만들어졌다면 동시 cron 경합으로 보고 기존 READY job을 재사용한다
   - `disabled`: 마감 30분 전 알림이 pause 상태라 준비를 건너뛰었음을 의미
 - `job:dispatch-alerts`, `job:dispatch-closing-alerts`
   - `dispatch_selection_summary`: 실제 발송 직전의 due job 수, dispatchable job 수, stale job 수, 수신자/이메일 채널 수를 기록

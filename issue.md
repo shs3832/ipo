@@ -560,6 +560,41 @@
 - prepare/source refresh가 길어져 예정시각 전 advance wait window 안에 들어온 경우에만 예정시각까지 대기한다.
 - Vercel Cron이 목표 시각보다 많이 늦게 호출하면 기존처럼 stale/skip 정책을 유지한다.
 
+## Follow-up: Concurrent Alert Prepare Race
+
+2026-06-19 14:15 KST 기준으로, 10시 공모주 푸시 알림이 오지 않은 원인을 운영 로그와 DB 상태로 다시 확인하고 동시 prepare 경합을 보완했다.
+
+### What Happened
+
+1. 배포 DB 기준 `WEB_PUSH` 구독은 `verified=true`, preference `active=true`였고 VAPID 설정도 모두 존재했다.
+2. `2026-06-19` 10시 알림 대상은 `빅웨이브로보틱스`, `스트라드비젼`, `져스텍` 3건이었다.
+3. `09:52 KST` prepare가 최신 데이터 검증용 `daily-sync forceRefresh`를 시작했고, `09:53 KST` dispatch도 겹쳐 실행됐다.
+4. `09:54:34 KST` 한 prepare는 job 3건을 만들었지만, 동시에 다른 prepare/dispatch 경로가 같은 `idempotencyKey`로 `notificationJob.upsert()`를 시도하면서 `P2002 Unique constraint failed on the fields: (idempotencyKey)`가 발생했다.
+5. dispatch가 발송 루프에 들어가기 전에 실패했기 때문에 `NotificationDelivery(WEB_PUSH)`는 생성되지 않았고, 이후 `10:33 KST` 재시도는 이미 stale 처리되어 push 발송 없이 `PARTIAL_FAILURE`가 됐다.
+
+### Main Code Changes In This Follow-up
+
+- `persistPreparedJobs()`를 `Promise.all + upsert`에서 순차 `create -> 기존 job 재사용` 흐름으로 바꿨다.
+- 같은 `idempotencyKey` create 충돌은 동시 cron 경합으로 보고, 실패 대신 기존 job을 읽어 계속 진행한다.
+- 기존 job이 `READY`면 payload/schedule을 갱신해 재사용하고, 이미 `SENT` 또는 `PARTIAL_FAILURE`처럼 완료된 job이면 다시 `READY`로 되살리지 않는다.
+- 회귀 테스트에 `P2002`를 재사용 가능한 prepare race로 판정하는 케이스를 추가했다.
+- 운영 문서에 prepare job 저장 중 같은 `idempotencyKey`가 이미 있으면 기존 READY job을 재사용한다는 규칙을 추가했다.
+
+### Verification In This Follow-up
+
+- `npx tsc --noEmit`
+- `npm test -- tests/alert-service.test.ts`
+- `npm test`
+  - 전체 `122개` 테스트 통과
+- `npm run lint`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- Vercel Cron의 중복/동시 실행은 정상적으로 생길 수 있는 운영 조건으로 보고, 알림 prepare 저장은 idempotent하게 유지한다.
+- 이미 완료된 알림 job을 prepare 재호출로 다시 `READY`로 되돌리지 않는다.
+- 이번 변경도 마감 30분 전 알림 pause 상태는 건드리지 않았다.
+
 ## Archived Logs
 
 - [2026-03-21 to 2026-04-21](/Users/shs/Desktop/Study/ipo/docs/archive/issues-2026-03-to-04.md)

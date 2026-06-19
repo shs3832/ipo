@@ -465,41 +465,105 @@ const logExcludedSpacAlerts = async (
   });
 };
 
-const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
-  const storedJobs = await Promise.all(
-    jobs.map(async (job) => {
-      const saved = await prisma.notificationJob.upsert({
-        where: { idempotencyKey: job.idempotencyKey },
-        update: {
-          scheduledFor: job.scheduledFor,
-          payload: job.payload,
-          status: "READY",
-        },
-        create: {
-          ipoId: job.ipoId,
-          alertType: job.alertType,
-          scheduledFor: job.scheduledFor,
-          payload: job.payload,
-          status: "READY",
-          idempotencyKey: job.idempotencyKey,
-        },
-        include: {
-          ipo: true,
-        },
-      });
+type PersistedNotificationJob = {
+  id: string;
+  ipoId: string;
+  ipo: { slug: string };
+  alertType: NotificationJobRecord["alertType"];
+  scheduledFor: Date;
+  payload: unknown;
+  status: NotificationJobRecord["status"];
+  idempotencyKey: string;
+};
 
-      return {
-        id: saved.id,
-        ipoId: saved.ipoId,
-        ipoSlug: saved.ipo.slug,
-        alertType: saved.alertType,
-        scheduledFor: saved.scheduledFor,
-        payload: saved.payload as NotificationJobRecord["payload"],
-        status: saved.status,
-        idempotencyKey: saved.idempotencyKey,
-      } satisfies NotificationJobRecord;
-    }),
+const toNotificationJobRecord = (job: PersistedNotificationJob): NotificationJobRecord => ({
+  id: job.id,
+  ipoId: job.ipoId,
+  ipoSlug: job.ipo.slug,
+  alertType: job.alertType,
+  scheduledFor: job.scheduledFor,
+  payload: job.payload as NotificationJobRecord["payload"],
+  status: job.status,
+  idempotencyKey: job.idempotencyKey,
+});
+
+export const isPreparedJobPersistRaceError = (error: unknown) => isUniqueConstraintError(error);
+
+const findPreparedJobByIdempotencyKey = async (idempotencyKey: string) =>
+  prisma.notificationJob.findUnique({
+    where: { idempotencyKey },
+    include: {
+      ipo: true,
+    },
+  });
+
+const reuseExistingPreparedJob = async (
+  existing: PersistedNotificationJob,
+  job: PreparedJobSeed,
+) => {
+  if (existing.status !== "READY") {
+    return toNotificationJobRecord(existing);
+  }
+
+  await prisma.notificationJob.updateMany({
+    where: {
+      id: existing.id,
+      status: "READY",
+    },
+    data: {
+      scheduledFor: job.scheduledFor,
+      payload: job.payload,
+    },
+  });
+
+  return toNotificationJobRecord(
+    (await findPreparedJobByIdempotencyKey(job.idempotencyKey)) ?? existing,
   );
+};
+
+const createPreparedJob = async (job: PreparedJobSeed) =>
+  prisma.notificationJob.create({
+    data: {
+      ipoId: job.ipoId,
+      alertType: job.alertType,
+      scheduledFor: job.scheduledFor,
+      payload: job.payload,
+      status: "READY",
+      idempotencyKey: job.idempotencyKey,
+    },
+    include: {
+      ipo: true,
+    },
+  });
+
+const createOrReusePreparedJob = async (job: PreparedJobSeed): Promise<NotificationJobRecord> => {
+  try {
+    return toNotificationJobRecord(await createPreparedJob(job));
+  } catch (error) {
+    if (!isPreparedJobPersistRaceError(error)) {
+      throw error;
+    }
+
+    const existing = await findPreparedJobByIdempotencyKey(job.idempotencyKey);
+
+    if (existing) {
+      return reuseExistingPreparedJob(existing, job);
+    }
+
+    return toNotificationJobRecord(await createPreparedJob(job));
+  }
+};
+
+const persistPreparedJobs = async (jobs: PreparedJobSeed[]) => {
+  const storedJobs: NotificationJobRecord[] = [];
+
+  for (const job of jobs) {
+    const storedJob = await createOrReusePreparedJob(job);
+
+    if (storedJob.status === "READY") {
+      storedJobs.push(storedJob);
+    }
+  }
 
   return storedJobs;
 };
