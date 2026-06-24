@@ -91,7 +91,7 @@ test("scheduler status treats prepare alerts completed inside the early preparat
         id: "prepare-daily-early",
         source: "job:prepare-daily-alerts",
         message: "10시 분석 알림 1건을 준비했습니다.",
-        createdAt: new Date("2026-04-01T00:42:00.000Z"),
+        createdAt: new Date("2026-04-01T00:02:00.000Z"),
       }),
     ],
     new Date("2026-04-01T01:30:00.000Z"),
@@ -101,5 +101,5 @@ test("scheduler status treats prepare alerts completed inside the early preparat
 
   assert.ok(prepareStatus);
   assert.equal(prepareStatus.status, "HEALTHY");
-  assert.match(prepareStatus.detail, /09:55 기준으로 정상 실행됐습니다/);
+  assert.match(prepareStatus.detail, /09:30 기준으로 정상 실행됐습니다/);
 });

@@ -6,6 +6,14 @@
     },
     {
       "path": "/api/jobs/daily-sync",
+      "schedule": "20 23 * * *"
+    },
+    {
+      "path": "/api/jobs/daily-sync",
+      "schedule": "20 0 * * *"
+    },
+    {
+      "path": "/api/jobs/daily-sync",
       "schedule": "10 1 * * *"
     },
     {
@@ -14,23 +22,31 @@
     },
     {
       "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "30 23 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "40 23 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "50 23 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "10 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
+      "schedule": "20 0 * * *"
+    },
+    {
+      "path": "/api/jobs/prepare-daily-alerts",
       "schedule": "30 0 * * *"
-    },
-    {
-      "path": "/api/jobs/prepare-daily-alerts",
-      "schedule": "35 0 * * *"
-    },
-    {
-      "path": "/api/jobs/prepare-daily-alerts",
-      "schedule": "40 0 * * *"
-    },
-    {
-      "path": "/api/jobs/prepare-daily-alerts",
-      "schedule": "45 0 * * *"
-    },
-    {
-      "path": "/api/jobs/prepare-daily-alerts",
-      "schedule": "50 0 * * *"
     },
     {
       "path": "/api/jobs/dispatch-alerts",

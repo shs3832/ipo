@@ -629,6 +629,33 @@
 - 중복 dispatch가 늘어도 delivery idempotency가 중복 발송을 막는다는 전제를 유지한다.
 - 정확한 분 단위 정시 발송이 제품 요구가 되면 Vercel Pro cron 또는 외부 스케줄러로 이전해야 한다.
 
+## Follow-up: Earlier 10 AM Alert Preparation
+
+2026-06-24 KST 추가 피드백으로, "늦어도 보내기"만으로는 요구사항을 만족하지 못하며 10시 알림이 오려면 10시 직전에는 이미 알림 job이 준비되어 있어야 한다는 점을 확인했다.
+
+### What Changed
+
+- `prepare-daily-alerts` 운영 기준을 `09:55 KST`에서 `09:30 KST`로 앞당겼다.
+- `ALERT_PREPARE_WINDOW_MS`를 `20분`에서 `60분`으로 넓혀 08:30 이후 조기 준비 성공도 관리자 스케줄 상태에서 정상으로 보게 했다.
+- `daily-sync`를 `08:20 KST`, `09:20 KST`에도 추가해 10시 알림 준비 전 source refresh 여유를 늘렸다.
+- `prepare-daily-alerts` cron을 `08:30`, `08:40`, `08:50`, `09:00`, `09:10`, `09:20`, `09:30 KST`로 분산해 10시 전에 READY job이 만들어질 확률을 높였다.
+- 스케줄 상태 테스트와 운영 문서를 09:30 준비 기준에 맞춰 갱신했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/ipo-read-service.test.ts tests/alert-service.test.ts`
+- `npx tsc --noEmit`
+- `npm test`
+  - 전체 `122개` 테스트 통과
+- `npm run lint`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- 10시 알림은 10시 직전 prepare에 기대지 않는다.
+- prepare는 충분히 일찍 끝내고, 10시 주변 dispatch는 발송에 집중하게 한다.
+- Vercel Hobby cron의 정시 hard guarantee 한계는 여전히 남아 있으며, 더 강한 정시성이 필요하면 외부 스케줄러 또는 Vercel Pro cron이 필요하다.
+
 ## Archived Logs
 
 - [2026-03-21 to 2026-04-21](/Users/shs/Desktop/Study/ipo/docs/archive/issues-2026-03-to-04.md)

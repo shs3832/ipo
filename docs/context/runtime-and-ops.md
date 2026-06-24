@@ -55,10 +55,11 @@
 - listing-day opening price capture:
   - `10:10 KST`
   - `10:30 KST`
-- `prepare-daily-alerts` 운영 기준: `09:55 KST`
+- `prepare-daily-alerts` 운영 기준: `09:30 KST`
 - `dispatch-alerts` 운영 기준: `10:00 KST`
 - `prepare-closing-alerts`, `dispatch-closing-alerts`는 현재 pause 상태이며 자동 cron 등록을 제거했다
-- alert cron은 Vercel 지연을 흡수하기 위해 조기 시각에도 여러 번 깨우며, 실제 발송은 dispatch 단계에서 목표 시각에 맞춘다
+- alert prepare cron은 10시 직전이 아니라 `08:30 KST`부터 여러 번 깨워 10시 전 READY job 확보를 우선한다
+- alert dispatch cron은 Vercel 지연을 흡수하기 위해 10시 전후 여러 번 깨우며, 실제 발송은 dispatch 단계에서 목표 시각에 맞춘다
 - alert 준비 잡은 최근 `90분` 내 성공한 `daily-sync`가 없으면 강제 refresh를 먼저 시도
 - 다만 이미 `daily-sync`가 진행 중이면 새 refresh를 바로 시작하지 않고 기존 실행 완료를 대기
 - 최근 `daily-sync`가 방금 실패한 경우 alert job은 즉시 같은 강제 refresh를 반복하지 않고 cooldown 뒤 다음 실행으로 넘김
