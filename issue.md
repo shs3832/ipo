@@ -595,6 +595,40 @@
 - 이미 완료된 알림 job을 prepare 재호출로 다시 `READY`로 되돌리지 않는다.
 - 이번 변경도 마감 30분 전 알림 pause 상태는 건드리지 않았다.
 
+## Follow-up: Vercel Cron Delay Alert Miss
+
+2026-06-24 KST 기준으로, 당일 `매드업` 10시 분석 푸시 알림이 오지 않은 원인을 운영 로그와 DB 상태로 확인하고 Vercel cron 지연을 전제로 알림 누락 방지 정책을 보강했다.
+
+### What Happened
+
+1. `2026-06-24` 청약 마감 종목은 `매드업` 1건이었고, `09:53:15 KST`에 10시 분석 알림 job 1건이 정상 준비됐다.
+2. 관리자 `WEB_PUSH` 채널은 `verified=true`, preference `active=true`였고 VAPID 설정도 존재했다.
+3. 지난 후속의 prepare idempotency 보완은 정상 동작해 `10:00:11 KST`, `10:09:36 KST` prepare 재호출은 기존 READY job을 재사용했다.
+4. 하지만 `dispatch-alerts`가 `10:17:44 KST`에야 실행됐고, 기존 `ALERT_DISPATCH_LATE_GRACE_MS=5분` 정책 때문에 `매드업` job이 stale 처리되어 발송 루프에 들어가지 못했다.
+5. `NotificationDelivery`가 0건이므로 이번에도 push provider/브라우저 문제가 아니라 dispatch stale 정책과 Vercel cron 지연의 조합이 직접 원인이었다.
+
+### Main Code Changes In This Follow-up
+
+- `ALERT_DISPATCH_LATE_GRACE_MS`를 `5분`에서 `60분`으로 넓혀 Vercel Hobby cron 지연이 있어도 10시 분석 알림을 누락하지 않게 했다.
+- `dispatch-alerts` cron을 `10:05`, `10:10`, `10:15`, `10:20`, `10:25`, `10:30 KST`에도 추가해 단일 dispatch 호출 지연에 덜 의존하게 했다.
+- late grace 회귀 테스트를 Vercel 지연 허용 정책에 맞춰 `10:59` 발송 가능, `11:00:00.001` 이후 stale로 갱신했다.
+- 운영 문서의 기존 "5분 초과 stale 우선" 설명을 "최대 60분 지연 발송 우선" 정책으로 정리했다.
+
+### Verification In This Follow-up
+
+- `npm test -- tests/alert-service.test.ts`
+- `npx tsc --noEmit`
+- `npm test`
+  - 전체 `122개` 테스트 통과
+- `npm run lint`
+- `npm run build`
+
+### Current Decisions To Remember In This Follow-up
+
+- Vercel Hobby cron은 정시 hard guarantee가 없으므로, 현 구조에서는 정시성보다 알림 누락 방지를 우선한다.
+- 중복 dispatch가 늘어도 delivery idempotency가 중복 발송을 막는다는 전제를 유지한다.
+- 정확한 분 단위 정시 발송이 제품 요구가 되면 Vercel Pro cron 또는 외부 스케줄러로 이전해야 한다.
+
 ## Archived Logs
 
 - [2026-03-21 to 2026-04-21](/Users/shs/Desktop/Study/ipo/docs/archive/issues-2026-03-to-04.md)

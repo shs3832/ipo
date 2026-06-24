@@ -65,8 +65,8 @@
 - dispatch 잡은 같은 날 저장된 `READY` mail job이 있으면 prepare를 다시 돌지 않고 기존 job을 우선 재사용
 - 같은 날 이미 `SENT` / `PARTIAL_FAILURE` 상태로 끝난 alert job이 있으면 dispatch는 prepare를 다시 돌려 기존 결과를 덮어쓰지 않는다
 - dispatch route는 목표 시각보다 조금 일찍 호출되면 최대 `10분`까지 대기한 뒤 활성화된 알림의 목표 시각에 맞춰 전송을 시도한다
-- 목표 시각을 `5분` 넘긴 alert job은 늦게 보내지 않고 stale 처리한다
-- Vercel Cron은 호출 시각을 절대 보장하지 않으므로, 현재 구조는 정시 발송을 보정하는 것이지 외부 스케줄러 수준의 hard guarantee는 아니다
+- `10시 분석 알림`은 Vercel Hobby cron 지연을 운영 조건으로 보고 목표 시각 이후 최대 `60분`까지는 중복 없이 발송한다
+- Vercel Cron은 호출 시각을 절대 보장하지 않으므로, 현재 구조는 누락 방지를 우선하고 정시 hard guarantee가 필요하면 외부 분 단위 스케줄러나 Pro cron이 필요하다
 
 ## Public Read Path Rules
 
@@ -183,5 +183,5 @@
 - `daily-sync`는 transaction start 실패를 줄이기 위해 종목별 DB 반영을 순차 처리한다
 - `daily-sync`의 source checksum 동일 경로는 heartbeat성 `fetchedAt` 갱신과 analysis 변경분만 transaction 밖에서 처리한다
 - 신규/변경 source record 반영은 atomic write가 필요하므로 interactive transaction을 유지하되, `maxWait=10s`, `timeout=15s`로 운영 DB 지연을 흡수한다
-- 현재 알림 보정은 Vercel Cron의 분 단위 호출 지연을 흡수하도록 설계돼 있지만, 플랫폼이 목표 시각보다 많이 늦게 호출하면 늦은 메일보다는 skip/stale 처리 쪽을 우선한다
+- 현재 10시 알림 보정은 Vercel Hobby cron의 최대 1시간 수준 지연을 흡수해 누락보다 지연 발송을 우선한다
 - `마감 30분 전 메일`은 현재 Hobby 운영 단순화를 위해 pause 상태이며, 필요 시 `CLOSING_SOON_ALERTS_ENABLED`와 `vercel.json` cron을 함께 되돌려야 한다

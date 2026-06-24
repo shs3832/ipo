@@ -428,12 +428,12 @@ test("getDispatchWaitMs waits only when the scheduled time is close enough", () 
   );
 });
 
-test("isWithinDispatchGraceWindow blocks stale dispatches after the late grace window", () => {
-  const scheduledFor = atKstTime("2026-04-01", 15, 30);
+test("isWithinDispatchGraceWindow tolerates delayed Vercel cron dispatches within the late grace window", () => {
+  const scheduledFor = atKstTime("2026-04-01", 10, 0);
 
   assert.equal(
     isWithinDispatchGraceWindow({
-      now: atKstTime("2026-04-01", 15, 34),
+      now: atKstTime("2026-04-01", 10, 59),
       scheduledFor,
     }),
     true,
@@ -441,7 +441,7 @@ test("isWithinDispatchGraceWindow blocks stale dispatches after the late grace w
 
   assert.equal(
     isWithinDispatchGraceWindow({
-      now: atKstTime("2026-04-01", 15, 36),
+      now: new Date(atKstTime("2026-04-01", 11, 0).getTime() + 1),
       scheduledFor,
     }),
     false,

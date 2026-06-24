@@ -47,6 +47,30 @@
     {
       "path": "/api/jobs/dispatch-alerts",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "5 1 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "10 1 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "15 1 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "20 1 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "25 1 * * *"
+    },
+    {
+      "path": "/api/jobs/dispatch-alerts",
+      "schedule": "30 1 * * *"
     }
   ]
 }
