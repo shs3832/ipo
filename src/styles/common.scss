@@ -71,6 +71,7 @@
   font-weight: 700;
   border: 1px solid transparent;
   cursor: pointer;
+  border-radius: var(--radius-md);
 }
 
 .button-primary {
@@ -106,12 +107,21 @@
   color: var(--primary-strong);
   background: var(--surface);
   border: 1px solid var(--line);
+  border-radius: var(--radius-md);
 }
 
 .status-pill {
   color: var(--primary-strong);
   background: var(--primary-soft);
   border: 1px solid var(--primary-soft-strong);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline-offset: 3px;
 }
 
 .status-pill-soft {
@@ -221,6 +231,21 @@
 
   100% {
     background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

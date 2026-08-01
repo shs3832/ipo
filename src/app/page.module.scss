@@ -7,121 +7,107 @@
 }
 
 .hero {
-  @include surface(24px, var(--radius-xl));
+  @include surface(22px, var(--radius-xl));
 
-  position: relative;
-  display: grid;
-  gap: 24px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 340px);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.hero::after {
-  content: none;
-}
-
-.heroBody,
-.heroAside {
-  position: relative;
-  z-index: 1;
+.heroTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
 }
 
 .heroBody {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
 
-.heroMetaRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.heroBody :global(.page-title) {
+  max-width: 20ch;
 }
 
-.heroAside {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-
-.heroMetricCard {
-  @include softSurface(16px, var(--radius-lg));
-
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.heroBody :global(.page-copy) {
+  max-width: 64ch;
 }
 
 .heroActionGroup {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
 }
 
 .heroMobileAction {
   display: none;
 }
 
-.summaryGrid {
-  @include autoGrid(230px);
-
-  gap: 14px;
-}
-
-.summaryCard {
-  @include surface(18px, var(--radius-xl));
-
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cardLabel {
+.adminLink {
   color: var(--text-secondary);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 4px;
+}
+
+.adminLink:hover {
+  color: var(--primary-strong);
+}
+
+.statusStrip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.statusStrip > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border-left: 1px solid var(--line);
+}
+
+.statusStrip > div:first-child {
+  border-left: 0;
+}
+
+.statusStrip dt {
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
-.cardValue,
-.summaryValue {
-  font-size: 1.8rem;
-  line-height: 1.12;
-  letter-spacing: 0;
-}
-
-.cardCopy {
-  color: var(--text-secondary);
-  line-height: 1.65;
-}
-
-@include desktop {
-  .hero {
-    grid-template-columns: 1fr;
-  }
+.statusStrip dd {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.96rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @include mobile {
-  .hero,
-  .summaryCard {
-    padding: 18px;
-    border-radius: var(--radius-xl);
-  }
-
   .page {
-    gap: 18px;
+    gap: 14px;
   }
 
   .hero {
-    gap: 20px;
+    gap: 16px;
+    padding: 18px;
   }
 
-  .heroMetricCard {
-    padding: 14px;
-    border-radius: var(--radius-lg);
-  }
-
-  .heroActionGroup {
-    gap: 10px;
+  .heroTop {
+    flex-direction: column;
+    gap: 16px;
   }
 
   .heroDesktopAction {
@@ -132,57 +118,81 @@
     display: inline-flex;
   }
 
-  .summaryGrid {
-    gap: 14px;
-    grid-template-columns: 1fr;
+  .heroActionGroup {
+    width: 100%;
+    justify-content: space-between;
   }
 
-  .cardValue,
-  .summaryValue {
-    font-size: 1.5rem;
+  .heroActionGroup :global(.button-primary) {
+    width: auto;
+    flex: 1;
+  }
+
+  .statusStrip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .timezoneItem {
+    display: none;
+  }
+
+  .statusStrip > div {
+    padding: 10px;
+  }
+
+  .statusStrip dt {
+    font-size: 0.7rem;
+  }
+
+  .statusStrip dd {
+    font-size: 0.84rem;
   }
 }
 
 @include phone {
-  .hero,
-  .summaryCard {
-    padding: 12px;
+  .hero {
+    gap: 14px;
+    padding: 14px;
     border-radius: var(--radius-lg);
   }
 
-  .hero {
-    gap: 18px;
-  }
-
-  .heroBody,
-  .heroAside {
+  .heroTop {
     gap: 14px;
   }
 
-  .heroMetaRow {
+  .heroBody {
     gap: 8px;
   }
 
-  .heroMetricCard {
-    padding: 12px;
-    border-radius: var(--radius-md);
+  .heroBody :global(.page-title) {
+    font-size: 1.48rem;
   }
 
   .heroActionGroup {
-    gap: 8px;
-  }
-
-  .summaryGrid {
     gap: 12px;
   }
 
-  .cardValue,
-  .summaryValue {
-    font-size: 1.35rem;
+  .statusStrip > div {
+    padding: 9px 8px;
   }
 
-  .cardCopy {
-    font-size: 0.93rem;
-    line-height: 1.58;
+  .statusStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statusStrip > div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .statusStrip > div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .statusStrip dt {
+    font-size: 0.66rem;
+  }
+
+  .statusStrip dd {
+    font-size: 0.84rem;
   }
 }

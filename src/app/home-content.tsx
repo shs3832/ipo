@@ -246,7 +246,7 @@ export function HomeContent({
           <div>
             <p className="page-eyebrow">Monthly View</p>
             <h2 className="section-title">{calendarMonthLabel} 일정</h2>
-            <p className="section-copy">이번 달과 다음 달에 실제 일정이 있는 종목만 묶어서 보여주고 있습니다.</p>
+            <p className="section-copy">청약, 환불, 상장 일정을 날짜별로 확인합니다.</p>
           </div>
           <span className="status-pill">{visibleEventCount}개 이벤트</span>
         </div>
@@ -373,7 +373,7 @@ export function HomeContent({
           <div>
             <p className="page-eyebrow">Tracked IPOs</p>
             <h2 className="section-title">종목 개요</h2>
-            <p className="section-copy">청약 마감과 상장 흐름을 기준으로 일정, 공모가, 주관사 같은 공시 기반 핵심 정보만 빠르게 훑는 영역입니다.</p>
+            <p className="section-copy">가까운 일정과 필요한 청약금액을 먼저 확인하세요.</p>
           </div>
           <span className="status-pill status-pill-soft">{filteredOverviewLabel}</span>
         </div>
@@ -495,21 +495,27 @@ export function HomeContent({
                           <div className={styles.ipoCardHead}>
                             <div>
                               <h3>{ipo.name}</h3>
-                              <p>{marketDisplay.value}</p>
-                              {leadManagerDisplay.status === "MISSING" ? (
-                                <p className={styles.ipoBrokerList}>{leadManagerDisplay.value}</p>
-                              ) : (
-                                <BrokerChipList className={styles.ipoBrokerList} names={[ipo.leadManager]} size="sm" />
-                              )}
+                              <div className={styles.ipoIdentityMeta}>
+                                <span>{marketDisplay.value}</span>
+                                {leadManagerDisplay.status === "MISSING" ? (
+                                  <span>{leadManagerDisplay.value}</span>
+                                ) : (
+                                  <BrokerChipList names={[ipo.leadManager]} size="sm" />
+                                )}
+                              </div>
                             </div>
                             <span className={`${styles.ipoScoreBadge} ${getScoreBadgeToneClassName(ipo.publicScore)} ${styles.scoreHidden}`}>
                               {getScoreStatusLabel(ipo.publicScore)}
                             </span>
                           </div>
+                          <div className={styles.ipoScheduleSummary}>
+                            <span>{scheduleDisplay.label}</span>
+                            <strong>{formatDate(scheduleDisplay.date)}</strong>
+                          </div>
                           <dl className={styles.ipoStats}>
-                            <div>
-                              <dt>{scheduleDisplay.label}</dt>
-                              <dd>{formatDate(scheduleDisplay.date)}</dd>
+                            <div className={styles.ipoStatPrimary}>
+                              <dt>{minimumDepositDisplay.label}</dt>
+                              <dd>{minimumDepositDisplay.value ?? ipoUnavailableLabel}</dd>
                             </div>
                             <div>
                               <dt>{priceDisplay.label}</dt>
@@ -518,10 +524,6 @@ export function HomeContent({
                             <div>
                               <dt>최소청약주수</dt>
                               <dd>{ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : ipoUnavailableLabel}</dd>
-                            </div>
-                            <div>
-                              <dt>{minimumDepositDisplay.label}</dt>
-                              <dd>{minimumDepositDisplay.value ?? ipoUnavailableLabel}</dd>
                             </div>
                             <div className={styles.scoreHidden}>
                               <dt>종합점수</dt>

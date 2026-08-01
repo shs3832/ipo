@@ -4,6 +4,10 @@ import test from "node:test";
 import {
   extractConfirmedOfferPrice,
   extractLockupRateFromXmlTables,
+  extractProspectusLeadManager,
+  extractProspectusMarket,
+  extractProspectusSchedule,
+  isNewListingProspectus,
 } from "@/lib/sources/opendart-prospectus";
 
 test("extractConfirmedOfferPrice parses explicit confirmed offer price copy", () => {
@@ -19,6 +23,32 @@ test("extractConfirmedOfferPrice parses explicit confirmed offer price copy", ()
     extractConfirmedOfferPrice("희망공모가격은 12,500 ~ 15,000 원입니다."),
     null,
   );
+});
+
+test("extractProspectusSchedule prefers the latest corrected subscription and payment dates", () => {
+  const text = [
+    "정정 전 일반청약자 청약일: 2026년 7월 23일 ~ 2026년 7월 24일 납 입 기 일 2026년 07월 28일",
+    "정정 후 일반청약자 청약일: 2026년 7월 30일 ~ 2026년 7월 31일 납 입 기 일 2026년 08월 04일",
+    "일반청약자 청약일: 2026년 7월 30일 ~ 2026년 7월 31일 납입기일인 2026년 8월 4일",
+  ].join(" ");
+
+  assert.deepEqual(extractProspectusSchedule(text), {
+    subscriptionStart: "2026-07-30",
+    subscriptionEnd: "2026-07-31",
+    paymentDate: "2026-08-04",
+  });
+});
+
+test("prospectus identity helpers parse depositary receipt IPO manager and market", () => {
+  const text = [
+    "대표주관회사 삼성증권 증권예탁증권 5,000,000DR",
+    "본 주식은 코스닥시장 상장을 목적으로 모집합니다.",
+  ].join(" ");
+
+  assert.equal(extractProspectusLeadManager(text), "삼성증권");
+  assert.equal(extractProspectusMarket(text), "KOSDAQ");
+  assert.equal(isNewListingProspectus("코스닥시장 신규상장 예비심사 승인을 받았습니다."), true);
+  assert.equal(isNewListingProspectus("기존 상장회사의 일반공모입니다."), false);
 });
 
 test("extractLockupRateFromXmlTables calculates issuer lockup rate from demand forecast quantity table", () => {

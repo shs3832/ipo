@@ -11,18 +11,16 @@
 }
 
 .hero {
-  @include surface(24px, var(--radius-xl));
+  @include surface(20px, var(--radius-xl));
 
-  display: grid;
-  gap: 24px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(220px, 280px);
-  align-items: end;
+  display: flex;
+  gap: 16px;
 }
 
 .heroBody {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -144,7 +142,7 @@
 .quickGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .quickItem {
@@ -153,7 +151,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 96px;
+  min-height: 108px;
+  justify-content: space-between;
 }
 
 .quickItem span {
@@ -166,6 +165,51 @@
   line-height: 1.45;
   letter-spacing: 0;
   word-break: break-word;
+}
+
+.quickItem:nth-child(-n + 2) {
+  border-color: var(--primary-soft-strong);
+  background: var(--primary-soft);
+}
+
+.quickItemUnavailable {
+  border-style: dashed;
+  background: #fafbfc;
+}
+
+.quickItemUnavailable strong,
+.supportingItemUnavailable strong {
+  color: var(--text-tertiary);
+}
+
+.supportingGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.supportingItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.supportingItem span {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.supportingItem strong {
+  text-align: right;
+  font-size: 0.94rem;
+}
+
+.supportingItemUnavailable {
+  color: var(--text-tertiary);
 }
 
 .primaryValue {
@@ -277,14 +321,13 @@
 }
 
 @include tablet {
-  .hero,
   .grid,
   .analysisColumns {
     grid-template-columns: 1fr;
   }
 
   .quickGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -318,12 +361,17 @@
   }
 
   .quickGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
 
+  .supportingGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
   .quickItem {
-    min-height: auto;
+    min-height: 94px;
     padding: 14px;
     border-radius: var(--radius-lg);
   }
@@ -371,6 +419,15 @@
 
   .quickGrid {
     gap: 8px;
+  }
+
+  .quickItem {
+    min-height: 88px;
+  }
+
+  .supportingItem {
+    min-height: 48px;
+    padding-inline: 4px;
   }
 
   .quickItem,

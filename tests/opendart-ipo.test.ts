@@ -6,6 +6,7 @@ import {
   buildOpendartIpoRanges,
   fetchCandidateDisclosuresForRange,
   isLikelyNewListingGeneralRow,
+  isSupportedIpoDisclosure,
   resolveOpendartOfferPrice,
 } from "@/lib/sources/opendart-ipo";
 
@@ -104,12 +105,30 @@ test("isLikelyNewListingGeneralRow excludes allotment-based rights/public offeri
   );
 });
 
+test("isSupportedIpoDisclosure includes depositary receipt IPO filings", () => {
+  assert.equal(
+    isSupportedIpoDisclosure({ report_nm: "[발행조건확정]증권신고서(증권예탁증권)" }),
+    true,
+  );
+  assert.equal(
+    isSupportedIpoDisclosure({ report_nm: "[기재정정]증권신고서(지분증권)" }),
+    true,
+  );
+  assert.equal(isSupportedIpoDisclosure({ report_nm: "[기재정정]투자설명서" }), false);
+});
+
 test("resolveOpendartOfferPrice accepts band values only when the prospectus body has a confirmed price", () => {
   const prospectus = {
     receiptNo: "20260508000911",
     confirmedOfferPrice: null,
     priceBandLow: 12_500,
     priceBandHigh: 15_000,
+    subscriptionStart: "2026-05-11",
+    subscriptionEnd: "2026-05-12",
+    paymentDate: "2026-05-14",
+    leadManager: "미래에셋증권",
+    market: "KOSDAQ" as const,
+    isNewListing: true,
     minimumSubscriptionShares: 10,
     depositRate: 0.5,
     demandCompetitionRate: null,

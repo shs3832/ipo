@@ -204,8 +204,12 @@ const buildStatus = (start: string | null, end: string | null) => {
   return "OPEN" as const;
 };
 
-const isEquityIpoDisclosure = (item: OpendartDisclosureItem) =>
-  item.report_nm.includes("증권신고서(지분증권)");
+export const isSupportedIpoDisclosure = (item: Pick<OpendartDisclosureItem, "report_nm">) =>
+  item.report_nm.includes("증권신고서(지분증권)")
+  || item.report_nm.includes("증권신고서(증권예탁증권)");
+
+const isDepositaryReceiptIpoDisclosure = (item: Pick<OpendartDisclosureItem, "report_nm">) =>
+  item.report_nm.includes("증권신고서(증권예탁증권)");
 
 const hasMeaningfulOpendartValue = (value: string | undefined | null) => {
   const normalized = value?.trim();
@@ -292,7 +296,7 @@ export const fetchCandidateDisclosuresForRange = async (range: DateRange): Promi
     }
   }
 
-  return disclosures.filter(isEquityIpoDisclosure);
+  return disclosures.filter(isSupportedIpoDisclosure);
 };
 
 const fetchEquitySecurityInfo = async (corpCode: string, range: DateRange) => {
@@ -348,6 +352,12 @@ const mergeProspectusDetails = (
     confirmedOfferPrice: primary?.confirmedOfferPrice ?? fallback?.confirmedOfferPrice ?? null,
     priceBandLow: primary?.priceBandLow ?? fallback?.priceBandLow ?? null,
     priceBandHigh: primary?.priceBandHigh ?? fallback?.priceBandHigh ?? null,
+    subscriptionStart: primary?.subscriptionStart ?? fallback?.subscriptionStart ?? null,
+    subscriptionEnd: primary?.subscriptionEnd ?? fallback?.subscriptionEnd ?? null,
+    paymentDate: primary?.paymentDate ?? fallback?.paymentDate ?? null,
+    leadManager: primary?.leadManager ?? fallback?.leadManager ?? null,
+    market: primary?.market ?? fallback?.market ?? null,
+    isNewListing: Boolean(primary?.isNewListing || fallback?.isNewListing),
     minimumSubscriptionShares: primary?.minimumSubscriptionShares ?? fallback?.minimumSubscriptionShares ?? null,
     depositRate: primary?.depositRate ?? fallback?.depositRate ?? null,
     demandCompetitionRate: primary?.demandCompetitionRate ?? fallback?.demandCompetitionRate ?? null,
@@ -372,6 +382,87 @@ const fetchOpendartCurrentMonthIposUncached = async (
 
   const records: Array<SourceIpoRecord | { kind: "excluded_non_ipo"; name: string } | null> = await Promise.all(
     uniqueDisclosures.map(async (disclosure) => {
+      if (isDepositaryReceiptIpoDisclosure(disclosure)) {
+        const prospectus = await fetchOpendartProspectusDetails(disclosure.rcept_no, { forceRefresh })
+          .catch(() => null);
+        const subscriptionStart = prospectus?.subscriptionStart ?? null;
+        const subscriptionEnd = prospectus?.subscriptionEnd ?? null;
+        const leadManager = prospectus?.leadManager ?? null;
+        const market = prospectus?.market ?? null;
+
+        if (
+          !prospectus
+          || !prospectus.isNewListing
+          || !subscriptionStart
+          || !subscriptionEnd
+          || !leadManager
+          || !market
+        ) {
+          return null;
+        }
+
+        if (
+          !isDateWithinRange(subscriptionStart, displayRange)
+          && !isDateWithinRange(subscriptionEnd, displayRange)
+          && !isDateWithinRange(prospectus?.paymentDate, displayRange)
+        ) {
+          return null;
+        }
+
+        return {
+          sourceKey: `opendart-prospectus-dr:${displayRange.key}:${disclosure.corp_code}`,
+          corpCode: disclosure.corp_code,
+          stockCode: disclosure.stock_code?.trim() || null,
+          latestDisclosureNo: disclosure.rcept_no,
+          name: disclosure.corp_name,
+          market,
+          leadManager,
+          coManagers: [],
+          priceBandLow: prospectus.priceBandLow,
+          priceBandHigh: prospectus.priceBandHigh,
+          offerPrice: prospectus.confirmedOfferPrice,
+          minimumSubscriptionShares: prospectus.minimumSubscriptionShares,
+          depositRate: prospectus.depositRate,
+          totalOfferedShares: null,
+          newShares: null,
+          secondaryShares: null,
+          listedShares: null,
+          subscriptionStart,
+          subscriptionEnd,
+          refundDate: prospectus.paymentDate,
+          listingDate: null,
+          status: buildStatus(subscriptionStart, subscriptionEnd),
+          demandCompetitionRate: prospectus.demandCompetitionRate,
+          lockupRate: prospectus.lockupRate,
+          floatRatio: null,
+          insiderSalesRatio: null,
+          marketMoodScore: null,
+          financialReportLabel: prospectus.financialSnapshot?.reportLabel ?? null,
+          revenue: prospectus.financialSnapshot?.revenue ?? null,
+          previousRevenue: prospectus.financialSnapshot?.previousRevenue ?? null,
+          revenueGrowthRate: prospectus.financialSnapshot?.revenueGrowthRate ?? null,
+          operatingIncome: prospectus.financialSnapshot?.operatingIncome ?? null,
+          previousOperatingIncome: prospectus.financialSnapshot?.previousOperatingIncome ?? null,
+          operatingMarginRate: prospectus.financialSnapshot?.operatingMarginRate ?? null,
+          netIncome: prospectus.financialSnapshot?.netIncome ?? null,
+          previousNetIncome: prospectus.financialSnapshot?.previousNetIncome ?? null,
+          totalAssets: prospectus.financialSnapshot?.totalAssets ?? null,
+          totalLiabilities: prospectus.financialSnapshot?.totalLiabilities ?? null,
+          totalEquity: prospectus.financialSnapshot?.totalEquity ?? null,
+          debtRatio: prospectus.financialSnapshot?.debtRatio ?? null,
+          notes: [
+            `OpenDART ${disclosureRange.label} 증권예탁증권 공시 기준`,
+            `표시 범위 ${displayRange.label}`,
+            `접수일 ${disclosure.rcept_dt.slice(0, 4)}-${disclosure.rcept_dt.slice(4, 6)}-${disclosure.rcept_dt.slice(6, 8)}`,
+            `OpenDART 신고서 본문 기준 청약일 ${subscriptionStart} ~ ${subscriptionEnd}`,
+            prospectus.paymentDate ? `OpenDART 신고서 본문 기준 납입일 ${prospectus.paymentDate}` : null,
+            prospectus.confirmedOfferPrice != null
+              ? `OpenDART 증권신고서 본문 기준 확정 공모가 ${prospectus.confirmedOfferPrice.toLocaleString("ko-KR")}원`
+              : null,
+          ].filter((value): value is string => Boolean(value)),
+        } satisfies SourceIpoRecord;
+      }
+
       const detail = await fetchEquitySecurityInfo(disclosure.corp_code, disclosureRange);
       if (!detail?.group?.length) {
         return null;
@@ -530,7 +621,7 @@ export const fetchOpendartCurrentMonthIpoResult = async ({
 
   return getCachedExternalData(
     {
-      key: `opendart-current-month-ipos:${displayRange.key}:${disclosureRange.key}`,
+      key: `opendart-current-month-ipos:v2:${displayRange.key}:${disclosureRange.key}`,
       source: "opendart-current-month-ipos",
       ttlMs: OPENDART_SOURCE_CACHE_TTL_MS,
       bypass: forceRefresh,

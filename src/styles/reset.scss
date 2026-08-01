@@ -24,10 +24,17 @@ body {
 body {
   position: relative;
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background:
+    radial-gradient(circle at 12% -10%, rgba(37, 99, 235, 0.07), transparent 28rem),
+    linear-gradient(180deg, #f8f9fb 0%, var(--bg-primary) 22rem);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--primary-soft-strong);
+  color: var(--text-primary);
 }
 
 img,

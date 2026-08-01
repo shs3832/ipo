@@ -6,18 +6,18 @@
   --font-mono:
     var(--font-geist-mono), "SFMono-Regular", "JetBrains Mono", ui-monospace, monospace;
 
-  --bg-primary: #f5f6f8;
-  --bg-secondary: #eef1f5;
+  --bg-primary: #f3f5f8;
+  --bg-secondary: #e9edf3;
   --bg-tertiary: #ffffff;
 
   --surface: #ffffff;
   --surface-strong: #ffffff;
   --surface-solid: #ffffff;
-  --surface-subtle: #f8fafc;
+  --surface-subtle: #f7f9fc;
 
   --text-primary: #111827;
-  --text-secondary: #526071;
-  --text-tertiary: #8a95a5;
+  --text-secondary: #4c5b6d;
+  --text-tertiary: #7f8b9b;
 
   --line: #dce2ea;
   --line-strong: #c7d0dc;
@@ -41,7 +41,7 @@
   --danger: #b42318;
   --danger-soft: #feeceb;
 
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px rgba(16, 24, 40, 0.025);
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.03);
 
   --radius-2xl: 14px;

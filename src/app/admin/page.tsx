@@ -51,6 +51,14 @@ const coverageToneClassNames = {
   UNAVAILABLE: styles.coverageBadgeEmpty,
 } as const;
 
+const schedulerStatusPriority = {
+  FAILED: 0,
+  MISSED: 1,
+  LATE: 2,
+  PENDING: 3,
+  HEALTHY: 4,
+} as const;
+
 const formatScoreValue = (value: number | null) => (value == null ? "-" : value.toFixed(1));
 
 export default async function AdminPage({
@@ -69,6 +77,22 @@ export default async function AdminPage({
         ? syncMessage[syncStatus](params.synced)
         : syncMessage[syncStatus])
     : null;
+  const schedulerStatuses = [...snapshot.schedulerStatuses].sort(
+    (left, right) => schedulerStatusPriority[left.status] - schedulerStatusPriority[right.status],
+  );
+  const attentionSchedulerCount = schedulerStatuses.filter(
+    (status) => status.status === "FAILED" || status.status === "MISSED" || status.status === "LATE",
+  ).length;
+  const healthLabel = summary.errorCount > 0
+    ? "오류 확인 필요"
+    : summary.warnCount > 0 || attentionSchedulerCount > 0
+      ? "주의 항목 확인"
+      : "정상 운영 중";
+  const healthToneClassName = summary.errorCount > 0
+    ? styles.healthCritical
+    : summary.warnCount > 0 || attentionSchedulerCount > 0
+      ? styles.healthWarning
+      : styles.healthHealthy;
 
   return (
     <main className="page-shell">
@@ -76,10 +100,9 @@ export default async function AdminPage({
         <section className={styles.hero}>
           <div className={styles.heroBody}>
             <p className="page-eyebrow">Admin Console</p>
-            <h1 className="page-title">스케줄러, 수신자, 발송 이력을 한곳에서 추적합니다.</h1>
+            <h1 className="page-title">운영 상태를 먼저 확인하세요.</h1>
             <p className="page-copy">
-              운영 로그와 배치 상태를 한 화면에서 확인할 수 있게 정리해, 일정 정확도와 알림 중복
-              여부를 빠르게 점검할 수 있도록 구성했습니다.
+              일정 동기화, 알림 준비와 발송 상태에서 확인이 필요한 항목을 먼저 보여줍니다.
             </p>
             <div className={styles.heroMetaRow}>
               <span className="status-pill">상태 요약 {summary.mode}</span>
@@ -88,12 +111,14 @@ export default async function AdminPage({
           </div>
 
           <div className={styles.heroAside}>
-            <article className={styles.heroStatusCard}>
-              <span className={styles.cardLabel}>최근 경고 / 오류</span>
-              <strong className={styles.cardValue}>
-                {summary.warnCount} / {summary.errorCount}
-              </strong>
-              <p className={styles.cardCopy}>운영 로그 기준으로 즉시 확인이 필요한 신호를 요약했습니다.</p>
+            <article className={`${styles.heroStatusCard} ${healthToneClassName}`}>
+              <span className={styles.healthLabel}>현재 운영 상태</span>
+              <strong className={styles.healthValue}>{healthLabel}</strong>
+              <div className={styles.healthCounts}>
+                <span>오류 {summary.errorCount}</span>
+                <span>경고 {summary.warnCount}</span>
+                <span>스케줄 {attentionSchedulerCount}</span>
+              </div>
             </article>
             <div className={styles.actionGroup}>
               <AdminManualSyncForm action={triggerManualSyncAction} />
@@ -124,43 +149,39 @@ export default async function AdminPage({
 
         <section className={styles.summaryGrid}>
           <article className={styles.summaryCard}>
-            <span className={styles.cardLabel}>생성 시각</span>
+            <span className={styles.cardLabel}>최근 집계</span>
             <strong className={styles.summaryValue}>{summary.generatedAt}</strong>
-            <p className={styles.cardCopy}>마지막 대시보드 집계 기준입니다.</p>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>종목 / 수신자</span>
             <strong className={styles.summaryValue}>
               {summary.ipoCount} / {summary.recipientCount}
             </strong>
-            <p className={styles.cardCopy}>단일 관리자 기반에서 다중 수신자로 확장할 수 있는 구조입니다.</p>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>잡 / 발송</span>
             <strong className={styles.summaryValue}>
               {summary.jobCount} / {summary.deliveryCount}
             </strong>
-            <p className={styles.cardCopy}>현재 운영 중인 10시 분석 메일 기준 최근 작업 기록입니다.</p>
           </article>
           <article className={styles.summaryCard}>
             <span className={styles.cardLabel}>운영 모드</span>
             <strong className={styles.summaryValue}>{summary.mode}</strong>
-            <p className={styles.cardCopy}>실시간 DB 상태를 기준으로 현재 콘솔 컨텍스트를 보여줍니다.</p>
           </article>
         </section>
 
         <section className={styles.grid}>
-          <article className={styles.card}>
+          <article className={`${styles.card} ${styles.cardPriority}`}>
             <div className={styles.cardHeader}>
               <h2 className="section-title">일일 업데이트 검증</h2>
               <p className="section-copy">
-                Vercel Cron UTC 스케줄을 KST로 환산해 06:00 동기화와 09:55/10:00 분석 메일 실행
+                Vercel Cron UTC 스케줄을 KST로 환산해 06:00 동기화와 09:30 준비/10:00 분석 알림 실행
                 여부를 검증합니다.
               </p>
             </div>
             <div className={styles.list}>
-              {snapshot.schedulerStatuses.length ? (
-                snapshot.schedulerStatuses.map((status) => (
+              {schedulerStatuses.length ? (
+                schedulerStatuses.map((status) => (
                   <div className={styles.row} key={status.id}>
                     <div className={styles.rowHead}>
                       <div>

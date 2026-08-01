@@ -47,62 +47,50 @@ export default async function Home() {
       <PullToRefresh />
       <div className={styles.page}>
         <section className={styles.hero}>
-          <div className={styles.heroBody}>
-            <p className="page-eyebrow">IPO Calendar Alerts</p>
-            <h1 className="page-title">공모주 일정을 한 화면에서 읽고, 마감일엔 오전 10시 분석 메일로 이어집니다.</h1>
-            <p className="page-copy">
-              캘린더, 종목 개요, 운영용 상태를 하나의 흐름으로 묶어 매일 업데이트되는 일정과
-              알림 파이프라인을 빠르게 확인할 수 있게 설계했습니다.
-            </p>
-            <div className={styles.heroMetaRow}>
-              <span className="status-pill">기준 시간대 Asia/Seoul</span>
-              <span className="status-pill status-pill-soft">일정 표시는 청약·상장 흐름 중심</span>
+          <div className={styles.heroTop}>
+            <div className={styles.heroBody}>
+              <p className="page-eyebrow">IPO Calendar Alerts</p>
+              <h1 className="page-title">다가오는 공모주 일정을 빠르게 확인하세요.</h1>
+              <p className="page-copy">
+                청약 마감, 환불, 상장 일정을 한눈에 보고 마감일 오전 10시 분석 알림으로 이어집니다.
+              </p>
             </div>
-          </div>
-
-          <div className={styles.heroAside}>
-            <article className={styles.heroMetricCard}>
-              <span className={styles.cardLabel}>최근 갱신 기준</span>
-              <strong className={styles.cardValue}>{formatDateTime(snapshot.generatedAt, "MM.dd HH:mm")}</strong>
-              <p className={styles.cardCopy}>홈 화면은 5분 캐시 기준으로 최신 공개 일정 데이터를 다시 읽어옵니다.</p>
-            </article>
-
-            <article className={styles.heroMetricCard}>
-              <span className={styles.cardLabel}>표시 범위</span>
-              <strong className={styles.cardValue}>{formatDate(snapshot.calendarMonth, "MM월")} + 다음 달</strong>
-              <p className={styles.cardCopy}>실제 청약, 환불, 상장 이벤트가 있는 종목만 화면에 노출합니다.</p>
-            </article>
 
             <div className={styles.heroActionGroup}>
-              <Link className="button-primary" href="/admin">
-                관리자 화면
+              <a className={`button-primary ${styles.heroDesktopAction}`} href="#calendar-panel">
+                캘린더 보기
+              </a>
+              <a className={`button-primary ${styles.heroMobileAction}`} href="#tracked-ipos">
+                가까운 일정 보기
+              </a>
+              <Link className={styles.adminLink} href="/admin">
+                관리자
               </Link>
-              <a className={`button-secondary ${styles.heroDesktopAction}`} href="#calendar-panel">
-                일정 바로 보기
-              </a>
-              <a className={`button-secondary ${styles.heroMobileAction}`} href="#tracked-ipos">
-                종목 개요 보기
-              </a>
             </div>
           </div>
-        </section>
 
-        <section className={styles.summaryGrid}>
-          <article className={styles.summaryCard}>
-            <span className={styles.cardLabel}>추적 중인 공모주</span>
-            <strong className={styles.summaryValue}>{snapshot.ipos.length}</strong>
-            <p className={styles.cardCopy}>이번 달과 다음 달 일정 범위에 포함된 종목 수입니다.</p>
-          </article>
-          <article className={styles.summaryCard}>
-            <span className={styles.cardLabel}>캘린더 이벤트</span>
-            <strong className={styles.summaryValue}>{eventCount}</strong>
-            <p className={styles.cardCopy}>청약 마감, 환불, 상장 일정 가운데 현재 표시 범위에 들어오는 이벤트 수입니다.</p>
-          </article>
-          <article className={styles.summaryCard}>
-            <span className={styles.cardLabel}>기준 시간대</span>
-            <strong className={styles.summaryValue}>Asia/Seoul</strong>
-            <p className={styles.cardCopy}>공개 화면의 일정 표시는 모두 KST 기준으로 정리합니다.</p>
-          </article>
+          <dl className={styles.statusStrip} aria-label="공모주 일정 현황">
+            <div>
+              <dt>최근 갱신</dt>
+              <dd>{formatDateTime(snapshot.generatedAt, "MM.dd HH:mm")}</dd>
+            </div>
+            <div>
+              <dt>표시 범위</dt>
+              <dd>{formatDate(snapshot.calendarMonth, "MM월")} + 다음 달</dd>
+            </div>
+            <div>
+              <dt>추적 종목</dt>
+              <dd>{snapshot.ipos.length}개</dd>
+            </div>
+            <div>
+              <dt>전체 일정</dt>
+              <dd>{eventCount}개</dd>
+            </div>
+            <div className={styles.timezoneItem}>
+              <dt>기준</dt>
+              <dd>Asia/Seoul</dd>
+            </div>
+          </dl>
         </section>
 
         <HomeContent

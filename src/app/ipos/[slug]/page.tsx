@@ -41,6 +41,8 @@ export default async function IpoDetailPage({
 
   const adminMetadata = isAdmin ? await getIpoAdminMetadataBySlug(slug) : null;
   const detailView = buildIpoDetailViewModel(ipo);
+  const primaryQuickFacts = detailView.quickFacts.slice(0, 4);
+  const supportingQuickFacts = detailView.quickFacts.slice(4);
 
   return (
     <main className="page-shell">
@@ -93,14 +95,28 @@ export default async function IpoDetailPage({
         <section className={styles.grid}>
           <article className={`${styles.card} ${styles.cardWide}`}>
             <div className={styles.cardHeader}>
-              <h2 className="section-title">지금 판단용</h2>
-              <p className="section-copy">청약 결정을 위해 가장 먼저 확인할 항목만 위로 올렸습니다.</p>
+              <h2 className="section-title">핵심 정보</h2>
+              <p className="section-copy">청약 전에 가장 먼저 확인할 가격과 일정을 모았습니다.</p>
             </div>
             <div className={styles.quickGrid}>
-              {detailView.quickFacts.map((fact) => (
-                <div className={styles.quickItem} key={fact.label}>
+              {primaryQuickFacts.map((fact) => (
+                <div
+                  className={`${styles.quickItem} ${fact.value ? "" : styles.quickItemUnavailable}`}
+                  key={fact.label}
+                >
                   <span>{fact.label}</span>
                   <strong>{renderNumericValue(fact.value, fact.emphasis)}</strong>
+                </div>
+              ))}
+            </div>
+            <div className={styles.supportingGrid}>
+              {supportingQuickFacts.map((fact) => (
+                <div
+                  className={`${styles.supportingItem} ${fact.value ? "" : styles.supportingItemUnavailable}`}
+                  key={fact.label}
+                >
+                  <span>{fact.label}</span>
+                  <strong>{renderNumericValue(fact.value)}</strong>
                 </div>
               ))}
             </div>

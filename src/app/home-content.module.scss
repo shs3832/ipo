@@ -12,7 +12,7 @@
 
 .calendarPanel,
 .sidePanel {
-  @include surface(20px, var(--radius-xl));
+  @include surface(18px, var(--radius-xl));
 }
 
 .panelHeader {
@@ -20,7 +20,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .panelHeader > * {
@@ -31,18 +31,18 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .calendarNotice {
-  margin-bottom: 18px;
-  padding: 12px 14px;
+  margin-bottom: 14px;
+  padding: 9px 12px;
   border: 1px solid #f1d79d;
   border-radius: var(--radius-lg);
   background: var(--warning-soft);
   color: var(--warning);
-  font-size: 0.92rem;
-  line-height: 1.6;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .filterChip {
@@ -201,8 +201,8 @@
 }
 
 .calendarCell {
-  min-height: 150px;
-  padding: 12px;
+  min-height: 126px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -242,7 +242,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .calendarDate {
@@ -263,9 +263,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 42px;
-  min-height: 40px;
-  padding: 0 12px;
+  min-width: 34px;
+  min-height: 32px;
+  padding: 0 9px;
   border-radius: var(--radius-md);
   background: var(--primary-soft);
   color: var(--primary-strong);
@@ -301,9 +301,10 @@
 
 .eventChip {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--surface-subtle);
@@ -346,9 +347,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
+  min-height: 24px;
   width: fit-content;
-  padding: 0 10px;
+  padding: 0 8px;
   border-radius: var(--radius-pill);
   font-size: 0.76rem;
   font-weight: 800;
@@ -379,8 +380,17 @@
 
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  transition: transform var(--transition-base);
+  gap: 12px;
+  background: var(--surface);
+  transition:
+    transform var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.ipoCard:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.07);
 }
 
 .ipoCardHead {
@@ -434,18 +444,39 @@
   word-break: keep-all;
 }
 
-.ipoCardHead p,
 .ipoStats dt {
   color: var(--text-secondary);
 }
 
-.ipoCardHead p {
-  line-height: 1.55;
-  word-break: keep-all;
+.ipoIdentityMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
-.ipoBrokerList {
-  margin-top: 8px;
+.ipoScheduleSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.ipoScheduleSummary span {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.ipoScheduleSummary strong {
+  font-size: 1.04rem;
+  letter-spacing: -0.01em;
 }
 
 .ipoStats {
@@ -459,6 +490,16 @@
   gap: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
+}
+
+.ipoStats .ipoStatPrimary {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ipoStatPrimary dd {
+  color: var(--text-primary);
+  font-size: 1.02rem;
 }
 
 .ipoStats dd {
@@ -853,7 +894,7 @@
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
-  background: var(--surface-subtle);
+  background: #f3f6fa;
 }
 
 .overviewSectionHeader {
@@ -962,7 +1003,7 @@
   }
 
   .overviewControlRow {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1.35fr) minmax(120px, 0.85fr);
   }
 
   .overviewSearchInputWrap,
@@ -1101,7 +1142,6 @@
   }
 
   .ipoCardHead {
-    flex-direction: column;
     gap: 10px;
   }
 
@@ -1121,6 +1161,10 @@
     align-items: baseline;
     gap: 10px;
     padding-top: 10px;
+  }
+
+  .ipoStats .ipoStatPrimary {
+    padding-top: 0;
   }
 
   .ipoStats dd {
@@ -1235,6 +1279,10 @@
   .ipoCard {
     padding: 12px;
     border-radius: var(--radius-md);
+  }
+
+  .ipoScheduleSummary {
+    padding: 10px 12px;
   }
 
   .ipoCardHead {

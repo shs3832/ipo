@@ -8,6 +8,12 @@ export type OpendartProspectusDetails = {
   confirmedOfferPrice: number | null;
   priceBandLow: number | null;
   priceBandHigh: number | null;
+  subscriptionStart: string | null;
+  subscriptionEnd: string | null;
+  paymentDate: string | null;
+  leadManager: string | null;
+  market: "KOSPI" | "KOSDAQ" | "KONEX" | null;
+  isNewListing: boolean;
   minimumSubscriptionShares: number | null;
   depositRate: number | null;
   demandCompetitionRate: number | null;
@@ -57,6 +63,86 @@ const parseInteger = (value: string | null | undefined) => {
   const parsed = Number.parseInt(digits, 10);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const toDateKey = (year: string, month: string, day: string) =>
+  `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+
+const KOREAN_DATE_CAPTURE = String.raw`(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일`;
+
+export const extractProspectusSchedule = (text: string) => {
+  const rangePatterns = [
+    new RegExp(
+      String.raw`일반청약자(?:의)?\s*(?:청약일|청약기일)\s*[:：]?\s*${KOREAN_DATE_CAPTURE}\s*[~～-]\s*${KOREAN_DATE_CAPTURE}`,
+      "g",
+    ),
+    new RegExp(
+      String.raw`일반청약자\s*개시일\s*${KOREAN_DATE_CAPTURE}\s*종료일\s*${KOREAN_DATE_CAPTURE}`,
+      "g",
+    ),
+    new RegExp(
+      String.raw`청약기일[^\d]{0,80}${KOREAN_DATE_CAPTURE}\s*[~～-]\s*${KOREAN_DATE_CAPTURE}`,
+      "g",
+    ),
+  ];
+  const rangeCandidates = rangePatterns
+    .flatMap((pattern) => [...text.matchAll(pattern)])
+    .sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
+  const latestRange = rangeCandidates.at(-1);
+
+  const paymentPatterns = [
+    new RegExp(
+      String.raw`납\s*입\s*기\s*일(?:\s*당일)?(?:인)?\s*[(:：]?\s*${KOREAN_DATE_CAPTURE}`,
+      "g",
+    ),
+    new RegExp(
+      String.raw`납입일(?:인)?\s*[(:：]?\s*${KOREAN_DATE_CAPTURE}`,
+      "g",
+    ),
+  ];
+  const paymentCandidates = paymentPatterns
+    .flatMap((pattern) => [...text.matchAll(pattern)])
+    .sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
+  const latestPayment = paymentCandidates.at(-1);
+
+  return {
+    subscriptionStart: latestRange
+      ? toDateKey(latestRange[1], latestRange[2], latestRange[3])
+      : null,
+    subscriptionEnd: latestRange
+      ? toDateKey(latestRange[4], latestRange[5], latestRange[6])
+      : null,
+    paymentDate: latestPayment
+      ? toDateKey(latestPayment[1], latestPayment[2], latestPayment[3])
+      : null,
+  };
+};
+
+export const extractProspectusLeadManager = (text: string) => {
+  const matches = [...text.matchAll(
+    /대표주관회사(?:인)?\s*([가-힣A-Za-z0-9]+(?:투자증권|증권))(?:㈜|\(주\))?/g,
+  )];
+
+  return matches.at(-1)?.[1] ?? null;
+};
+
+export const extractProspectusMarket = (text: string) => {
+  if (/(?:본\s*주식은|한국거래소)\s*코스닥시장\s*상장/.test(text)) {
+    return "KOSDAQ" as const;
+  }
+
+  if (/(?:본\s*주식은|한국거래소)\s*유가증권시장\s*상장/.test(text)) {
+    return "KOSPI" as const;
+  }
+
+  if (/(?:본\s*주식은|한국거래소)\s*코넥스시장\s*상장/.test(text)) {
+    return "KONEX" as const;
+  }
+
+  return null;
+};
+
+export const isNewListingProspectus = (text: string) =>
+  /(?:신규상장\s*예비심사|상장예비심사)/.test(text);
 
 const parseFloatNumber = (value: string | null | undefined) => {
   if (!value) {
@@ -520,12 +606,17 @@ const fetchOpendartProspectusDetailsUncached = async (
   const scoringTexts = [normalizedXmlText];
   const { priceBandLow, priceBandHigh } = extractPriceBand(normalizedXmlText);
   const lockupRateFromTables = extractLockupRateFromXmlTables(xml);
+  const schedule = extractProspectusSchedule(normalizedXmlText);
 
   return {
     receiptNo,
     confirmedOfferPrice: extractConfirmedOfferPrice(normalizedXmlText),
     priceBandLow,
     priceBandHigh,
+    ...schedule,
+    leadManager: extractProspectusLeadManager(normalizedXmlText),
+    market: extractProspectusMarket(normalizedXmlText),
+    isNewListing: isNewListingProspectus(normalizedXmlText),
     minimumSubscriptionShares: extractMinimumSubscriptionShares(normalizedXmlText),
     depositRate: extractDepositRate(normalizedXmlText),
     demandCompetitionRate: extractDemandCompetitionRate(scoringTexts),
@@ -544,6 +635,12 @@ export const fetchOpendartProspectusDetails = async (
       confirmedOfferPrice: null,
       priceBandLow: null,
       priceBandHigh: null,
+      subscriptionStart: null,
+      subscriptionEnd: null,
+      paymentDate: null,
+      leadManager: null,
+      market: null,
+      isNewListing: false,
       minimumSubscriptionShares: null,
       depositRate: null,
       demandCompetitionRate: null,
@@ -554,7 +651,7 @@ export const fetchOpendartProspectusDetails = async (
 
   return getCachedExternalData(
     {
-      key: `opendart-prospectus:${receiptNo}`,
+      key: `opendart-prospectus:v2:${receiptNo}`,
       source: "opendart-prospectus",
       ttlMs: OPENDART_PROSPECTUS_CACHE_TTL_MS,
       bypass: forceRefresh,

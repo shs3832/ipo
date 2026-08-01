@@ -68,15 +68,16 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  border-top: 1px solid var(--line);
 }
 
 .row {
-  @include softSurface(14px, var(--radius-lg));
-
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .row strong {
@@ -103,7 +104,7 @@
   min-width: 62px;
   min-height: 34px;
   padding: 0 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -156,8 +157,7 @@
   }
 
   .row {
-    padding: 14px;
-    border-radius: var(--radius-lg);
+    padding: 12px 0;
   }
 
   .logMeta {
@@ -173,7 +173,6 @@
   }
 
   .row {
-    padding: 12px;
-    border-radius: var(--radius-md);
+    padding: 12px 0;
   }
 }

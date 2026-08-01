@@ -11,17 +11,17 @@
 }
 
 .hero {
-  @include surface(24px, var(--radius-xl));
+  @include surface(22px, var(--radius-xl));
 
   display: grid;
-  gap: 24px;
-  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 340px);
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.8fr);
 }
 
 .heroBody {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -46,12 +46,18 @@
 .heroStatusCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  border-left-width: 4px;
 }
 
 .actionGroup {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.actionGroup > :first-child {
+  grid-column: 1 / -1;
 }
 
 .actionGroup :global(.button-primary),
@@ -71,6 +77,47 @@
 .logoutForm :global(.button-secondary) {
   color: var(--text-tertiary);
   border-color: transparent;
+}
+
+.healthHealthy {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+}
+
+.healthWarning {
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.healthCritical {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.healthLabel {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.healthValue {
+  font-size: 1.35rem;
+  line-height: 1.3;
+}
+
+.healthCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.healthCounts span {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .syncForm,
@@ -125,12 +172,15 @@
 
 .summaryGrid {
   @include autoGrid(220px);
+
+  gap: 10px;
 }
 
 .summaryCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+  padding: 14px 16px;
 }
 
 .cardLabel {
@@ -141,7 +191,7 @@
 
 .cardValue,
 .summaryValue {
-  font-size: 1.55rem;
+  font-size: 1.22rem;
   line-height: 1.16;
   letter-spacing: 0;
 }
@@ -155,6 +205,11 @@
   display: grid;
   gap: 20px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cardPriority {
+  grid-column: 1 / -1;
+  border-top: 3px solid var(--primary);
 }
 
 .card {
@@ -172,15 +227,17 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  border-top: 1px solid var(--line);
 }
 
 .row {
-  @include softSurface(14px, var(--radius-lg));
-
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
 }
 
 .row strong {
@@ -223,7 +280,7 @@
   align-items: center;
   justify-content: center;
   min-width: 72px;
-  min-height: 36px;
+  min-height: 30px;
   padding: 0 12px;
   border-radius: var(--radius-sm);
   font-size: 0.88rem;
@@ -350,7 +407,7 @@
   }
 }
 
-@include mobile {
+  @include mobile {
   .hero,
   .summaryCard,
   .card {
@@ -371,9 +428,17 @@
     border-radius: var(--radius-lg);
   }
 
-  .summaryGrid {
-    gap: 14px;
+  .actionGroup {
     grid-template-columns: 1fr;
+  }
+
+  .actionGroup > :first-child {
+    grid-column: auto;
+  }
+
+  .summaryGrid {
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .grid {
@@ -381,8 +446,7 @@
   }
 
   .row {
-    padding: 14px;
-    border-radius: var(--radius-lg);
+    padding: 12px 0;
   }
 
   .rowHead {
@@ -417,9 +481,18 @@
     border-radius: var(--radius-md);
   }
 
+  .row {
+    padding-inline: 0;
+    border-radius: 0;
+  }
+
   .summaryGrid,
   .grid {
     gap: 12px;
+  }
+
+  .summaryCard {
+    padding: 12px;
   }
 
   .cardValue,
