@@ -31,7 +31,7 @@
   - [score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 - 홈/상세/UI 배치, 공개/비공개 판단:
   - [product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
-- AI와의 개발 방식, 프롬프트, 프로젝트 중간 회고:
+- AI와의 서비스 판단·개선 방식, 프롬프트, 프로젝트 중간 회고:
   - [ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)
 
 ## Documentation Rules

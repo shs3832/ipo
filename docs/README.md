@@ -17,7 +17,7 @@ AI 작업자가 코드 변경 전 맥락을 복원할 때는 [docs/context/READM
 - 데이터/점수: [docs/context/data-and-scoring.md](/Users/shs/Desktop/Study/ipo/docs/context/data-and-scoring.md)
 - 점수 공개 상태 / 재오픈 메모: [docs/context/score-rollout-status.md](/Users/shs/Desktop/Study/ipo/docs/context/score-rollout-status.md)
 - 제품/UI: [docs/context/product-surface.md](/Users/shs/Desktop/Study/ipo/docs/context/product-surface.md)
-- AI 개발 방식 / 중간 회고: [docs/context/ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)
+- AI 서비스 판단·개선 방식 / 중간 회고: [docs/context/ai-development-reflection.md](/Users/shs/Desktop/Study/ipo/docs/context/ai-development-reflection.md)
 - AI 읽기 순서 안내: [docs/context/README.md](/Users/shs/Desktop/Study/ipo/docs/context/README.md)
 
 ## Design Docs
