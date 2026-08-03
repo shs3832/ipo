@@ -94,15 +94,24 @@ test("buildIpoDetailViewModel centralizes score, quick fact, and listing state d
   assert.equal(view.scoreMetaLabel, "종합점수 74.3점");
   assert.equal(view.scoreStatusLabel, "점수 공개");
   assert.deepEqual(view.scoreReasons, ["기관 수요예측 수요가 강했습니다.", "재무 보정이 일부 반영됐습니다."]);
-  assert.deepEqual(view.quickFacts.slice(0, 3), [
-    { label: "확정 공모가", value: "₩10,000", emphasis: true },
+  assert.deepEqual(view.quickFacts, [
+    { label: "확정 공모가", value: "₩10,000" },
     { label: "최소청약금액", value: "₩50,000", emphasis: true },
+    { label: "최소청약주수", value: "10주" },
     { label: "환불일", value: "2026.03.23" },
   ]);
-  assert.deepEqual(view.listingFacts, [
-    { label: "상장일 시초가", value: "₩13,000" },
-    { label: "공모가 대비 수익률", value: "+30%" },
+  assert.equal(view.hasCoreDataGap, false);
+  assert.deepEqual(view.contextFacts, [
+    { label: "청약 기간", value: "2026.03.20 ~ 2026.03.21" },
+    { label: "주관사", value: "미래에셋증권" },
   ]);
+  assert.deepEqual(
+    view.additionalFacts.slice(-2),
+    [
+      { label: "상장일 시초가", value: "₩13,000" },
+      { label: "공모가 대비 수익률", value: "+30%" },
+    ],
+  );
 });
 
 test("buildIpoDetailViewModel shows price-band based quick facts before confirmed offer price exists", () => {
@@ -115,7 +124,7 @@ test("buildIpoDetailViewModel shows price-band based quick facts before confirme
   }), "2026-03-20");
 
   assert.deepEqual(view.quickFacts.slice(0, 2), [
-    { label: "희망 공모가", value: "₩12,500 ~ ₩15,000", emphasis: true },
+    { label: "희망 공모가", value: "₩12,500 ~ ₩15,000" },
     { label: "예상 최소청약금액", value: "₩62,500 ~ ₩75,000", emphasis: true },
   ]);
 });
@@ -127,14 +136,7 @@ test("buildIpoDetailViewModel marks listing dates before subscription close as r
   }), "2026-06-13");
 
   assert.equal(view.isListedYet, false);
-  assert.deepEqual(view.quickFacts.slice(2, 4), [
-    { label: "환불일", value: "2026.03.23" },
-    { label: "상장 예정일", value: "상장일 확인 필요" },
-  ]);
-  assert.equal(
-    view.scheduleFacts.find((fact) => fact.label === "상장 예정일")?.value,
-    "상장일 확인 필요",
-  );
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "상장 예정일"), false);
 });
 
 test("buildIpoDetailViewModel uses explicit unavailable labels for unclear market and broker data", () => {
@@ -146,7 +148,7 @@ test("buildIpoDetailViewModel uses explicit unavailable labels for unclear marke
 
   assert.equal(view.marketLabel, "시장 미확인");
   assert.equal(
-    view.quickFacts.find((fact) => fact.label === "주관사")?.value,
+    view.contextFacts.find((fact) => fact.label === "주관사")?.value,
     "주관사 미확인",
   );
 });
@@ -198,8 +200,29 @@ test("buildIpoDetailViewModel keeps fallback copy when public score or analysis 
   assert.equal(view.scoreStatusLabel, "점수 준비 중");
   assert.equal(view.scoreHelpText, "정량 점수는 현재 비공개 상태이며, 공개 여부는 추후 다시 판단합니다.");
   assert.equal(view.scoreDisclaimer, "정량 점수는 현재 공개하지 않고, 공시 기반 체크 포인트 중심으로 안내합니다.");
-  assert.deepEqual(view.listingFacts, [
-    { label: "상장일 시초가", value: null },
-    { label: "공모가 대비 수익률", value: null },
-  ]);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "상장일 시초가"), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "공모가 대비 수익률"), false);
+});
+
+test("buildIpoDetailViewModel omits unavailable optional fields but keeps core gaps visible", () => {
+  const view = buildIpoDetailViewModel(createIpo({
+    minimumSubscriptionShares: null,
+    demandForecastStart: null,
+    demandForecastEnd: null,
+    irStart: null,
+    irEnd: null,
+    tradableShares: null,
+    floatRatio: null,
+    generalSubscriptionCompetitionRate: null,
+    listingDate: null,
+  }), "2026-03-20");
+
+  assert.equal(view.hasCoreDataGap, true);
+  assert.deepEqual(
+    view.quickFacts.find((fact) => fact.label === "최소청약주수"),
+    { label: "최소청약주수", value: null },
+  );
+  assert.equal(view.additionalFacts.some((fact) => fact.value == null), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "수요예측 일정"), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "IR 일정"), false);
 });

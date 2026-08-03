@@ -10,7 +10,6 @@ import {
 import { assessIpoDataQuality } from "@/lib/ipo-data-quality";
 import {
   getLeadManagerDisplay,
-  getListingDateDisplay,
   getMarketDisplay,
   getRefundDateDisplay,
   getUsableListingDate,
@@ -45,9 +44,9 @@ export type IpoDetailViewModel = {
   scoreHelpText: string;
   scoreDisclaimer: string;
   quickFacts: IpoDetailFact[];
-  scheduleFacts: IpoDetailFact[];
-  detailFacts: IpoDetailFact[];
-  listingFacts: IpoDetailFact[];
+  contextFacts: IpoDetailFact[];
+  additionalFacts: IpoDetailFact[];
+  hasCoreDataGap: boolean;
 };
 
 export const getMinimumDepositAmount = ({
@@ -65,28 +64,12 @@ const formatDateRangeSummary = (start: Date | null, end: Date | null) => {
     return `${formatDate(start)} ~ ${formatDate(end)}`;
   }
 
-  if (start) {
-    return `${formatDate(start)} ~ ${unavailableLabel}`;
-  }
-
-  if (end) {
-    return `${unavailableLabel} ~ ${formatDate(end)}`;
-  }
-
   return null;
 };
 
 const formatPriceBandSummary = (low: number | null, high: number | null) => {
   if (low != null && high != null) {
     return `${formatMoney(low)} ~ ${formatMoney(high)}`;
-  }
-
-  if (low != null) {
-    return `${formatMoney(low)} ~ ${unavailableLabel}`;
-  }
-
-  if (high != null) {
-    return `${unavailableLabel} ~ ${formatMoney(high)}`;
   }
 
   return null;
@@ -140,11 +123,6 @@ export const buildIpoDetailViewModel = (
     refundDate: ipo.refundDate,
     status: ipo.status,
   });
-  const listingDateDisplay = getListingDateDisplay({
-    listingDate: ipo.listingDate,
-    subscriptionEnd: ipo.subscriptionEnd,
-    status: ipo.status,
-  });
   const marketDisplay = getMarketDisplay(ipo.market);
   const leadManagerDisplay = getLeadManagerDisplay({
     leadManager: ipo.leadManager,
@@ -195,6 +173,66 @@ export const buildIpoDetailViewModel = (
   const scoreMetaLabel = publicScore?.totalScore != null
     ? `종합점수 ${formatScoreValue(publicScore.totalScore)}`
     : "정량 점수 비공개";
+  const minimumSubscriptionSharesDisplay = ipo.minimumSubscriptionShares != null
+    ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주`
+    : null;
+  const subscriptionPeriodDisplay = formatDateRangeSummary(ipo.subscriptionStart, ipo.subscriptionEnd);
+  const hasCoreDataGap = (
+    priceDisplay.value == null
+    || minimumDepositDisplay.value == null
+    || minimumSubscriptionSharesDisplay == null
+    || ipo.refundDate == null
+  );
+  const additionalFacts = [
+    {
+      label: isListedYet ? "상장일" : "상장 예정일",
+      value: listingDate ? formatDate(listingDate) : null,
+    },
+    {
+      label: "희망 공모가",
+      value: ipo.offerPrice != null ? formatPriceBandSummary(ipo.priceBandLow, ipo.priceBandHigh) : null,
+    },
+    {
+      label: "증거금률",
+      value: formatPercent(ipo.depositRate) !== "-" ? formatPercent(ipo.depositRate) : null,
+    },
+    {
+      label: "일반청약 경쟁률",
+      value: ipo.generalSubscriptionCompetitionRate != null
+        ? `${ipo.generalSubscriptionCompetitionRate.toLocaleString("ko-KR")}:1`
+        : null,
+    },
+    {
+      label: "유통가능물량",
+      value: formatRatioPercent(ipo.floatRatio),
+    },
+    {
+      label: "유통가능주식수",
+      value: ipo.tradableShares != null ? `${ipo.tradableShares.toLocaleString("ko-KR")}주` : null,
+    },
+    {
+      label: "수요예측 일정",
+      value: formatDateRangeSummary(ipo.demandForecastStart, ipo.demandForecastEnd),
+    },
+    {
+      label: "IR 일정",
+      value: formatDateRangeSummary(ipo.irStart, ipo.irEnd),
+    },
+    ...(
+      isListedYet
+        ? [
+            {
+              label: "상장일 시초가",
+              value: ipo.listingOpenPrice != null ? formatMoney(ipo.listingOpenPrice) : null,
+            },
+            {
+              label: "공모가 대비 수익률",
+              value: ipo.listingOpenReturnRate != null ? formatSignedPercentValue(ipo.listingOpenReturnRate) : null,
+            },
+          ]
+        : []
+    ),
+  ].filter((fact) => fact.value != null);
 
   return {
     marketLabel: marketDisplay.value,
@@ -209,11 +247,11 @@ export const buildIpoDetailViewModel = (
     scoreBreakdown,
     scoreHelpText,
     scoreDisclaimer,
+    hasCoreDataGap,
     quickFacts: [
       {
         label: priceDisplay.label,
         value: priceDisplay.value,
-        emphasis: true,
       },
       {
         label: minimumDepositDisplay.label,
@@ -221,93 +259,24 @@ export const buildIpoDetailViewModel = (
         emphasis: true,
       },
       {
+        label: "최소청약주수",
+        value: minimumSubscriptionSharesDisplay,
+      },
+      {
         label: "환불일",
         value: refundDateDisplay.value,
       },
+    ],
+    contextFacts: [
       {
-        label: "상장 예정일",
-        value: listingDateDisplay.value,
-      },
-      {
-        label: "데이터 상태",
-        value: dataQuality.label,
-      },
-      {
-        label: "유통가능물량",
-        value: formatRatioPercent(ipo.floatRatio),
+        label: "청약 기간",
+        value: subscriptionPeriodDisplay,
       },
       {
         label: "주관사",
         value: leadManagerDisplay.value,
       },
     ],
-    scheduleFacts: [
-      {
-        label: "청약 시작",
-        value: formatDate(ipo.subscriptionStart),
-      },
-      {
-        label: "청약 마감",
-        value: formatDate(ipo.subscriptionEnd),
-      },
-      {
-        label: "환불일",
-        value: refundDateDisplay.value,
-      },
-      {
-        label: "상장 예정일",
-        value: listingDateDisplay.value,
-      },
-      {
-        label: "수요예측 일정",
-        value: formatDateRangeSummary(ipo.demandForecastStart, ipo.demandForecastEnd),
-      },
-    ],
-    detailFacts: [
-      {
-        label: "희망 공모가",
-        value: formatPriceBandSummary(ipo.priceBandLow, ipo.priceBandHigh),
-      },
-      {
-        label: "최소청약주수",
-        value: ipo.minimumSubscriptionShares != null ? `${ipo.minimumSubscriptionShares.toLocaleString("ko-KR")}주` : null,
-      },
-      {
-        label: "증거금률",
-        value: formatPercent(ipo.depositRate) !== "-" ? formatPercent(ipo.depositRate) : null,
-      },
-      {
-        label: "일반청약 경쟁률",
-        value: ipo.generalSubscriptionCompetitionRate != null
-          ? `${ipo.generalSubscriptionCompetitionRate.toLocaleString("ko-KR")}:1`
-          : null,
-      },
-      {
-        label: "유통가능주식수",
-        value: ipo.tradableShares != null ? `${ipo.tradableShares.toLocaleString("ko-KR")}주` : null,
-      },
-      {
-        label: "청약 기간",
-        value: formatDateRangeSummary(ipo.subscriptionStart, ipo.subscriptionEnd),
-      },
-      {
-        label: "수요예측 일정",
-        value: formatDateRangeSummary(ipo.demandForecastStart, ipo.demandForecastEnd),
-      },
-      {
-        label: "IR 일정",
-        value: formatDateRangeSummary(ipo.irStart, ipo.irEnd),
-      },
-    ],
-    listingFacts: [
-      {
-        label: "상장일 시초가",
-        value: ipo.listingOpenPrice != null ? formatMoney(ipo.listingOpenPrice) : null,
-      },
-      {
-        label: "공모가 대비 수익률",
-        value: ipo.listingOpenReturnRate != null ? formatSignedPercentValue(ipo.listingOpenReturnRate) : null,
-      },
-    ],
+    additionalFacts,
   };
 };
