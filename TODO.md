@@ -14,7 +14,36 @@
 
 ## Active
 
-### 1. Public Score Rollout Reopen Review
+### 1. Admin Data Quality Board Production Rollout Check
+
+관리자 데이터 품질 보드는 로컬 production build와 브라우저 QA까지 통과했지만, 실제 배포 환경의 외부 source·운영 DB·cache를 변경하는 강제 동기화는 아직 실행하지 않았다.
+
+성공 기준:
+
+- 배포 후 비로그인 `/admin`이 로그인 화면으로 이동하고 로그인 후 품질 요약/목록이 정상 렌더링됨
+- 관리자 품질 건수와 종목별 누락 사유가 같은 시점의 dashboard snapshot과 일치함
+- 자동 cron과 겹치지 않는 시간에 수동 강제 동기화를 1회 실행하고 성공/실패 feedback을 확인함
+- `admin:daily-sync`의 `requested` / `completed`와 `job:daily-sync`의 `started` / `completed` 로그가 한 흐름으로 남음
+- 동기화 후 공개 홈/상세 cache가 갱신되며 source metadata는 공개 화면에 노출되지 않음
+- Vercel function duration, DB timeout/transaction error, OpenDART/KIND/SEIBro 오류가 새로 증가하지 않음
+- cron과 수동 실행의 겹침이 관찰되면 distributed lock 또는 재실행 cooldown을 별도 설계하고, 관찰 전에는 불필요한 상태를 추가하지 않음
+
+주요 진입점:
+
+- [src/app/admin/page.tsx](/Users/shs/Desktop/Study/ipo/src/app/admin/page.tsx)
+- [src/app/admin/actions.ts](/Users/shs/Desktop/Study/ipo/src/app/admin/actions.ts)
+- [src/lib/admin-ipo-quality.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-ipo-quality.ts)
+- [src/lib/server/ipo-sync-service.ts](/Users/shs/Desktop/Study/ipo/src/lib/server/ipo-sync-service.ts)
+- [docs/context/runtime-and-ops.md](/Users/shs/Desktop/Study/ipo/docs/context/runtime-and-ops.md)
+
+검증:
+
+- production `/admin` browser smoke
+- 수동 동기화 전후 품질 건수와 `sourceFetchedAt` 비교
+- `OperationLog`와 Vercel function log 확인
+- 공개 홈/상세 cache 갱신과 admin metadata 미노출 확인
+
+### 2. Public Score Rollout Reopen Review
 
 현재 공개 홈, 상세, 메일의 정량 점수 노출은 pause 상태다.
 점수 계산기와 DB 구조는 유지하지만, 사용자에게 다시 보여주려면 신뢰도와 표현 책임을 먼저 확인해야 한다.
@@ -43,7 +72,7 @@
 - `npm run build`
 - public home/detail/admin/mail smoke
 
-### 2. Calendar Weekend Column Reopen Decision
+### 3. Calendar Weekend Column Reopen Decision
 
 현재 데스크톱 캘린더는 청약 일정과 무관한 주말 열을 숨기는 것이 기본값이다.
 사용자가 월간 일정 맥락을 더 자연스럽게 보길 원하면 주말 열 복구를 검토한다.
@@ -72,7 +101,7 @@
 
 ## Parked
 
-### 3. Closing-Soon Alert Reopen
+### 4. Closing-Soon Alert Reopen
 
 마감 30분 전 알림은 현재 pause 상태를 유지한다.
 지금 운영 목표에서는 10시 closing-day analysis 메일이 더 중요하고, Hobby cron의 정시 보장 한계도 있어 즉시 재오픈 대상으로 두지 않는다.
@@ -90,7 +119,7 @@
 - [src/lib/server/job-shared.ts](/Users/shs/Desktop/Study/ipo/src/lib/server/job-shared.ts)
 - [vercel.json](/Users/shs/Desktop/Study/ipo/vercel.json)
 
-### 4. Major Dependency Upgrade
+### 5. Major Dependency Upgrade
 
 현재는 major upgrade를 진행하지 않는다.
 Next와 React는 이미 최신 major 라인이고, Prisma 7 / TypeScript 6 / ESLint 10은 제품 기능보다 마이그레이션 리스크가 더 크다.
@@ -106,7 +135,7 @@ Next와 React는 이미 최신 major 라인이고, Prisma 7 / TypeScript 6 / ESL
 - Prisma 7은 `prisma-client-js`에서 새 client generator와 adapter 구조로 넘어가는 작업이어서 단순 package bump가 아니다.
 - TypeScript 6과 ESLint 10은 런타임 기능보다 tooling migration에 가깝다.
 
-### 5. DB Migration For Structural Expansion
+### 6. DB Migration For Structural Expansion
 
 현재는 DB migration을 새로 만들지 않는다.
 Recipient, RecipientChannel, Subscription, NotificationJob, NotificationDelivery 구조가 이미 있어 알림 확장은 기존 스키마로 먼저 실험할 수 있다.
@@ -126,7 +155,7 @@ Recipient, RecipientChannel, Subscription, NotificationJob, NotificationDelivery
 
 ## Done Enough
 
-### 6. README / Portfolio Explanation
+### 7. README / Portfolio Explanation
 
 README 기준으로는 충분히 정리된 상태다.
 프로젝트 성격, 기술 스택, 운영 안정성, AI-assisted development workflow, portfolio notes가 이미 루트 README에 반영돼 있다.

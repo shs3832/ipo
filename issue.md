@@ -656,6 +656,60 @@
 - prepare는 충분히 일찍 끝내고, 10시 주변 dispatch는 발송에 집중하게 한다.
 - Vercel Hobby cron의 정시 hard guarantee 한계는 여전히 남아 있으며, 더 강한 정시성이 필요하면 외부 스케줄러 또는 Vercel Pro cron이 필요하다.
 
+## Follow-up: Admin IPO Data Quality Operations Board
+
+2026-08-03 KST 기준으로, 관리자 화면에서 공모주별 데이터 누락과 수집 최신성을 빠르게 확인하고 기존 수동 동기화로 보정할 수 있는 운영 보드를 단계적으로 추가했다.
+
+### What Changed
+
+- 기존 알림 판정 기준을 재사용하는 관리자용 데이터 품질 집계 모델을 추가했다.
+- 최근 `06:00 KST` 동기화 주기를 기준으로 수집 상태를 `최신`, `갱신 필요`, `오래됨`으로 구분했다.
+- 관리자 상단에 진행 종목의 검증 완료, 일부 미확인, 발송 보류, 갱신 확인 건수를 요약했다.
+- 종목별 목록에서 누락 사유, 수집원, 수집 시각과 공개 상세 링크를 확인할 수 있게 했다.
+- 실제 알림 파이프라인과 동일하게 스팩을 발송 가능/보류/갱신 주의 집계에서 제외하고, 목록에는 `스팩 제외` 상태로 남겼다.
+- 지난 종목은 운영 집계에서 제외하고 별도의 기본 접힘 영역에 배치했다.
+- 기존 관리자 강제 동기화 액션을 품질 목록 헤더로 옮겨 전체 재수집 후 같은 기준으로 다시 판정되게 했다.
+- 공개 read path, 알림 idempotency, 점수 비공개 상태, 데이터 저장 구조는 변경하지 않았다.
+
+### Verification In This Follow-up
+
+- `npm test`
+  - 전체 `133개` 테스트 통과
+- `npx tsc --noEmit`
+- `npm run lint`
+- 관리자 SCSS 단독 컴파일
+- `npm run build`
+  - Next.js production build 성공
+  - 공개 홈 `/`의 `revalidate=300`과 관리자/상세 dynamic route 확인
+- production server Playwright QA
+  - 비로그인 `/admin` 요청이 `/login?next=/admin`으로 이동
+  - 관리자 품질 요약, 종목별 목록, 기존 수동 동기화 버튼 1개 노출 확인
+  - 지난 종목 펼치기와 공개 상세 이동 확인
+  - 수동 동기화 성공/실패 redirect 피드백 확인
+  - `1440`, `1024`, `768`, `390px`에서 가로 overflow 없음
+  - 공개 홈에서 관리자 품질 제목과 `OpenDART` source label 미노출 확인
+  - browser console error `0건`
+- `git diff --check`
+
+### Production Readiness Review
+
+- 결론: 현재 변경분에서 실서비스 배포를 막는 결함은 확인되지 않았다.
+- 관리자 품질 보드는 기존 `getDashboardSnapshot()` 결과만 가공하며 추가 DB query, source fetch, render-time write를 만들지 않는다.
+- 품질/최신성 계산은 표시 범위 종목을 한 번 순회하고 정렬하는 수준이며, 현재 관리자 데이터 규모에서 별도 성능 병목으로 보이지 않는다.
+- 공개 홈 projection은 `latestSourceKey`, `sourceFetchedAt`을 계속 제거하고, 새 품질 모듈과 목록은 `/admin`에서만 import된다.
+- 수동 동기화는 위치만 품질 목록으로 옮겼고 관리자 인증, `forceRefresh`, 공개 cache 무효화, 성공/실패 redirect, 운영 로그 흐름은 변경하지 않았다.
+- 스팩 제외와 필수/선택 누락 판정은 기존 알림 helper를 재사용해 실제 prepare 기준과 맞췄다.
+- 실제 배포와 실서비스 강제 동기화는 이 검토에서 실행하지 않았다. 배포 후 smoke와 동시 실행 관찰은 `TODO.md`의 Active 항목으로 이어간다.
+- 기존 `runDailySync()`에는 요청 간 distributed lock이 없다. 현재 upsert와 empty-source 보호로 데이터 손실 위험은 낮지만, cron과 수동 강제 동기화가 겹칠 때 외부 source/DB 부하와 경합이 생기는지는 운영 로그로 확인해야 한다.
+- `최신`은 가장 최근 `06:00 KST` 주기 이후 수집됐다는 뜻이며, 모든 외부 source 필드가 완전히 채워졌다는 뜻은 아니다. 필드 완전성은 별도 품질 상태와 함께 해석한다.
+
+### Current Decisions To Remember In This Follow-up
+
+- 품질 보드는 관리자 전용 read model이며 공개 화면에 source metadata를 노출하지 않는다.
+- 수동 동기화는 개별 종목 보정이 아니라 기존 `runDailySync({ forceRefresh: true })` 기반 전체 재수집이다.
+- 과거 종목의 누락/오래됨 상태는 현재 운영 주의 건수에 포함하지 않는다.
+- 스팩은 데이터 상태를 참고할 수 있도록 목록에는 표시하지만 자동 알림 준비 상태에는 포함하지 않는다.
+
 ## Archived Logs
 
 - [2026-03-21 to 2026-04-21](/Users/shs/Desktop/Study/ipo/docs/archive/issues-2026-03-to-04.md)

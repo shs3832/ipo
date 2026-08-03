@@ -56,27 +56,14 @@
   gap: 10px;
 }
 
-.actionGroup > :first-child {
-  grid-column: 1 / -1;
-}
-
-.actionGroup :global(.button-primary),
 .actionGroup :global(.button-secondary) {
   width: 100%;
-}
-
-.actionGroup :global(.button-secondary) {
   color: var(--text-secondary);
   background: var(--surface-subtle);
 }
 
 .actionGroup :global(.button-secondary):hover {
   background: var(--surface);
-}
-
-.logoutForm :global(.button-secondary) {
-  color: var(--text-tertiary);
-  border-color: transparent;
 }
 
 .healthHealthy {
@@ -120,9 +107,21 @@
   font-weight: 700;
 }
 
-.syncForm,
 .logoutForm {
-  display: contents;
+  grid-column: 1 / -1;
+}
+
+.logoutForm :global(.button-secondary) {
+  width: 100%;
+  color: var(--text-tertiary);
+  border-color: transparent;
+}
+
+.syncForm {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
 }
 
 .buttonInlineLoading {
@@ -181,6 +180,244 @@
   flex-direction: column;
   gap: 6px;
   padding: 14px 16px;
+}
+
+.qualityOverview {
+  @include surface(20px, var(--radius-xl));
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-left-width: 4px;
+}
+
+.qualityOverviewNeutral {
+  border-left-color: var(--line-strong);
+}
+
+.qualityOverviewHealthy {
+  border-left-color: var(--success);
+}
+
+.qualityOverviewWarning {
+  border-left-color: var(--warning);
+}
+
+.qualityOverviewCritical {
+  border-left-color: var(--danger);
+}
+
+.qualityHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.qualityIntro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.qualityTodayStatus {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.qualityTodayLabel,
+.qualityMetric dt {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.qualityTodayStatus strong {
+  font-size: 1.08rem;
+  line-height: 1.4;
+}
+
+.qualityTodayStatus p,
+.qualityMetricDescription {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.qualityMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.qualityMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-top-width: 3px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.qualityMetricValue,
+.qualityMetricDescription {
+  margin: 0;
+}
+
+.qualityMetricValue {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.qualityMetricVerified {
+  border-top-color: var(--success);
+}
+
+.qualityMetricPartial,
+.qualityMetricRefresh {
+  border-top-color: var(--warning);
+}
+
+.qualityMetricBlocked {
+  border-top-color: var(--danger);
+}
+
+.qualityMetricExcluded {
+  border-top-color: var(--line-strong);
+}
+
+.qualityListCard {
+  @include surface(20px, var(--radius-xl));
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.qualityListHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.qualityListControls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: min(260px, 100%);
+}
+
+.qualityListControls :global(.button-primary) {
+  width: 100%;
+}
+
+.qualitySyncScope {
+  max-width: 300px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.qualityRecordList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.qualityRecordRow {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.85fr) minmax(280px, 1.45fr) minmax(180px, 0.8fr) auto;
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.qualityRecordIdentity,
+.qualityRecordJudgement,
+.qualityRecordSource {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.qualityRecordIdentity strong,
+.qualityRecordSource strong {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.qualityRecordIdentity p,
+.qualityRecordJudgement p,
+.qualityRecordSource time,
+.qualityListEmpty p {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.qualityRecordJudgement .badgeCluster {
+  justify-content: flex-start;
+}
+
+.qualityRecordLabel {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.qualityRecordRow :global(.inline-link) {
+  justify-self: end;
+}
+
+.qualityListEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+
+.pastQualityDetails {
+  border-top: 1px solid var(--line);
+}
+
+.pastQualityDetails summary {
+  width: fit-content;
+  padding: 14px 0 2px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pastQualityDetails[open] summary {
+  margin-bottom: 12px;
 }
 
 .cardLabel {
@@ -405,12 +642,27 @@
   .grid {
     grid-template-columns: 1fr;
   }
+
+  .qualityHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .qualityMetricGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .qualityRecordRow {
+    grid-template-columns: minmax(160px, 0.8fr) minmax(240px, 1.4fr) minmax(160px, 0.8fr) auto;
+    gap: 14px;
+  }
 }
 
-  @include mobile {
+@include mobile {
   .hero,
   .summaryCard,
-  .card {
+  .card,
+  .qualityOverview,
+  .qualityListCard {
     padding: 18px;
     border-radius: var(--radius-xl);
   }
@@ -432,13 +684,40 @@
     grid-template-columns: 1fr;
   }
 
-  .actionGroup > :first-child {
-    grid-column: auto;
+  .logoutForm {
+    grid-column: 1;
   }
 
   .summaryGrid {
     gap: 8px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qualityMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qualityListHeader {
+    flex-direction: column;
+  }
+
+  .qualityListControls {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .qualitySyncScope {
+    max-width: none;
+    text-align: left;
+  }
+
+  .qualityRecordRow {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .qualityRecordRow :global(.inline-link) {
+    justify-self: stretch;
   }
 
   .grid {
@@ -470,7 +749,9 @@
 @include phone {
   .hero,
   .summaryCard,
-  .card {
+  .card,
+  .qualityOverview,
+  .qualityListCard {
     padding: 12px;
     border-radius: var(--radius-lg);
   }

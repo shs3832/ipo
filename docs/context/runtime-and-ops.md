@@ -18,6 +18,7 @@
 - `src/lib/jobs.ts`는 기존 import 경로를 유지하기 위한 얇은 facade다.
 - `src/lib/server/ipo-sync-service.ts`는 source fetch, normalize, DB upsert, stale 처리와 점수 hook을 담당한다.
 - `src/lib/server/ipo-read-service.ts`는 dashboard/public/detail/admin read model을 담당한다.
+- `src/lib/admin-ipo-quality.ts`는 기존 알림 품질 판정과 `06:00 KST` 수집 주기를 재사용해 관리자 전용 품질/최신성 read model을 만든다.
 - `src/lib/server/alert-service.ts`는 alert prepare/dispatch와 메일 render를 담당한다.
 - `src/lib/server/recipient-service.ts`는 관리자 수신자 CRUD를 담당한다.
 - `src/lib/admin-navigation.ts`와 `src/lib/server/admin-surface.ts`는 admin login redirect, next-path 정규화, admin 경로 revalidate 규칙을 공통화한다.
@@ -74,6 +75,7 @@
 - 홈 `/`는 `revalidate = 300`
 - 공개 read path에서는 recipient bootstrap 등 DB write를 하지 않음
 - 관리자 read와 public read는 분리된 경로를 사용
+- 관리자 품질 보드는 dashboard snapshot만 읽으며 렌더 과정에서 source refresh나 DB write를 실행하지 않음
 - 공개 홈은 운영용 메타데이터(활성 수신자 수, READY 잡 수, DB/Fallback 상태)를 노출하지 않음
 - public cache wrapper는 `src/lib/page-data.ts`, revive 규칙은 `src/lib/page-data-revival.ts`에 분리돼 있다
 
@@ -178,6 +180,8 @@
 ## Current Operational Caveats
 
 - 홈 `/`는 `revalidate = 300`
+- 관리자 품질 보드의 `최신`은 최근 `06:00 KST` 동기화 주기 이후 수집됐다는 의미이며, 모든 source 필드가 완전하다는 의미는 아니다.
+- 관리자 버튼은 같은 form의 pending 중복 제출은 막지만 `runDailySync()` 요청 간 distributed lock은 없다. cron과 수동 실행이 겹치는지는 배포 후 운영 로그로 확인하고, 실제 경합이 관찰될 때 lock/cooldown을 설계한다.
 - 공개 점수 rollout은 현재 pause 상태이며, public read path는 `ipo_score_snapshot`을 붙이지 않음
 - `src/lib/jobs.ts`는 facade만 남았고, 점수 sync / 재계산 no-op helper는 현재 `src/lib/server/ipo-sync-service.ts`에 있다
 - admin score summary data는 남겨 두지만, 현재 UI는 숨겨져 있고 재오픈 전까지 최신성 보장을 전제로 두지 않는다

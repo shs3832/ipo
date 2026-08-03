@@ -35,6 +35,9 @@
   - 지금 판단용 quick facts
   - 체크 포인트 / 일정 / 상세 데이터
 - 관리자 `/admin`
+  - 진행 종목 데이터 품질과 최근 수집 상태 요약
+  - 종목별 누락 사유, 수집원, 공개 상세 연결
+  - 기존 전체 강제 동기화와 결과 피드백
   - 운영 로그
   - 수신자 상태
   - 점수 상태 요약 데이터는 남기되 UI는 현재 숨김
@@ -47,6 +50,7 @@
 - 점수 저장/재계산: [src/lib/ipo-score-store.ts](/Users/shs/Desktop/Study/ipo/src/lib/ipo-score-store.ts)
 - 점수 계산기: [src/lib/scoring](/Users/shs/Desktop/Study/ipo/src/lib/scoring)
 - 공개 캐시: [src/lib/page-data.ts](/Users/shs/Desktop/Study/ipo/src/lib/page-data.ts)
+- 관리자 데이터 품질 집계: [src/lib/admin-ipo-quality.ts](/Users/shs/Desktop/Study/ipo/src/lib/admin-ipo-quality.ts)
 - 운영 로그: [src/lib/ops-log.ts](/Users/shs/Desktop/Study/ipo/src/lib/ops-log.ts)
 
 ## Current Status Snapshot

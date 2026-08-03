@@ -4,7 +4,7 @@ import { isChronologicallyValidListingDate, isKnownLeadManager, isKnownMarket } 
 
 type QualityStatus = "VERIFIED" | "PARTIAL" | "BLOCKED";
 
-type QualityInput = Pick<
+export type IpoDataQualityInput = Pick<
   IpoRecord,
   | "market"
   | "leadManager"
@@ -38,7 +38,7 @@ export type IpoDataQualitySummary = {
 const formatMissingPreview = (values: string[]) =>
   values.length <= 3 ? values.join(", ") : `${values.slice(0, 3).join(", ")} 외 ${values.length - 3}개`;
 
-export const assessIpoDataQuality = (ipo: QualityInput): IpoDataQualitySummary => {
+export const assessIpoDataQuality = (ipo: IpoDataQualityInput): IpoDataQualitySummary => {
   const criticalMissing: string[] = [];
   const optionalMissing: string[] = [];
   const confirmedFacts: string[] = [];

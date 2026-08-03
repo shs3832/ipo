@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { buildAdminIpoQualityOverview } from "@/lib/admin-ipo-quality";
 import { formatDateTime } from "@/lib/date";
 import { buildAdminStatusSummary, getDashboardSnapshot } from "@/lib/jobs";
 import { triggerManualSyncAction } from "@/app/admin/actions";
-import { AdminManualSyncForm } from "@/app/admin/manual-sync-form";
+import { AdminIpoQualityList } from "@/app/admin/ipo-quality-list";
 import { logoutAction } from "@/app/login/actions";
 import { AdminLogPanel } from "@/app/admin-log-panel";
 import { ADMIN_HOME_PATH, ADMIN_RECIPIENTS_PATH } from "@/lib/admin-navigation";
@@ -71,6 +72,15 @@ export default async function AdminPage({
   const params = await searchParams;
   const snapshot = await getDashboardSnapshot();
   const summary = buildAdminStatusSummary(snapshot);
+  const ipoQualityOverview = buildAdminIpoQualityOverview(snapshot.ipos);
+  const refreshAttentionCount = ipoQualityOverview.counts.needsRefresh + ipoQualityOverview.counts.stale;
+  const closingTodayRefreshAttentionCount = ipoQualityOverview.records.filter(
+    (record) => record.isClosingToday
+      && record.isAlertEligible
+      && record.sourceFreshness.status !== "FRESH",
+  ).length;
+  const closingTodayEligibleCount = ipoQualityOverview.counts.closingToday
+    - ipoQualityOverview.counts.excludedSpacClosingToday;
   const syncStatus = params.sync && params.sync in syncMessage ? params.sync : null;
   const syncFeedback = syncStatus
     ? (typeof syncMessage[syncStatus] === "function"
@@ -93,6 +103,26 @@ export default async function AdminPage({
     : summary.warnCount > 0 || attentionSchedulerCount > 0
       ? styles.healthWarning
       : styles.healthHealthy;
+  const qualityHeadline = ipoQualityOverview.counts.total === 0
+    ? "집계할 공모주가 없습니다"
+    : ipoQualityOverview.counts.closingToday === 0
+      ? "오늘 마감 종목이 없습니다"
+      : ipoQualityOverview.counts.blockedClosingToday > 0
+        ? `오늘 마감 ${ipoQualityOverview.counts.closingToday}건 중 ${ipoQualityOverview.counts.blockedClosingToday}건 발송 보류`
+        : closingTodayRefreshAttentionCount > 0
+          ? `오늘 마감 ${ipoQualityOverview.counts.closingToday}건 중 ${closingTodayRefreshAttentionCount}건 갱신 확인 필요`
+          : closingTodayEligibleCount === 0
+            ? `오늘 마감 ${ipoQualityOverview.counts.closingToday}건은 스팩으로 알림 제외`
+            : `오늘 마감 ${ipoQualityOverview.counts.closingToday}건 중 알림 대상 ${closingTodayEligibleCount}건 핵심 정보 확인`;
+  const qualityToneClassName = ipoQualityOverview.counts.total === 0
+    ? styles.qualityOverviewNeutral
+    : ipoQualityOverview.counts.blockedClosingToday > 0 || ipoQualityOverview.counts.stale > 0
+      ? styles.qualityOverviewCritical
+      : ipoQualityOverview.counts.blocked > 0
+        || ipoQualityOverview.counts.partial > 0
+        || refreshAttentionCount > 0
+        ? styles.qualityOverviewWarning
+        : styles.qualityOverviewHealthy;
 
   return (
     <main className="page-shell">
@@ -121,7 +151,6 @@ export default async function AdminPage({
               </div>
             </article>
             <div className={styles.actionGroup}>
-              <AdminManualSyncForm action={triggerManualSyncAction} />
               <Link className="button-secondary" href={ADMIN_RECIPIENTS_PATH}>
                 이메일 관리
               </Link>
@@ -169,6 +198,90 @@ export default async function AdminPage({
             <strong className={styles.summaryValue}>{summary.mode}</strong>
           </article>
         </section>
+
+        <section
+          aria-labelledby="ipo-data-quality-title"
+          className={`${styles.qualityOverview} ${qualityToneClassName}`}
+        >
+          <div className={styles.qualityHeader}>
+            <div className={styles.qualityIntro}>
+              <p className="page-eyebrow">Data Readiness</p>
+              <h2 className="section-title" id="ipo-data-quality-title">
+                공모주 데이터 품질
+              </h2>
+              <p className="section-copy">
+                자동 알림에 필요한 핵심 정보와 최근 06:00 동기화 주기 이후의 데이터 갱신 상태를
+                함께 집계합니다.
+              </p>
+            </div>
+
+            <div className={styles.qualityTodayStatus}>
+              <span className={styles.qualityTodayLabel}>오늘 마감 상태</span>
+              <strong>{qualityHeadline}</strong>
+              {ipoQualityOverview.counts.closingToday > 0 ? (
+                <p>
+                  핵심 정보 기준 발송 가능 {ipoQualityOverview.counts.sendableClosingToday}건 · 발송 보류{
+                    " "
+                  }{ipoQualityOverview.counts.blockedClosingToday}건
+                  {closingTodayRefreshAttentionCount > 0
+                    ? ` · 갱신 확인 ${closingTodayRefreshAttentionCount}건`
+                    : ""}
+                  {ipoQualityOverview.counts.excludedSpacClosingToday > 0
+                    ? ` · 스팩 제외 ${ipoQualityOverview.counts.excludedSpacClosingToday}건`
+                    : ""}
+                </p>
+              ) : (
+                <p>오늘은 마감 알림 대상 여부를 확인할 종목이 없습니다.</p>
+              )}
+            </div>
+          </div>
+
+          <dl className={styles.qualityMetricGrid}>
+            <div className={styles.qualityMetric}>
+              <dt>진행 종목</dt>
+              <dd className={styles.qualityMetricValue}>{ipoQualityOverview.counts.active}</dd>
+              <dd className={styles.qualityMetricDescription}>
+                알림 대상 {ipoQualityOverview.counts.eligible} · 지난 종목{
+                  " "
+                }{ipoQualityOverview.counts.total - ipoQualityOverview.counts.active}건 제외
+              </dd>
+            </div>
+            <div className={`${styles.qualityMetric} ${styles.qualityMetricVerified}`}>
+              <dt>검증 완료</dt>
+              <dd className={styles.qualityMetricValue}>{ipoQualityOverview.counts.verified}</dd>
+              <dd className={styles.qualityMetricDescription}>핵심·주요 정보 확인</dd>
+            </div>
+            <div className={`${styles.qualityMetric} ${styles.qualityMetricPartial}`}>
+              <dt>일부 미확인</dt>
+              <dd className={styles.qualityMetricValue}>{ipoQualityOverview.counts.partial}</dd>
+              <dd className={styles.qualityMetricDescription}>핵심 정보 충족 · 추가 확인</dd>
+            </div>
+            <div className={`${styles.qualityMetric} ${styles.qualityMetricBlocked}`}>
+              <dt>발송 보류</dt>
+              <dd className={styles.qualityMetricValue}>{ipoQualityOverview.counts.blocked}</dd>
+              <dd className={styles.qualityMetricDescription}>핵심 정보 누락</dd>
+            </div>
+            <div className={`${styles.qualityMetric} ${styles.qualityMetricExcluded}`}>
+              <dt>스팩 제외</dt>
+              <dd className={styles.qualityMetricValue}>{ipoQualityOverview.counts.excludedSpac}</dd>
+              <dd className={styles.qualityMetricDescription}>자동 알림 대상 제외</dd>
+            </div>
+            <div className={`${styles.qualityMetric} ${styles.qualityMetricRefresh}`}>
+              <dt>갱신 확인</dt>
+              <dd className={styles.qualityMetricValue}>{refreshAttentionCount}</dd>
+              <dd className={styles.qualityMetricDescription}>
+                갱신 필요 {ipoQualityOverview.counts.needsRefresh} · 오래됨{
+                  " "
+                }{ipoQualityOverview.counts.stale}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <AdminIpoQualityList
+          records={ipoQualityOverview.records}
+          syncAction={triggerManualSyncAction}
+        />
 
         <section className={styles.grid}>
           <article className={`${styles.card} ${styles.cardPriority}`}>
