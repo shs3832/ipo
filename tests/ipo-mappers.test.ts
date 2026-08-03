@@ -61,6 +61,9 @@ const createDbIpo = (overrides: Record<string, unknown> = {}) =>
           demandForecastEnd: "2026-03-18",
           tradableShares: 123456,
           floatRatio: 22.5,
+          totalOfferedShares: 2_200_000,
+          newShares: 2_000_000,
+          secondaryShares: 200_000,
           demandCompetitionRate: 1222.2,
           lockupRate: 18.4,
           insiderSalesRatio: 4.2,
@@ -84,6 +87,9 @@ test("getLatestSnapshotFields parses only valid snapshot values", () => {
     irEnd: "",
     tradableShares: "12345",
     floatRatio: 27.5,
+    totalOfferedShares: 2_200_000,
+    newShares: 2_200_000,
+    secondaryShares: null,
     demandCompetitionRate: 900.1,
     lockupRate: null,
   });
@@ -94,6 +100,9 @@ test("getLatestSnapshotFields parses only valid snapshot values", () => {
   assert.equal(fields.irEnd, null);
   assert.equal(fields.tradableShares, null);
   assert.equal(fields.floatRatio, 27.5);
+  assert.equal(fields.totalOfferedShares, 2_200_000);
+  assert.equal(fields.newShares, 2_200_000);
+  assert.equal(fields.secondaryShares, null);
   assert.equal(fields.demandCompetitionRate, 900.1);
   assert.equal(fields.lockupRate, null);
 });
@@ -107,6 +116,11 @@ test("db ipo mappers share the same core fields while only full records keep sou
   assert.equal(detail.kindBizProcessNo, "BP-1");
   assert.equal(full.generalSubscriptionCompetitionRate, 321.1);
   assert.equal(detail.generalSubscriptionCompetitionRate, 321.1);
+  assert.equal(detail.totalOfferedShares, 2_200_000);
+  assert.equal(detail.newShares, 2_000_000);
+  assert.equal(detail.secondaryShares, 200_000);
+  assert.equal(detail.demandCompetitionRate, 1222.2);
+  assert.equal(detail.lockupRate, 18.4);
   assert.equal(full.latestSourceKey, "source-1");
   assert.ok(full.sourceFetchedAt instanceof Date);
   assert.equal("latestSourceKey" in detail, false);

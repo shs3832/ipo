@@ -35,6 +35,11 @@ const createIpo = (
     : new Date("2026-03-13T00:00:00.000Z"),
   tradableShares: overrides.tradableShares !== undefined ? overrides.tradableShares : 500000,
   floatRatio: overrides.floatRatio !== undefined ? overrides.floatRatio : 42.6,
+  totalOfferedShares: overrides.totalOfferedShares !== undefined ? overrides.totalOfferedShares : 2_200_000,
+  newShares: overrides.newShares !== undefined ? overrides.newShares : 2_000_000,
+  secondaryShares: overrides.secondaryShares !== undefined ? overrides.secondaryShares : 200_000,
+  demandCompetitionRate: overrides.demandCompetitionRate !== undefined ? overrides.demandCompetitionRate : 1222.2,
+  lockupRate: overrides.lockupRate !== undefined ? overrides.lockupRate : 18.4,
   subscriptionStart: overrides.subscriptionStart !== undefined
     ? overrides.subscriptionStart
     : new Date("2026-03-20T00:00:00.000Z"),
@@ -106,6 +111,20 @@ test("buildIpoDetailViewModel centralizes score, quick fact, and listing state d
     { label: "주관사", value: "미래에셋증권" },
   ]);
   assert.deepEqual(
+    view.additionalFacts.filter((fact) => [
+      "기관 경쟁률",
+      "의무보유확약률",
+      "총 공모주식수",
+      "신주·구주 비중",
+    ].includes(fact.label)),
+    [
+      { label: "기관 경쟁률", value: "1,222.2:1" },
+      { label: "의무보유확약률", value: "18.4%" },
+      { label: "총 공모주식수", value: "2,200,000주" },
+      { label: "신주·구주 비중", value: "신주 90.9% · 구주 9.1%" },
+    ],
+  );
+  assert.deepEqual(
     view.additionalFacts.slice(-2),
     [
       { label: "상장일 시초가", value: "₩13,000" },
@@ -127,6 +146,19 @@ test("buildIpoDetailViewModel shows price-band based quick facts before confirme
     { label: "희망 공모가", value: "₩12,500 ~ ₩15,000" },
     { label: "예상 최소청약금액", value: "₩62,500 ~ ₩75,000", emphasis: true },
   ]);
+});
+
+test("buildIpoDetailViewModel derives a zero secondary-share ratio from a full new-share offering", () => {
+  const view = buildIpoDetailViewModel(createIpo({
+    totalOfferedShares: 2_200_000,
+    newShares: 2_200_000,
+    secondaryShares: null,
+  }));
+
+  assert.deepEqual(
+    view.additionalFacts.find((fact) => fact.label === "신주·구주 비중"),
+    { label: "신주·구주 비중", value: "신주 100% · 구주 0%" },
+  );
 });
 
 test("buildIpoDetailViewModel marks listing dates before subscription close as review-needed", () => {
@@ -214,6 +246,11 @@ test("buildIpoDetailViewModel omits unavailable optional fields but keeps core g
     tradableShares: null,
     floatRatio: null,
     generalSubscriptionCompetitionRate: null,
+    totalOfferedShares: null,
+    newShares: null,
+    secondaryShares: null,
+    demandCompetitionRate: null,
+    lockupRate: null,
     listingDate: null,
   }), "2026-03-20");
 
@@ -225,4 +262,8 @@ test("buildIpoDetailViewModel omits unavailable optional fields but keeps core g
   assert.equal(view.additionalFacts.some((fact) => fact.value == null), false);
   assert.equal(view.additionalFacts.some((fact) => fact.label === "수요예측 일정"), false);
   assert.equal(view.additionalFacts.some((fact) => fact.label === "IR 일정"), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "기관 경쟁률"), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "의무보유확약률"), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "총 공모주식수"), false);
+  assert.equal(view.additionalFacts.some((fact) => fact.label === "신주·구주 비중"), false);
 });

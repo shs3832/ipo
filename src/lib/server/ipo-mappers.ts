@@ -35,6 +35,9 @@ export const getLatestSnapshotFields = (payload: unknown) => {
       demandForecastEnd: null,
       tradableShares: null,
       floatRatio: null,
+      totalOfferedShares: null,
+      newShares: null,
+      secondaryShares: null,
       demandCompetitionRate: null,
       lockupRate: null,
       insiderSalesRatio: null,
@@ -58,6 +61,9 @@ export const getLatestSnapshotFields = (payload: unknown) => {
     demandForecastEnd: parseSnapshotDate(record.demandForecastEnd),
     tradableShares: parseSnapshotNumber(record.tradableShares),
     floatRatio: parseSnapshotNumber(record.floatRatio),
+    totalOfferedShares: parseSnapshotNumber(record.totalOfferedShares),
+    newShares: parseSnapshotNumber(record.newShares),
+    secondaryShares: parseSnapshotNumber(record.secondaryShares),
     demandCompetitionRate: parseSnapshotNumber(record.demandCompetitionRate),
     lockupRate: parseSnapshotNumber(record.lockupRate),
     insiderSalesRatio: parseSnapshotNumber(record.insiderSalesRatio),
@@ -219,7 +225,18 @@ export const mapDbIpoToIpoRecord = (ipo: IpoReadModel, publicScore: PublicIpoSco
 export const mapDbIpoToPublicIpoDetailRecord = (
   ipo: IpoReadModel,
   publicScore: PublicIpoScoreRecord | null = null,
-): PublicIpoDetailRecord => buildBaseDbIpoRecord(ipo, publicScore);
+): PublicIpoDetailRecord => {
+  const snapshotFields = getLatestSnapshotFields(ipo.sourceSnapshots[0]?.payload);
+
+  return {
+    ...buildBaseDbIpoRecord(ipo, publicScore),
+    totalOfferedShares: snapshotFields.totalOfferedShares,
+    newShares: snapshotFields.newShares,
+    secondaryShares: snapshotFields.secondaryShares,
+    demandCompetitionRate: snapshotFields.demandCompetitionRate,
+    lockupRate: snapshotFields.lockupRate,
+  };
+};
 
 export const toRecipientRecord = (recipient: {
   id: string;

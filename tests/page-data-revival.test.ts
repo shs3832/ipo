@@ -6,7 +6,7 @@ import {
   revivePublicHomeSnapshot,
   revivePublicIpoDetailRecord,
 } from "@/lib/page-data-revival";
-import type { IpoRecord, PublicHomeSnapshot } from "@/lib/types";
+import type { IpoRecord, PublicHomeSnapshot, PublicIpoDetailRecord } from "@/lib/types";
 
 const createSerializedIpo = () =>
   ({
@@ -72,6 +72,25 @@ const createSerializedIpo = () =>
     sourceFetchedAt: "2026-03-15T03:00:00.000Z",
   }) as unknown as IpoRecord;
 
+const createSerializedDetail = () => {
+  const {
+    latestSourceKey: _latestSourceKey,
+    sourceFetchedAt: _sourceFetchedAt,
+    ...ipo
+  } = createSerializedIpo();
+  void _latestSourceKey;
+  void _sourceFetchedAt;
+
+  return {
+    ...ipo,
+    totalOfferedShares: 2_200_000,
+    newShares: 2_000_000,
+    secondaryShares: 200_000,
+    demandCompetitionRate: 1222.2,
+    lockupRate: 18.4,
+  } as unknown as PublicIpoDetailRecord;
+};
+
 test("reviveIpoRecord restores serialized dates and fills a fallback score display", () => {
   const revived = reviveIpoRecord(createSerializedIpo());
 
@@ -101,5 +120,5 @@ test("revivePublicHomeSnapshot restores top-level cache dates and nested ipo rec
 
 test("revivePublicIpoDetailRecord keeps null and revives detail payloads", () => {
   assert.equal(revivePublicIpoDetailRecord(null), null);
-  assert.ok(revivePublicIpoDetailRecord(createSerializedIpo())?.listingDate instanceof Date);
+  assert.ok(revivePublicIpoDetailRecord(createSerializedDetail())?.listingDate instanceof Date);
 });

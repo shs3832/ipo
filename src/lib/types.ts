@@ -328,7 +328,13 @@ export type AdminStatusSummary = {
   warnCount: number;
 };
 
-export type PublicIpoDetailRecord = Omit<IpoRecord, "latestSourceKey" | "sourceFetchedAt">;
+export type PublicIpoDetailRecord = Omit<IpoRecord, "latestSourceKey" | "sourceFetchedAt"> & {
+  totalOfferedShares: number | null;
+  newShares: number | null;
+  secondaryShares: number | null;
+  demandCompetitionRate: number | null;
+  lockupRate: number | null;
+};
 
 export type IpoAdminMetadata = {
   latestSourceKey: string;

@@ -86,6 +86,53 @@ const formatRatioPercent = (value: number | null | undefined) => {
   })}%`;
 };
 
+const formatCompetitionRate = (value: number | null | undefined) => {
+  if (value == null || value < 0) {
+    return null;
+  }
+
+  return `${value.toLocaleString("ko-KR", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
+    maximumFractionDigits: 1,
+  })}:1`;
+};
+
+const formatShareCount = (value: number | null | undefined) => (
+  value != null && value > 0 ? `${value.toLocaleString("ko-KR")}주` : null
+);
+
+const formatOfferingComposition = ({
+  totalOfferedShares,
+  newShares,
+  secondaryShares,
+}: Pick<PublicIpoDetailRecord, "totalOfferedShares" | "newShares" | "secondaryShares">) => {
+  if (totalOfferedShares == null || totalOfferedShares <= 0) {
+    return null;
+  }
+
+  const resolvedNewShares = newShares
+    ?? (secondaryShares != null ? totalOfferedShares - secondaryShares : null);
+  const resolvedSecondaryShares = secondaryShares
+    ?? (resolvedNewShares != null ? totalOfferedShares - resolvedNewShares : null);
+
+  if (
+    resolvedNewShares == null
+    || resolvedSecondaryShares == null
+    || resolvedNewShares < 0
+    || resolvedSecondaryShares < 0
+    || Math.abs(resolvedNewShares + resolvedSecondaryShares - totalOfferedShares) > 1
+  ) {
+    return null;
+  }
+
+  const formatCompositionRatio = (shares: number) => `${((shares / totalOfferedShares) * 100).toLocaleString("ko-KR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })}%`;
+
+  return `신주 ${formatCompositionRatio(resolvedNewShares)} · 구주 ${formatCompositionRatio(resolvedSecondaryShares)}`;
+};
+
 const formatScoreValue = (value: number | null, withUnit = true) =>
   value == null ? null : `${value.toFixed(1)}${withUnit ? "점" : ""}`;
 
@@ -201,6 +248,22 @@ export const buildIpoDetailViewModel = (
       value: ipo.generalSubscriptionCompetitionRate != null
         ? `${ipo.generalSubscriptionCompetitionRate.toLocaleString("ko-KR")}:1`
         : null,
+    },
+    {
+      label: "기관 경쟁률",
+      value: formatCompetitionRate(ipo.demandCompetitionRate),
+    },
+    {
+      label: "의무보유확약률",
+      value: formatRatioPercent(ipo.lockupRate),
+    },
+    {
+      label: "총 공모주식수",
+      value: formatShareCount(ipo.totalOfferedShares),
+    },
+    {
+      label: "신주·구주 비중",
+      value: formatOfferingComposition(ipo),
     },
     {
       label: "유통가능물량",
