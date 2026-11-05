@@ -122,28 +122,9 @@ const parseNumber = (value: string | undefined) => {
 };
 
 export const resolveOpendartOfferPrice = (
-  securityPrice: number | null,
+  _securityPrice: number | null,
   prospectus: OpendartProspectusDetails | null,
-) => {
-  if (prospectus?.confirmedOfferPrice != null) {
-    return prospectus.confirmedOfferPrice;
-  }
-
-  if (securityPrice == null) {
-    return null;
-  }
-
-  if (
-    prospectus?.priceBandLow != null
-    && prospectus.priceBandHigh != null
-    && securityPrice >= prospectus.priceBandLow
-    && securityPrice <= prospectus.priceBandHigh
-  ) {
-    return null;
-  }
-
-  return securityPrice;
-};
+) => prospectus?.confirmedOfferPrice ?? null;
 
 const parseSubscriptionRange = (value: string | undefined) => {
   if (!value || value === "-") {
@@ -339,7 +320,7 @@ const hasCoreProspectusDetails = (prospectus: OpendartProspectusDetails | null) 
     && prospectus.depositRate != null,
   );
 
-const mergeProspectusDetails = (
+export const mergeProspectusDetails = (
   primary: OpendartProspectusDetails | null,
   fallback: OpendartProspectusDetails | null,
 ): OpendartProspectusDetails | null => {
@@ -349,7 +330,8 @@ const mergeProspectusDetails = (
 
   return {
     receiptNo: primary?.receiptNo ?? fallback?.receiptNo ?? "",
-    confirmedOfferPrice: primary?.confirmedOfferPrice ?? fallback?.confirmedOfferPrice ?? null,
+    // Older filings can fill metadata, but cannot confirm a price missing in the latest filing.
+    confirmedOfferPrice: primary?.confirmedOfferPrice ?? null,
     priceBandLow: primary?.priceBandLow ?? fallback?.priceBandLow ?? null,
     priceBandHigh: primary?.priceBandHigh ?? fallback?.priceBandHigh ?? null,
     subscriptionStart: primary?.subscriptionStart ?? fallback?.subscriptionStart ?? null,
@@ -621,7 +603,7 @@ export const fetchOpendartCurrentMonthIpoResult = async ({
 
   return getCachedExternalData(
     {
-      key: `opendart-current-month-ipos:v2:${displayRange.key}:${disclosureRange.key}`,
+      key: `opendart-current-month-ipos:v3:${displayRange.key}:${disclosureRange.key}`,
       source: "opendart-current-month-ipos",
       ttlMs: OPENDART_SOURCE_CACHE_TTL_MS,
       bypass: forceRefresh,

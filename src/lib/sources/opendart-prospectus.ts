@@ -200,22 +200,33 @@ const extractPriceBand = (text: string) => {
 
 export const extractConfirmedOfferPrice = (text: string) => {
   const patterns = [
-    /확정\s*공모가(?:액|격)?[^\d]{0,40}(\d[\d,]*)\s*원/g,
-    /최종\s*공모가(?:액|격)?[^\d]{0,40}(\d[\d,]*)\s*원/g,
-    /공모가(?:액|격)?(?:은|는|가|를)?[^\d]{0,40}(\d[\d,]*)\s*원(?:으로)?\s*확정/g,
-    /(\d[\d,]*)\s*원(?:으로)?\s*공모가(?:액|격)?(?:을|를)?\s*확정/g,
+    /(?:확정|최종)\s*공모가(?:액|격)?(?:은|는|이|가|을|를|인)?\s*[:：=]?\s*(?:주당\s*)?(\d[\d,]*)\s*원/g,
+    /공모가(?:액|격)?(?:은|는|이|가|을|를)?\s*[:：=]?\s*(?:주당\s*)?(\d[\d,]*)\s*원(?:으로)?\s*(?:최종\s*)?(?:확정|결정)(?:하였|했|되었|됐)/g,
+    /(\d[\d,]*)\s*원(?:으로)?\s*공모가(?:액|격)?(?:을|를)?\s*(?:최종\s*)?확정(?:하였|했|되었|됐)/g,
   ];
+  const candidates = new Set<number>();
 
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
+      const before = text.slice(Math.max(0, match.index - 25), match.index);
+      const after = text.slice(match.index + match[0].length, match.index + match[0].length + 60);
+      const followingClause = after.split(/[.!?。]/, 1)[0];
+      // Flattened tables can place acquisition amounts and hypothetical prices next to the label.
+      if (/(?:희망|예상)\s*$/.test(before)
+        || /(?:만약|가정|예시)[^.!?。]*$/.test(before)
+        || /^\s*(?:[~～-]|이상|이하|미만|초과)/.test(after)
+        || /경우|예정|가정|예시|미확정|미정|확정될|결정될/.test(followingClause)) {
+        continue;
+      }
       const value = parseInteger(match[1]);
-      if (value != null) {
-        return value;
+      if (value != null && value > 0) {
+        candidates.add(value);
       }
     }
   }
 
-  return null;
+  // Conflicting prices in correction histories need review, not a first-match guess.
+  return candidates.size === 1 ? [...candidates][0] : null;
 };
 
 const extractDemandCompetitionRate = (texts: string[]) => {
@@ -651,7 +662,7 @@ export const fetchOpendartProspectusDetails = async (
 
   return getCachedExternalData(
     {
-      key: `opendart-prospectus:v2:${receiptNo}`,
+      key: `opendart-prospectus:v3:${receiptNo}`,
       source: "opendart-prospectus",
       ttlMs: OPENDART_PROSPECTUS_CACHE_TTL_MS,
       bypass: forceRefresh,

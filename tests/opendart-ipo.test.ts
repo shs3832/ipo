@@ -7,6 +7,7 @@ import {
   fetchCandidateDisclosuresForRange,
   isLikelyNewListingGeneralRow,
   isSupportedIpoDisclosure,
+  mergeProspectusDetails,
   resolveOpendartOfferPrice,
 } from "@/lib/sources/opendart-ipo";
 
@@ -117,7 +118,7 @@ test("isSupportedIpoDisclosure includes depositary receipt IPO filings", () => {
   assert.equal(isSupportedIpoDisclosure({ report_nm: "[기재정정]투자설명서" }), false);
 });
 
-test("resolveOpendartOfferPrice accepts band values only when the prospectus body has a confirmed price", () => {
+test("resolveOpendartOfferPrice requires body confirmation even for a price outside the band", () => {
   const prospectus = {
     receiptNo: "20260508000911",
     confirmedOfferPrice: null,
@@ -137,7 +138,11 @@ test("resolveOpendartOfferPrice accepts band values only when the prospectus bod
   };
 
   assert.equal(resolveOpendartOfferPrice(15_000, prospectus), null);
-  assert.equal(resolveOpendartOfferPrice(16_000, prospectus), 16_000);
+  assert.equal(resolveOpendartOfferPrice(16_000, prospectus), null);
+  assert.equal(resolveOpendartOfferPrice(26_784, null), null);
+  const older = { ...prospectus, receiptNo: "20260501000001", confirmedOfferPrice: 15_000 };
+  assert.equal(mergeProspectusDetails(prospectus, older)?.confirmedOfferPrice, null);
+  assert.equal(mergeProspectusDetails(null, older)?.confirmedOfferPrice, null);
   assert.equal(resolveOpendartOfferPrice(12_500, {
     ...prospectus,
     confirmedOfferPrice: 15_000,

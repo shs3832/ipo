@@ -25,6 +25,31 @@ test("extractConfirmedOfferPrice parses explicit confirmed offer price copy", ()
   );
 });
 
+test("confirmed price extraction rejects acquisition totals, historical costs and conditional prices", () => {
+  const rejected = [
+    "인수 가격 확정공모가액 인수 금액(공모가 하단~상단) 369,000,000원 ~ 498,000,000원",
+    "확정공모가액 기준 취득가격(18,034원)과 공모가격의 괴리율이 30% 이상인 경우",
+    "확정공모가액이 23,445원 이상으로 결정되는 경우 의무보유기간은 변경됩니다.",
+    "최종공모가격이 주당 13,600원을 달성할 경우 성과수수료를 지급합니다.",
+    "확정공모가액이 희망공모가액의 공모가 하단인 15,000원에 미달할 경우",
+    "확정공모가액 12,000원(예정)이며 수요예측 이후 결정됩니다.",
+    "확정 공모가액 10,000원 ~ 12,000원",
+    "희망공모가격을 12,000원으로 확정하였습니다.",
+    "가정: 확정공모가액 12,000원 기준으로 계산합니다.",
+    "확정 공모가액은 0원입니다.",
+  ];
+  for (const text of rejected) assert.equal(extractConfirmedOfferPrice(text), null, text);
+});
+
+test("confirmed price extraction retains explicit facts but holds conflicting corrections", () => {
+  assert.equal(extractConfirmedOfferPrice("주당 확정공모가액 12,000원 기준입니다."), 12_000);
+  assert.equal(extractConfirmedOfferPrice("확정공모가액인 17,600원 기준입니다."), 17_600);
+  assert.equal(extractConfirmedOfferPrice("확정공모가액을 8,000원으로 최종 결정하였습니다."), 8_000);
+  assert.equal(extractConfirmedOfferPrice("12,000원으로 공모가격을 확정하였습니다."), 12_000);
+  assert.equal(extractConfirmedOfferPrice("확정 공모가액: 12,000원. 최종 공모가격은 12,000원입니다."), 12_000);
+  assert.equal(extractConfirmedOfferPrice("정정 전 확정 공모가액 15,000원. 정정 후 확정 공모가액 12,000원."), null);
+});
+
 test("extractProspectusSchedule prefers the latest corrected subscription and payment dates", () => {
   const text = [
     "정정 전 일반청약자 청약일: 2026년 7월 23일 ~ 2026년 7월 24일 납 입 기 일 2026년 07월 28일",
