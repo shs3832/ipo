@@ -326,11 +326,25 @@ type PrepareAlertsOptions = {
   captureNowBeforeDashboard?: boolean;
 };
 
-const buildAlertCandidates = (ipos: IpoRecord[]): AlertCandidateAssessment[] =>
-  ipos.map((ipo) => ({
-    ipo,
-    dataQuality: assessIpoDataQuality(ipo),
-  }));
+export const buildAlertCandidates = (ipos: IpoRecord[], now = new Date()): AlertCandidateAssessment[] =>
+  ipos.map((ipo) => {
+    const dataQuality = assessIpoDataQuality(ipo);
+    const age = now.getTime() - ipo.sourceFetchedAt.getTime();
+    if (!Number.isFinite(age) || age < 0 || age > ALERT_DATA_FRESHNESS_MS) {
+      return {
+        ipo,
+        dataQuality: {
+          ...dataQuality,
+          status: "BLOCKED" as const,
+          label: "발송 보류",
+          detail: "이 종목의 최근 원천 데이터 확인이 없어 자동 발송을 보류합니다.",
+          shouldSendAlert: false,
+          criticalMissing: [...dataQuality.criticalMissing, "최근 원천 데이터 확인"],
+        },
+      };
+    }
+    return { ipo, dataQuality };
+  });
 
 const toIpoNames = (ipos: Array<Pick<IpoRecord, "name">>) => ipos.map((ipo) => ipo.name);
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import { type IpoDataQualitySummary } from "@/lib/ipo-data-quality";
 import { atKstTime } from "@/lib/date";
 import {
+  buildAlertCandidates,
   buildAlertPreparationLogEntry,
   buildAlertPreparationSummary,
   buildClosingDayAnalysisMessage,
@@ -102,6 +103,26 @@ const blockedQuality: IpoDataQualitySummary = {
   shouldSendAlert: false,
   criticalMissing: ["환불일"],
 };
+
+test("alert preparation blocks stale retained IPOs even when another IPO refreshed successfully", () => {
+  const now = new Date("2026-11-06T00:30:00Z");
+  const candidates = buildAlertCandidates([
+    createIpo({ sourceFetchedAt: new Date(now.getTime() - 60_000) }),
+    createIpo({ sourceFetchedAt: new Date("2026-08-14T01:00:00Z") }),
+    createIpo({ sourceFetchedAt: new Date(now.getTime() + 60_000) }),
+  ], now);
+  assert.equal(candidates[0].dataQuality.shouldSendAlert, true);
+  assert.equal(candidates[1].dataQuality.shouldSendAlert, false);
+  assert.equal(candidates[2].dataQuality.shouldSendAlert, false);
+  assert.ok(candidates[1].dataQuality.criticalMissing.includes("최근 원천 데이터 확인"));
+});
+
+test("freshness does not bypass missing critical alert facts", () => {
+  const now = new Date("2026-11-06T00:30:00Z");
+  const [candidate] = buildAlertCandidates([createIpo({ sourceFetchedAt: now, leadManager: "-" })], now);
+  assert.equal(candidate.dataQuality.shouldSendAlert, false);
+  assert.ok(candidate.dataQuality.criticalMissing.includes("주관사"));
+});
 
 const createNotificationJob = (overrides: Partial<NotificationJobRecord> = {}): NotificationJobRecord => ({
   id: overrides.id ?? "job-1",

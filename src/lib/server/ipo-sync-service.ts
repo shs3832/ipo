@@ -31,6 +31,7 @@ import {
 } from "@/lib/server/job-shared";
 import { normalizeSourceIpoRecord } from "@/lib/server/ipo-mappers";
 import { getIpoRecordBySlugFromDb } from "@/lib/server/ipo-read-service";
+import { loadOptionalIpoSource, shouldWithdrawMissingIpo } from "@/lib/server/ipo-sync-source-policy";
 import {
   buildIpoEventCreateManyData,
   buildIpoWriteData,
@@ -210,14 +211,20 @@ const persistIpoRecord = async ({
 const mergeKindListingMetadata = async (
   records: SourceIpoRecord[],
   { forceRefresh = false }: SyncOptions = {},
-): Promise<SourceIpoRecord[]> => {
-  const [kindListings, kindListingSchedules] = await Promise.all([
-    fetchKindListingDates({ forceRefresh }),
-    fetchKindListingSchedule({ forceRefresh }),
+): Promise<{ records: SourceIpoRecord[]; incompleteSources: string[] }> => {
+  const [listings, schedules] = await Promise.all([
+    loadOptionalIpoSource("kind-listings", () => fetchKindListingDates({ forceRefresh })),
+    loadOptionalIpoSource("kind-listing-schedule", () => fetchKindListingSchedule({ forceRefresh })),
   ]);
+  const kindListings = listings.value ?? [];
+  const kindListingSchedules = schedules.value ?? [];
+  const incompleteSources = [
+    ...(listings.failed ? ["kind-listings"] : []),
+    ...(schedules.failed ? ["kind-listing-schedule"] : []),
+  ];
 
   if (records.length === 0 && kindListings.length === 0 && kindListingSchedules.length === 0) {
-    return records;
+    return { records, incompleteSources };
   }
 
   const listingByName = new Map(
@@ -277,7 +284,10 @@ const mergeKindListingMetadata = async (
       }
 
       const kindDetails = await fetchKindOfferDetails(kindListing.isurCd, schedule.bizProcessNo, { forceRefresh })
-        .catch(() => null);
+        .catch(() => {
+          incompleteSources.push("kind-only-offer-details");
+          return null;
+        });
       if (!kindDetails?.subscriptionStart || !kindDetails.subscriptionEnd) {
         return null;
       }
@@ -336,7 +346,10 @@ const mergeKindListingMetadata = async (
     }),
   );
 
-  return [...mergedRecords, ...kindOnlyRecords.filter((record): record is SourceIpoRecord => record !== null)];
+  return {
+    records: [...mergedRecords, ...kindOnlyRecords.filter((record): record is SourceIpoRecord => record !== null)],
+    incompleteSources: [...new Set(incompleteSources)],
+  };
 };
 
 const mergeOpendartScoringEnrichment = (
@@ -646,9 +659,13 @@ const enrichListingOpenMetrics = async (
         return record;
       }
 
-      const snapshot = await fetchKindStockPriceSnapshot(record.kindIssueCode, {
+      const result = await loadOptionalIpoSource("kind-opening-price", () => fetchKindStockPriceSnapshot(record.kindIssueCode!, {
         forceRefresh: forceRefresh || isListingToday,
-      });
+      }));
+      const snapshot = result.value;
+      if (!snapshot) {
+        return record;
+      }
       if (snapshot.priceDate !== listingDate || snapshot.openingPrice == null) {
         return record;
       }
@@ -762,8 +779,8 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
     }
   }
 
-  const recordsWithListingMetadata = await mergeKindListingMetadata(recordsWithOpendartEnrichment, { forceRefresh });
-  const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(recordsWithListingMetadata, { forceRefresh });
+  const kindResult = await mergeKindListingMetadata(recordsWithOpendartEnrichment, { forceRefresh });
+  const recordsWithKindOfferMetadata = await enrichKindOfferMetadata(kindResult.records, { forceRefresh });
   const recordsWithSeibroLockupMetadata = await enrichSeibroLockupMetadata(recordsWithKindOfferMetadata, {
     forceRefresh,
   });
@@ -789,6 +806,10 @@ const fetchSourceRecords = async ({ forceRefresh = false }: SyncOptions = {}): P
   return {
     records: await enrichListingOpenMetrics(recordsWithBrokerSubscriptionMetadata, { forceRefresh }),
     excludedNonIpoSlugs,
+    incompleteSources: [
+      ...kindResult.incompleteSources,
+      ...(validation.skippedRecords.length > 0 ? ["source-record-validation"] : []),
+    ],
   };
 };
 
@@ -802,7 +823,10 @@ const countActiveDisplayRangeIpos = async () => {
 
 const markStaleDisplayRangeIpos = async (
   sourceRecords: SourceIpoRecord[],
-  { immediateWithdrawSlugs = [] }: { immediateWithdrawSlugs?: string[] } = {},
+  { immediateWithdrawSlugs = [], sourceCoverageComplete = true }: {
+    immediateWithdrawSlugs?: string[];
+    sourceCoverageComplete?: boolean;
+  } = {},
 ) => {
   const activeSlugs = sourceRecords.map((record) => slugify(record.name));
   const displayRangeWhere = getDisplayRangeWhere();
@@ -841,7 +865,11 @@ const markStaleDisplayRangeIpos = async (
     return isOnOrAfterKstDayOffset(lastFetchedAt, -STALE_SOURCE_WITHDRAWAL_GRACE_DAYS);
   });
   const withdrawableIds = staleCandidates
-    .filter((ipo) => immediateWithdrawSlugSet.has(slugify(ipo.name)) || !protectedCandidates.some((protectedIpo) => protectedIpo.id === ipo.id))
+    .filter((ipo) => shouldWithdrawMissingIpo({
+      explicitlyExcluded: immediateWithdrawSlugSet.has(slugify(ipo.name)),
+      sourceCoverageComplete,
+      recentlySeen: protectedCandidates.some((protectedIpo) => protectedIpo.id === ipo.id),
+    }))
     .map((ipo) => ipo.id);
 
   if (immediateWithdrawSlugSet.size > 0) {
@@ -952,7 +980,11 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
   });
 
   try {
-    const { records: sourceRecords, excludedNonIpoSlugs } = await fetchSourceRecords({ forceRefresh });
+    const { records: sourceRecords, excludedNonIpoSlugs, incompleteSources } = await fetchSourceRecords({ forceRefresh });
+
+    if (sourceRecords.length === 0 && incompleteSources.length > 0) {
+      throw new Error("No usable IPO records were collected while source coverage is incomplete.");
+    }
 
     if (!(await canUseDatabase())) {
       const result = {
@@ -999,6 +1031,7 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
     const synced = ipos.filter(Boolean).length;
     const markedWithdrawn = await markStaleDisplayRangeIpos(sourceRecords, {
       immediateWithdrawSlugs: excludedNonIpoSlugs,
+      sourceCoverageComplete: incompleteSources.length === 0,
     });
     const syncedLegacyIpoIds = ipos
       .filter((ipo): ipo is IpoRecord => Boolean(ipo))
@@ -1009,9 +1042,10 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
       level: "INFO",
       source: "job:daily-sync",
       action: "completed",
-      message: `공모주 일정 ${synced}건을 동기화했습니다.`,
+      message: `공모주 일정 ${synced}건을 동기화했습니다.${incompleteSources.length ? " 일부 출처 실패로 누락 종목의 자동 철회는 보류했습니다." : ""}`,
       context: {
         synced,
+        incompleteSources,
         sourceRecords: sourceRecords.length,
         markedWithdrawn,
         forceRefresh,

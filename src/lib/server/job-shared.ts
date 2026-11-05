@@ -22,6 +22,7 @@ export type SyncOptions = {
 export type SourceFetchResult = {
   records: SourceIpoRecord[];
   excludedNonIpoSlugs: string[];
+  incompleteSources: string[];
 };
 
 type SchedulerDefinition = {
