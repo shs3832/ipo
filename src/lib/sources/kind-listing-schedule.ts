@@ -1,5 +1,6 @@
 import { getKstMonthRange } from "@/lib/date";
 import { getCachedExternalData } from "@/lib/external-cache";
+import { logKindHttpFailure } from "@/lib/sources/kind-response-diagnostics";
 
 type KindListingScheduleRecord = {
   name: string;
@@ -79,6 +80,7 @@ const fetchKindListingScheduleMonth = async (year: string, month: string): Promi
   const html = await response.text();
 
   if (!response.ok) {
+    await logKindHttpFailure(response, html, "pubofrschdl.do");
     throw new Error(`KIND listing schedule request failed: HTTP ${response.status}`);
   }
 

@@ -1,5 +1,6 @@
 import { getKstMonthRange } from "@/lib/date";
 import { getCachedExternalData } from "@/lib/external-cache";
+import { logKindHttpFailure } from "@/lib/sources/kind-response-diagnostics";
 
 type KindListingRecord = {
   name: string;
@@ -108,6 +109,7 @@ const fetchKindListingDatesUncached = async (
   const html = await response.text();
 
   if (!response.ok) {
+    await logKindHttpFailure(response, html, "listingcompany.do");
     throw new Error(`KIND listing request failed: HTTP ${response.status}`);
   }
 

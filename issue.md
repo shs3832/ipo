@@ -1,5 +1,16 @@
 # Issue Log
 
+## 2026-11-05
+
+### KIND 403 Investigation
+
+- 운영 DB 기준 마지막 daily-sync 성공은 8월 14일 11:28 KST이며, 8월 15일부터 KIND 403이 지속됐다. 8월 14일 이후 알림 job 생성은 0건이다.
+- 로컬의 동일한 POST 요청은 정상 응답했으나 Vercel 운영 함수는 실패했다. 운영 리전을 미국 iad1에서 서울 icn1로 변경하고 동일 코드로 재배포했다.
+- 서울 배포 `Asg76tXdb8rzU1G4Qz7PskPXTdqV`에서도 20:42 KST 강제 수집이 KIND 일정 조회 403으로 실패했다. 리전 변경만으로는 복구되지 않았다.
+- 실패한 KIND 응답에만 `source:kind / http_response_rejected` 진단 로그를 추가했다. endpoint, 상태 코드, 실행 리전, 허용한 응답 헤더와 최대 1,200자의 정제된 본문을 기록한다.
+- HTML script/style/comment/input 값, URL, IP, 이메일 및 인증값은 제외하거나 마스킹한다. 수집/발송 정책은 변경하지 않는다.
+- QA: 전체 테스트 137개, 타입 검사와 린트 통과. 운영 진단 배포 후 재현 결과로 다음 복구 방식을 판단한다.
+
 ## 2026-05-19
 
 ### Follow-up: Security Hardening P1-P3 Closure
