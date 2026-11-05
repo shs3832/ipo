@@ -7,7 +7,10 @@
 - 원인 추적을 위해 운영 잡 인증이 필요한 수동 전용 `POST /api/jobs/diagnose-kind`를 추가했다. 크론에는 등록하지 않는다.
 - 홈페이지 GET, 동일 파라미터의 목록 GET/POST, 일정 GET/POST를 순차적으로 1회씩 비교한다. 외부 URL 입력, 쿠키/인증값 전달, 리다이렉트, 재시도는 허용하지 않는다.
 - 요청당 15초, 읽기 128 KiB, 저장 발췌 1,200자 제한을 적용한다. HTTP 200 차단 페이지도 구분하고, 양쪽 환경의 파라미터 해시와 Node 버전을 함께 확인한다.
-- 로컬 검증은 5건 모두 HTTP 200이며 목록/달력 HTML을 확인했다. 전체 테스트 148개, 타입 검사와 린트 통과. 운영 비교 결과와 후속 QA는 별도 진단 문서에 기록한다.
+- 운영 배포 `7Y9svp3F88K687WPdUE4NkRHdvFH`에서 비교를 완료했다. 로컬 Node 24.14.0과 운영과 같은 24.22.2는 각각 5건 모두 200, Vercel 서울 icn1 / Node 24.22.2는 홈페이지 포함 5건 모두 Akamai Access Denied 403이다. 환경 간 파라미터 해시도 일치했다.
+- 인증 없는 운영 호출은 401이었고, 인증된 비교 결과는 `diagnostic:kind / access_probe_completed` 운영 로그에 저장됐다. 진단 API의 200은 비교 완료이지 KIND 복구가 아니다.
+- POST 방식이나 Node 버전 차이만으로는 현상을 설명하기 어렵다. IP/대역/평판 정책, TLS/HTTP 특성 등 정확한 보안 규칙은 미확인 상태로 남긴다.
+- 전체 테스트 148개, 타입 검사와 린트 및 운영 build 통과. 추가 반복 요청 대신 차단 참조번호를 이용한 운영자 로그 확인을 우선하도록 QA 계획을 재정리했다. 다음 자연 Cron 실행은 별도 검증한다.
 - 상세: [KIND 403 investigation](docs/kind-403-investigation.md)
 
 ### Partial Source Recovery And Alert Freshness
