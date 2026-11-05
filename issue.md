@@ -9,6 +9,7 @@
 - 기존 종목 삭제나 DB 일괄 초기화는 하지 않는다. 정상 출처의 값 갱신/빈값 처리 및 알림 최신성/필수값/중복 방지 규칙은 변경하지 않았다. 보존된 KIND 전용 종목은 최신성이 없으면 발송 대상이 아니다.
 - 인증된 수동 진단 API와 파서는 남기되 Cron에는 추가하지 않는다. 수집 재개는 별도 승인과 검증 후 정책 변경으로 진행한다.
 - QA: 자동 보강 세 경로에서 일반/강제 실행 모두 네트워크 호출 0회, 입력 데이터 유지, 누락 종목 철회 방지를 검증했다. 전체 149개 테스트, 타입 검사, 린트 통과.
+- 운영 배포 `EcNKKSjFgQ7DZGktpd8q5yGTL73C`의 build가 성공했다. 21:58 KST 강제 수집은 HTTP 200 / database / synced=26 / markedWithdrawn=0이며, 중단 사유 기록과 해당 실행 구간 신규 KIND HTTP 오류 로그 0건을 확인했다. 알림 발송은 실행하지 않았다.
 - 대체 출처의 범위와 제약은 [KIND 403 investigation](docs/kind-403-investigation.md)의 Current Status / Alternatives를 기준으로 본다.
 
 ### KIND GET/POST Controlled Comparison
