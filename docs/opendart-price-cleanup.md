@@ -41,6 +41,17 @@
 - 영향 종목의 기존 READY 알림: 0건. 이번 작업에서는 알림을 발송하지 않는다.
 - 배포 후 정상 수집 경로로 갱신하고, DB 결과와 공개 화면을 대조한다. 변경 수가 예상과 다르면 새 값을 임의로 보정하지 않고 공시/캐시 출처부터 확인한다.
 
+## Production Result
+
+- 코드 `1ea2d71`, 배포 `EUQvAM4arjjM5g7x1RzWYmibNnBT`가 build 성공 / Ready임을 확인했다.
+- 2026-11-05 22:31:46.647 KST에 인증된 강제 수집을 시작해 22:32:21.976 KST 완료 로그를 확인했다. HTTP 200 / database / synced=26 / markedWithdrawn=0이다.
+- 재생 대조표의 12건이 실제 `offerPrice=null`로 바뀌었고 정상 확정가 6건은 유지됐다. 예상 결과와 DB 불일치는 0건이다. 26건 모두 희망밴드와 종목 상태가 변경 전과 동일했다.
+- 실제 사용한 집계 캐시는 `opendart-current-month-ipos:v3:2026-11_2026-12:2026-09_2026-11`이며, KIND 중단 사유도 계속 기록됐다. 출처/분석 snapshot 갱신은 기존 정상 수집 경로를 사용해 이력을 남겼다.
+- 브라우저에서 다비오의 희망 공모가 12,300~16,600원과 예상 최소청약금액 61,500~83,000원, 아델의 희망 공모가 18,000~25,000원 표시를 확인했다. 옵토닉스는 확정 공모가 12,000원으로 유지됐다.
+- 별도로 인증 쿠키 없는 세 상세 응답을 확인해 오추출 가격 제거 및 정상 확정가 유지를 재확인했다. 소스 키 같은 admin 전용 정보도 노출되지 않았다.
+- 전체 151개 테스트, 타입 검사, 린트 통과. 이번 QA에서 알림 발송 API는 호출하지 않았다.
+- 로컬 결과 파일은 `/tmp/ipo-offer-audit/production-result.json`, 대표 화면 증거는 `/tmp/ipo-offer-davio-corrected.png`, `/tmp/ipo-offer-adel-corrected.png`, `/tmp/ipo-offer-optonics-retained.png`다.
+
 ## Remaining Work
 
 - 실제 환불일과 납입일 구분.
