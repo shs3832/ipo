@@ -6,7 +6,7 @@
 
 1. `IPO_SOURCE_URL`
 2. `OpenDART`
-3. `KIND`
+3. `KIND` (자동 수집 임시 중단)
 4. `SEIBro`
 5. Broker Web
 6. empty fallback
@@ -30,6 +30,8 @@
 
 ### KIND
 
+- 2026-11-05 운영 결정으로 목록/일정/상세/시초가 자동 수집을 모두 임시 중단했다. 정책은 `src/lib/server/ipo-sync-source-policy.ts`의 `KIND_COLLECTION_PAUSED`로 관리한다. 강제 새로고침도 중단을 우회하지 않는다.
+- 수집 범위가 축소된 상태이므로 누락 종목 자동 철회는 보류한다. 아래 항목은 기존 수집 기능이며 현재 갱신 가능하다는 의미가 아니다.
 - 일정/세부 보강
 - 보강 값:
   - listing date

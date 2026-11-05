@@ -1,5 +1,8 @@
 import { logOperation, toErrorContext } from "@/lib/ops-log";
 
+// Keep KIND paused until an approved source-access strategy is verified.
+export const KIND_COLLECTION_PAUSED = true;
+
 export const loadOptionalIpoSource = async <T>(
   source: string,
   loader: () => Promise<T>,

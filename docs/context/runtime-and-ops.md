@@ -139,6 +139,11 @@
 
 ## Logs And Debugging
 
+KIND 자동 수집은 2026-11-05부터 임시 중단했다. daily-sync 완료 로그의
+`incompleteSources=kind-collection-paused`는 의도적인 중단이며 신규 HTTP 실패가 아니다.
+목록/일정/상세/시초가 보강과 강제 새로고침에 동일하게 적용한다.
+아래 수동 진단은 인증된 운영자 전용으로 남기되, 재현 필요성과 별도 승인이 있을 때만 실행한다.
+
 KIND HTTP 오류는 `source:kind / http_response_rejected` 로그에서 endpoint, 실행 리전,
 상태 코드, 허용된 응답 헤더, 정제된 본문 일부를 확인한다. 이 로그는 수집 실패 시에만 기록하며
 쿠키/인증 헤더와 원문 HTML 전체는 저장하지 않는다. 현재 운영 함수 리전은 서울 `icn1`이며,

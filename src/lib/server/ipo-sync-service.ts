@@ -31,7 +31,7 @@ import {
 } from "@/lib/server/job-shared";
 import { normalizeSourceIpoRecord } from "@/lib/server/ipo-mappers";
 import { getIpoRecordBySlugFromDb } from "@/lib/server/ipo-read-service";
-import { loadOptionalIpoSource, shouldWithdrawMissingIpo } from "@/lib/server/ipo-sync-source-policy";
+import { KIND_COLLECTION_PAUSED, loadOptionalIpoSource, shouldWithdrawMissingIpo } from "@/lib/server/ipo-sync-source-policy";
 import {
   buildIpoEventCreateManyData,
   buildIpoWriteData,
@@ -208,10 +208,13 @@ const persistIpoRecord = async ({
   });
 };
 
-const mergeKindListingMetadata = async (
+export const mergeKindListingMetadata = async (
   records: SourceIpoRecord[],
   { forceRefresh = false }: SyncOptions = {},
 ): Promise<{ records: SourceIpoRecord[]; incompleteSources: string[] }> => {
+  if (KIND_COLLECTION_PAUSED) {
+    return { records, incompleteSources: ["kind-collection-paused"] };
+  }
   const [listings, schedules] = await Promise.all([
     loadOptionalIpoSource("kind-listings", () => fetchKindListingDates({ forceRefresh })),
     loadOptionalIpoSource("kind-listing-schedule", () => fetchKindListingSchedule({ forceRefresh })),
@@ -404,11 +407,11 @@ const mergeOpendartScoringEnrichment = (
   });
 };
 
-const enrichKindOfferMetadata = async (
+export const enrichKindOfferMetadata = async (
   records: SourceIpoRecord[],
   { forceRefresh = false }: SyncOptions = {},
 ): Promise<SourceIpoRecord[]> => {
-  if (records.length === 0) {
+  if (KIND_COLLECTION_PAUSED || records.length === 0) {
     return records;
   }
 
@@ -629,11 +632,11 @@ const enrichSeibroLockupMetadata = async (
   );
 };
 
-const enrichListingOpenMetrics = async (
+export const enrichListingOpenMetrics = async (
   records: SourceIpoRecord[],
   { forceRefresh = false }: SyncOptions = {},
 ): Promise<SourceIpoRecord[]> => {
-  if (records.length === 0) {
+  if (KIND_COLLECTION_PAUSED || records.length === 0) {
     return records;
   }
 
@@ -1042,7 +1045,7 @@ export const runDailySync = async ({ forceRefresh = false }: SyncOptions = {}): 
       level: "INFO",
       source: "job:daily-sync",
       action: "completed",
-      message: `공모주 일정 ${synced}건을 동기화했습니다.${incompleteSources.length ? " 일부 출처 실패로 누락 종목의 자동 철회는 보류했습니다." : ""}`,
+      message: `공모주 일정 ${synced}건을 동기화했습니다.${incompleteSources.length ? " 일부 출처 중단 또는 실패로 누락 종목의 자동 철회는 보류했습니다." : ""}`,
       context: {
         synced,
         incompleteSources,

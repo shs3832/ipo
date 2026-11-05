@@ -5,7 +5,11 @@ import {
   buildIpoEventCreateManyData,
   buildIpoWriteData,
   buildPersistedSourceIpoRecord,
+  mergeKindListingMetadata,
+  enrichKindOfferMetadata,
+  enrichListingOpenMetrics,
 } from "@/lib/server/ipo-sync-service";
+import { shouldWithdrawMissingIpo } from "@/lib/server/ipo-sync-source-policy";
 import type { SourceIpoRecord } from "@/lib/types";
 
 const createSourceRecord = (overrides: Partial<SourceIpoRecord> = {}): SourceIpoRecord => ({
@@ -28,6 +32,31 @@ const createSourceRecord = (overrides: Partial<SourceIpoRecord> = {}): SourceIpo
   listingDate: "listingDate" in overrides ? overrides.listingDate ?? null : "2026-03-30",
   status: "status" in overrides ? overrides.status ?? undefined : "OPEN",
   notes: overrides.notes,
+});
+
+test("paused KIND collection skips all automatic fetch paths and protects missing IPOs", async (t) => {
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("No network request is permitted in this test");
+  });
+  const records = [{
+    ...createSourceRecord({ kindIssueCode: "12345", offerPrice: 12_000 }),
+    kindBizProcessNo: "20260001",
+  }];
+
+  for (const forceRefresh of [false, true]) {
+    const result = await mergeKindListingMetadata(records, { forceRefresh });
+    assert.equal(result.records, records);
+    assert.deepEqual(result.incompleteSources, ["kind-collection-paused"]);
+    assert.equal(await enrichKindOfferMetadata(records, { forceRefresh }), records);
+    assert.equal(await enrichListingOpenMetrics(records, { forceRefresh }), records);
+    assert.equal(shouldWithdrawMissingIpo({
+      explicitlyExcluded: false,
+      sourceCoverageComplete: result.incompleteSources.length === 0,
+      recentlySeen: false,
+    }), false);
+  }
+  assert.equal(fetchMock.mock.callCount(), 0);
+  assert.equal(records[0].offerPrice, 12_000);
 });
 
 test("buildPersistedSourceIpoRecord preserves non-price latest fields when source values are missing", () => {

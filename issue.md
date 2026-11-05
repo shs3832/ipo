@@ -2,6 +2,15 @@
 
 ## 2026-11-05
 
+### Pause Automatic KIND Collection
+
+- 사용자 결정으로 KIND 목록/일정/상세/시초가 자동 수집을 임시 중단했다. `KIND_COLLECTION_PAUSED` 정책을 세 자동 보강 진입점에서 검사하며 강제 새로고침도 이를 우회하지 않는다.
+- `incompleteSources=kind-collection-paused`를 남겨 KIND에서만 찾던 누락 종목의 자동 철회 방지를 유지한다. 중단을 정상 전체 수집이나 HTTP 실패로 오인하지 않도록 완료 로그 문구도 구분했다.
+- 기존 종목 삭제나 DB 일괄 초기화는 하지 않는다. 정상 출처의 값 갱신/빈값 처리 및 알림 최신성/필수값/중복 방지 규칙은 변경하지 않았다. 보존된 KIND 전용 종목은 최신성이 없으면 발송 대상이 아니다.
+- 인증된 수동 진단 API와 파서는 남기되 Cron에는 추가하지 않는다. 수집 재개는 별도 승인과 검증 후 정책 변경으로 진행한다.
+- QA: 자동 보강 세 경로에서 일반/강제 실행 모두 네트워크 호출 0회, 입력 데이터 유지, 누락 종목 철회 방지를 검증했다. 전체 149개 테스트, 타입 검사, 린트 통과.
+- 대체 출처의 범위와 제약은 [KIND 403 investigation](docs/kind-403-investigation.md)의 Current Status / Alternatives를 기준으로 본다.
+
 ### KIND GET/POST Controlled Comparison
 
 - 원인 추적을 위해 운영 잡 인증이 필요한 수동 전용 `POST /api/jobs/diagnose-kind`를 추가했다. 크론에는 등록하지 않는다.
