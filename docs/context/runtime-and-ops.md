@@ -143,6 +143,8 @@ KIND HTTP 오류는 `source:kind / http_response_rejected` 로그에서 endpoint
 상태 코드, 허용된 응답 헤더, 정제된 본문 일부를 확인한다. 이 로그는 수집 실패 시에만 기록하며
 쿠키/인증 헤더와 원문 HTML 전체는 저장하지 않는다. 현재 운영 함수 리전은 서울 `icn1`이며,
 미국 `iad1`에서 서울로 변경한 후에도 KIND 403이 재현돼 리전만으로는 해결되지 않았다.
+고정 경로 GET/POST 비교는 잡 인증이 필요한 수동 전용 `POST /api/jobs/diagnose-kind`로 실행한다.
+방법, 확인 결과와 후속 QA는 [KIND 403 investigation](../kind-403-investigation.md)을 기준으로 본다.
 
 중요 로그 파일:
 

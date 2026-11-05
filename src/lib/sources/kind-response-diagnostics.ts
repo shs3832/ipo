@@ -1,7 +1,7 @@
 import { logOperation } from "@/lib/ops-log";
 import { redactSecretString } from "@/lib/secret-redaction";
 
-type KindEndpoint = "listingcompany.do" | "pubofrschdl.do";
+type KindEndpoint = "/" | "listingcompany.do" | "pubofrschdl.do";
 
 const DIAGNOSTIC_HEADERS = ["content-type", "server", "via", "retry-after", "x-cache", "cf-mitigated"];
 const EXCERPT_LIMIT = 1200;
@@ -31,6 +31,7 @@ export const buildKindFailureDiagnostics = (
   html: string,
   endpoint: KindEndpoint,
   region = process.env.VERCEL_REGION ?? "local",
+  method: "GET" | "POST" = "POST",
 ) => {
   const decodedHtml = decodeResponseText(html);
   const visibleText = decodedHtml
@@ -43,7 +44,7 @@ export const buildKindFailureDiagnostics = (
 
   return {
     endpoint,
-    method: "POST",
+    method,
     status: response.status,
     region,
     redirected: response.redirected,

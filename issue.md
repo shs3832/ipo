@@ -2,6 +2,14 @@
 
 ## 2026-11-05
 
+### KIND GET/POST Controlled Comparison
+
+- 원인 추적을 위해 운영 잡 인증이 필요한 수동 전용 `POST /api/jobs/diagnose-kind`를 추가했다. 크론에는 등록하지 않는다.
+- 홈페이지 GET, 동일 파라미터의 목록 GET/POST, 일정 GET/POST를 순차적으로 1회씩 비교한다. 외부 URL 입력, 쿠키/인증값 전달, 리다이렉트, 재시도는 허용하지 않는다.
+- 요청당 15초, 읽기 128 KiB, 저장 발췌 1,200자 제한을 적용한다. HTTP 200 차단 페이지도 구분하고, 양쪽 환경의 파라미터 해시와 Node 버전을 함께 확인한다.
+- 로컬 검증은 5건 모두 HTTP 200이며 목록/달력 HTML을 확인했다. 전체 테스트 148개, 타입 검사와 린트 통과. 운영 비교 결과와 후속 QA는 별도 진단 문서에 기록한다.
+- 상세: [KIND 403 investigation](docs/kind-403-investigation.md)
+
 ### Partial Source Recovery And Alert Freshness
 
 - KIND 목록/일정 보강 실패를 개별 처리해 정상 수집한 OpenDART 등 기본 출처 데이터를 계속 반영한다. 상장 시초가 조회 실패도 다른 종목 수집을 중단시키지 않는다.
