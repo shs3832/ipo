@@ -9,7 +9,9 @@
 - 서울 배포 `Asg76tXdb8rzU1G4Qz7PskPXTdqV`에서도 20:42 KST 강제 수집이 KIND 일정 조회 403으로 실패했다. 리전 변경만으로는 복구되지 않았다.
 - 실패한 KIND 응답에만 `source:kind / http_response_rejected` 진단 로그를 추가했다. endpoint, 상태 코드, 실행 리전, 허용한 응답 헤더와 최대 1,200자의 정제된 본문을 기록한다.
 - HTML script/style/comment/input 값, URL, IP, 이메일 및 인증값은 제외하거나 마스킹한다. 수집/발송 정책은 변경하지 않는다.
-- QA: 전체 테스트 137개, 타입 검사와 린트 통과. 운영 진단 배포 후 재현 결과로 다음 복구 방식을 판단한다.
+- 진단 배포 `7wD6L358dsEvXkzXGWs9axTmcXft`에서 20:49 KST 재현 결과, 두 KIND endpoint 모두 `Access Denied`, `Reference #18...`, `errors.edgesuite.net` 형식의 응답을 반환했다. Akamai edge 보안 계층의 차단으로 추정하며 정확한 차단 규칙은 KIND 측 조회가 필요하다.
+- 실제 차단 페이지의 HTML 엔티티로 인코딩된 URL도 마스킹하도록 보완하고, `edgeProviderHint`에 탐지 힌트를 남긴다. 원문 IP나 인증값을 수집하지 않는다.
+- QA: 전체 테스트 138개, 타입 검사와 린트 통과. 엔티티 응답 회귀 테스트를 포함한다. 수집과 푸시 복구는 아직 완료되지 않았다.
 
 ## 2026-05-19
 

@@ -43,3 +43,15 @@ test("KIND diagnostics bound the stored excerpt and sanitize IPv6", () => {
   assert.doesNotMatch(result.bodyExcerpt, /2001:db8/);
   assert.equal(result.endpoint, "listingcompany.do");
 });
+
+test("KIND diagnostics sanitize entity-encoded denial pages and retain an edge provider hint", () => {
+  const result = buildKindFailureDiagnostics(
+    new Response(null, { status: 403 }),
+    "Access Denied Reference&#32;&#35;18.abc https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;18.abc?token=private-value",
+    "pubofrschdl.do",
+    "icn1",
+  );
+  assert.equal(result.edgeProviderHint, "akamai");
+  assert.match(result.bodyExcerpt, /Access Denied Reference #18\.abc \[URL\]/);
+  assert.doesNotMatch(result.bodyExcerpt, /private-|edgesuite|&#/);
+});

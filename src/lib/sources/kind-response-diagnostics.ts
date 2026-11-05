@@ -6,7 +6,20 @@ type KindEndpoint = "listingcompany.do" | "pubofrschdl.do";
 const DIAGNOSTIC_HEADERS = ["content-type", "server", "via", "retry-after", "x-cache", "cf-mitigated"];
 const EXCERPT_LIMIT = 1200;
 
-const sanitizeResponseText = (value: string) => redactSecretString(value)
+const decodeResponseText = (value: string) => {
+  const named: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " " };
+  let decoded = value;
+  for (let pass = 0; pass < 2; pass += 1) {
+    decoded = decoded.replace(/&(amp|quot|apos|lt|gt|nbsp);/gi, (_, name: string) => named[name.toLowerCase()])
+      .replace(/&#(x[\da-f]+|\d+);/gi, (match, code: string) => {
+        const number = code.toLowerCase().startsWith("x") ? parseInt(code.slice(1), 16) : Number(code);
+        return number <= 0x10ffff ? String.fromCodePoint(number) : match;
+      });
+  }
+  return decoded;
+};
+
+const sanitizeResponseText = (value: string) => redactSecretString(decodeResponseText(value))
   .replace(/https?:\/\/[^\s<>"']+/gi, "[URL]")
   .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, "[EMAIL]")
   .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[IP]")
@@ -19,7 +32,8 @@ export const buildKindFailureDiagnostics = (
   endpoint: KindEndpoint,
   region = process.env.VERCEL_REGION ?? "local",
 ) => {
-  const visibleText = html
+  const decodedHtml = decodeResponseText(html);
+  const visibleText = decodedHtml
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]*>/g, " ")
@@ -33,6 +47,7 @@ export const buildKindFailureDiagnostics = (
     status: response.status,
     region,
     redirected: response.redirected,
+    edgeProviderHint: /errors\.edgesuite\.net/i.test(decodedHtml) ? "akamai" : null,
     responseHeaders: Object.fromEntries(DIAGNOSTIC_HEADERS.flatMap((name) => {
       const value = response.headers.get(name);
       return value ? [[name, sanitizeResponseText(value).slice(0, 200)]] : [];
